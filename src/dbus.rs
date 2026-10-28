@@ -273,12 +273,12 @@ impl PlayerInterface {
 
     #[zbus(name = "quit_player")]
     fn quit_player(&self) {
-        send(&self.tx, Command::Quit);
+        send(&self.tx, Command::QuitPlayer);
     }
 
     #[zbus(name = "reload_config")]
     fn reload_config(&self) {
-        send(&self.tx, Command::Reload);
+        send(&self.tx, Command::ReloadConfig);
     }
 
     #[zbus(property, name = "mode")]

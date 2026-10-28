@@ -184,6 +184,20 @@ typography, motion and accessibility rules) is documented in
 [`docs/DESIGN.md`](docs/DESIGN.md). The stylesheet lives in
 `data/ui/ferramari.css` and is compiled into the binary.
 
+## Known limitations
+
+- The app always runs on X11/XWayland (`GDK_BACKEND=x11`): a wallpaper window is
+  a `DESKTOP`-type X11 toplevel and mpv embeds into it with `--wid`. Native
+  Wayland has no background role in `xdg-shell`, and `wlr-layer-shell` is not
+  available on GNOME, so native Wayland windows are not an option.
+- Pause/mute when maximised needs `_NET_CLIENT_LIST`, which only lists X11
+  windows. On Wayland sessions the feature is therefore unavailable and its
+  controls are hidden in the quick settings.
+- Fractional scaling and mixed-DPI layouts are upscaled by XWayland; expect
+  softer output than a native Wayland client.
+- KDE Plasma is not part of the tested matrix; the XWayland desktop window is
+  the only supported path there.
+
 ## Differences from Hidamari
 
 - GTK 3 is kept on purpose: WebKitGTK 4.1 is the only WebKit line with a
@@ -212,11 +226,11 @@ typography, motion and accessibility rules) is documented in
 
 ## Testing notes
 
-`cargo test` covers config parsing/migration, yt-dlp format selection, EWMH
-decisions, the fade maths and path handling. The GUI, video embedding, streaming
-and webpage modes were smoke-tested on Ubuntu 26.04 / GNOME Wayland
-(XWayland). To exercise the static-wallpaper code without touching your real
-background:
+`cargo test` covers config parsing/migration, yt-dlp format selection and
+process timeouts, EWMH decisions, mpv IPC framing, monitor naming, the fade
+maths and path handling. The GUI, video embedding, streaming and webpage modes
+were smoke-tested on Ubuntu 26.04 / GNOME Wayland (XWayland). To exercise the
+static-wallpaper code without touching your real background:
 
 ```sh
 GSETTINGS_BACKEND=memory ferramari -b -d

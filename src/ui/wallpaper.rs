@@ -22,8 +22,26 @@ pub struct WallpaperWindow {
     content: Content,
     fade: Fade,
     primary: bool,
+    key: WindowKey,
     // Kept alive for the lifetime of the window.
     _menu: gtk::Menu,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowKind {
+    Video,
+    Stream,
+    Web,
+}
+
+/// What a wallpaper window shows: kind, monitor and source. Two windows are
+/// interchangeable only when all three match, which lets a change on one
+/// monitor keep the other players running.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowKey {
+    pub kind: WindowKind,
+    pub monitor: String,
+    pub source: String,
 }
 
 enum Content {
@@ -66,6 +84,11 @@ impl WallpaperWindow {
             content: Content::Video { mpv },
             fade: Fade::default(),
             primary,
+            key: WindowKey {
+                kind: WindowKind::Video,
+                monitor: monitor.name.clone(),
+                source: source.to_string(),
+            },
             _menu: menu,
         })
     }
@@ -105,6 +128,11 @@ impl WallpaperWindow {
             content: Content::Video { mpv },
             fade: Fade::default(),
             primary,
+            key: WindowKey {
+                kind: WindowKind::Stream,
+                monitor: monitor.name.clone(),
+                source: stream.video_url.clone(),
+            },
             _menu: menu,
         })
     }
@@ -138,8 +166,17 @@ impl WallpaperWindow {
             content: Content::Web { webview },
             fade: Fade::default(),
             primary,
+            key: WindowKey {
+                kind: WindowKind::Web,
+                monitor: monitor.name.clone(),
+                source: uri.to_string(),
+            },
             _menu: menu,
         })
+    }
+
+    pub fn key(&self) -> &WindowKey {
+        &self.key
     }
 
     pub fn is_primary(&self) -> bool {
@@ -301,4 +338,47 @@ fn lower_x11_window(xid: u64) {
         &ConfigureWindowAux::new().stack_mode(StackMode::BELOW),
     );
     let _ = connection.flush();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(kind: WindowKind, monitor: &str, source: &str) -> WindowKey {
+        WindowKey {
+            kind,
+            monitor: monitor.to_string(),
+            source: source.to_string(),
+        }
+    }
+
+    #[test]
+    fn keys_match_only_when_all_fields_do() {
+        let original = key(WindowKind::Video, "eDP-1", "/videos/a.mp4");
+        assert!(original == original.clone());
+        // Same monitor and file, different mode: a new window is needed.
+        assert_ne!(original, key(WindowKind::Stream, "eDP-1", "/videos/a.mp4"));
+        // Another monitor or another file: rebuild only that window.
+        assert_ne!(original, key(WindowKind::Video, "HDMI-1", "/videos/a.mp4"));
+        assert_ne!(original, key(WindowKind::Video, "eDP-1", "/videos/b.mp4"));
+    }
+
+    #[test]
+    fn unchanged_monitors_survive_a_sync_plan() {
+        // Mirrors App::sync_windows: a window is kept when its key is still
+        // in the desired set, so only the changed monitor is rebuilt.
+        let desired = [
+            key(WindowKind::Video, "eDP-1", "/videos/a.mp4"),
+            key(WindowKind::Video, "HDMI-1", "/videos/new.mp4"),
+        ];
+        let existing = [
+            key(WindowKind::Video, "eDP-1", "/videos/a.mp4"),
+            key(WindowKind::Video, "HDMI-1", "/videos/old.mp4"),
+        ];
+        let kept: Vec<&WindowKey> = existing
+            .iter()
+            .filter(|window| desired.contains(window))
+            .collect();
+        assert_eq!(kept, vec![&existing[0]]);
+    }
 }

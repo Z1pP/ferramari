@@ -5,10 +5,16 @@
 //! is plain Rust so it can be unit-tested without network access.
 
 use std::cmp::Ordering;
-use std::process::Command;
-use std::time::Duration;
+use std::io::Read;
+use std::os::unix::process::CommandExt;
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
+
+/// Upper bound for `yt-dlp -J`. Without it a hung extractor leaves the UI
+/// spinner running forever, because the resolve result never comes back.
+const RESOLVE_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone)]
 pub struct Format {
@@ -144,12 +150,14 @@ fn u32_field(value: &Value, key: &str) -> Option<u32> {
 /// Resolve a streaming URL to a playable video (+ separate audio) stream.
 pub fn resolve(url: &str, screen_height: u32) -> Result<StreamInfo, String> {
     log::info!("[yt-dlp] Resolving {url}");
-    let output = Command::new(crate::paths::tool("yt-dlp"))
-        .args(["-J", "--no-playlist", "--no-warnings", url])
-        .output()
-        .map_err(|err| format!("could not run yt-dlp: {err}"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut command = Command::new(crate::paths::tool("yt-dlp"));
+    // `--` keeps a URL supplied over D-Bus from being parsed as an option.
+    command
+        .args(["-J", "--no-playlist", "--no-warnings", "--"])
+        .arg(url);
+    let (status, stdout, stderr) = run_with_timeout(command, RESOLVE_TIMEOUT, "yt-dlp")?;
+    if !status.success() {
+        let stderr = String::from_utf8_lossy(&stderr);
         let reason = stderr
             .lines()
             .find(|line| line.starts_with("ERROR:"))
@@ -158,7 +166,7 @@ pub fn resolve(url: &str, screen_height: u32) -> Result<StreamInfo, String> {
             .to_string();
         return Err(reason);
     }
-    let text = String::from_utf8_lossy(&output.stdout);
+    let text = String::from_utf8_lossy(&stdout);
     let formats = Formats::parse(&text)?;
     let video = formats
         .optimal_video(screen_height)
@@ -176,6 +184,76 @@ pub fn resolve(url: &str, screen_height: u32) -> Result<StreamInfo, String> {
         width: video.width.unwrap_or(1920),
         height: video.height.unwrap_or(1080),
     })
+}
+
+/// Run a child process with a deadline, capturing stdout and stderr.
+///
+/// `Command::output()` has no timeout, and polling a piped child without
+/// draining its pipes deadlocks once it writes more than the pipe buffer, so
+/// each pipe gets its own reader thread.
+fn run_with_timeout(
+    mut command: Command,
+    timeout: Duration,
+    label: &str,
+) -> Result<(ExitStatus, Vec<u8>, Vec<u8>), String> {
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        // Own process group: killing the deadline also kills helpers such as
+        // ffmpeg, which would otherwise keep the pipes open and stall the
+        // reader threads.
+        .process_group(0);
+    let mut child = command
+        .spawn()
+        .map_err(|err| format!("could not run {label}: {err}"))?;
+    let stdout = child.stdout.take().expect("stdout is piped");
+    let stderr = child.stderr.take().expect("stderr is piped");
+    let stdout_reader = std::thread::spawn(move || read_to_end(stdout));
+    let stderr_reader = std::thread::spawn(move || read_to_end(stderr));
+
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Ok(None) => {
+                kill_tree(&mut child);
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
+                return Err(format!("{label} timed out after {}s", timeout.as_secs()));
+            }
+            Err(err) => {
+                kill_tree(&mut child);
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
+                return Err(format!("could not wait for {label}: {err}"));
+            }
+        }
+    };
+
+    Ok((
+        status,
+        stdout_reader.join().unwrap_or_default(),
+        stderr_reader.join().unwrap_or_default(),
+    ))
+}
+
+fn kill_tree(child: &mut Child) {
+    // Negative pid = the whole process group created by `process_group(0)`.
+    unsafe {
+        libc::kill(-(child.id() as i32), libc::SIGKILL);
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+fn read_to_end(mut pipe: impl Read) -> Vec<u8> {
+    let mut buffer = Vec::new();
+    let _ = pipe.read_to_end(&mut buffer);
+    buffer
 }
 
 /// Lightweight reachability check, matching upstream's pre-flight request.
@@ -264,5 +342,28 @@ mod tests {
     fn rejects_empty_format_list() {
         assert!(Formats::parse(r#"{"formats": []}"#).is_err());
         assert!(Formats::parse("garbage").is_err());
+    }
+
+    #[test]
+    fn hung_process_is_killed_at_the_deadline() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "sleep 5"]);
+        let started = Instant::now();
+        let err =
+            run_with_timeout(command, Duration::from_millis(150), "test command").unwrap_err();
+        assert!(err.contains("timed out"), "{err}");
+        assert!(started.elapsed() < Duration::from_secs(3), "kill was slow");
+    }
+
+    #[test]
+    fn output_larger_than_a_pipe_buffer_is_captured() {
+        // 200 KB is well past the usual 64 KB pipe buffer: without a reader
+        // thread the child would block and the timeout would fire.
+        let mut command = Command::new("sh");
+        command.args(["-c", "head -c 200000 /dev/zero"]);
+        let (status, stdout, _) =
+            run_with_timeout(command, Duration::from_secs(5), "test command").unwrap();
+        assert!(status.success());
+        assert_eq!(stdout.len(), 200_000);
     }
 }

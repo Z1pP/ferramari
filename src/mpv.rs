@@ -17,6 +17,11 @@ use serde_json::{json, Value};
 
 static SOCKET_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+/// How long a single command may wait for mpv to answer. Commands only set
+/// properties, so a healthy mpv replies immediately; the limit exists to bound
+/// a main-thread stall when the player has wedged.
+const IPC_TIMEOUT: Duration = Duration::from_secs(2);
+
 #[derive(Debug, Clone, Default)]
 pub struct Options {
     /// X11 window id to render into. `None` opens mpv's own window.
@@ -34,10 +39,21 @@ pub struct Options {
 pub struct Mpv {
     child: Child,
     socket: PathBuf,
-    stream: Mutex<UnixStream>,
+    ipc: Mutex<Option<Ipc>>,
     pub volume: i64,
     pub muted: bool,
     pub paused: bool,
+}
+
+/// One JSON IPC connection. mpv interleaves unsolicited events with command
+/// replies on the same stream, so the reader has to be persistent: creating a
+/// `BufReader` per command would buffer (and drop) replies that arrived early.
+struct Ipc {
+    reader: BufReader<UnixStream>,
+    /// Second handle on the same socket: `BufReader` does not implement
+    /// `Write`, and replies must be read through the buffered reader.
+    writer: UnixStream,
+    next_request: u64,
 }
 
 impl Mpv {
@@ -127,13 +143,18 @@ impl Mpv {
                 }
             }
         };
-        stream.set_read_timeout(Some(Duration::from_secs(3)))?;
-        stream.set_write_timeout(Some(Duration::from_secs(3)))?;
+        stream.set_read_timeout(Some(IPC_TIMEOUT))?;
+        stream.set_write_timeout(Some(IPC_TIMEOUT))?;
+        let reader = stream.try_clone()?;
 
         Ok(Self {
             child,
             socket,
-            stream: Mutex::new(stream),
+            ipc: Mutex::new(Some(Ipc {
+                reader: BufReader::new(reader),
+                writer: stream,
+                next_request: 0,
+            })),
             volume: options.volume,
             muted: options.muted,
             paused: options.paused,
@@ -141,20 +162,26 @@ impl Mpv {
     }
 
     fn command(&self, args: Value) -> anyhow::Result<Value> {
-        let mut stream = self
-            .stream
+        let mut guard = self
+            .ipc
             .lock()
             .map_err(|_| anyhow::anyhow!("mpv IPC mutex poisoned"))?;
-        let request = json!({ "command": args });
-        writeln!(stream, "{request}")?;
-        stream.flush()?;
-        let mut line = String::new();
-        BufReader::new(&mut *stream).read_line(&mut line)?;
-        let response: Value = serde_json::from_str(&line)?;
-        if response.get("error").and_then(Value::as_str) != Some("success") {
-            anyhow::bail!("mpv rejected {request}: {line}");
+        let mut ipc = guard
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("mpv IPC connection is closed"))?;
+
+        let result = exchange(&mut ipc, args);
+
+        // I/O failures (EOF, timeout) leave unread bytes behind: the stream
+        // cannot be reused. A rejected command, on the other hand, keeps it.
+        let fatal = result
+            .as_ref()
+            .err()
+            .is_some_and(|err| err.downcast_ref::<std::io::Error>().is_some());
+        if !fatal {
+            *guard = Some(ipc);
         }
-        Ok(response)
+        result
     }
 
     fn set_property(&self, name: &str, value: Value) -> anyhow::Result<()> {
@@ -188,5 +215,122 @@ impl Drop for Mpv {
         }
         let _ = self.child.wait();
         let _ = std::fs::remove_file(&self.socket);
+    }
+}
+
+/// Send one command and return the matching reply, skipping events and replies
+/// to requests that already timed out.
+fn exchange(ipc: &mut Ipc, args: Value) -> anyhow::Result<Value> {
+    let request_id = ipc.next_request;
+    ipc.next_request += 1;
+    let request = json!({ "command": args, "request_id": request_id });
+    writeln!(ipc.writer, "{request}")?;
+    ipc.writer.flush()?;
+    loop {
+        let mut line = String::new();
+        if ipc.reader.read_line(&mut line)? == 0 {
+            anyhow::bail!(
+                "mpv closed the IPC socket: {}",
+                std::io::Error::from(std::io::ErrorKind::UnexpectedEof)
+            );
+        }
+        let Some(response) = next_response(&line, request_id)? else {
+            continue;
+        };
+        return Ok(response);
+    }
+}
+
+/// Pick the reply for `request_id` out of one IPC line.
+///
+/// Returns `Ok(None)` for events, blank lines and replies to other requests.
+/// mpv sends `start-file`, `file-loaded`, `audio-reconfig` and friends without
+/// being asked, so those lines must never be mistaken for command results.
+fn next_response(line: &str, request_id: u64) -> anyhow::Result<Option<Value>> {
+    let line = line.trim();
+    if line.is_empty() {
+        return Ok(None);
+    }
+    let Ok(response) = serde_json::from_str::<Value>(line) else {
+        log::debug!("[mpv] ignoring malformed IPC line: {line}");
+        return Ok(None);
+    };
+    if response.get("event").is_some() {
+        return Ok(None);
+    }
+    if response.get("request_id").and_then(Value::as_u64) != Some(request_id) {
+        return Ok(None);
+    }
+    if response.get("error").and_then(Value::as_str) != Some("success") {
+        anyhow::bail!("mpv rejected the command: {line}");
+    }
+    Ok(Some(response))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn events_are_not_command_replies() {
+        let event = r#"{"event":"start-file"}"#;
+        assert!(next_response(event, 4).unwrap().is_none());
+        let reconfigure = r#"{"event":"audio-reconfig","id":0}"#;
+        assert!(next_response(reconfigure, 4).unwrap().is_none());
+    }
+
+    #[test]
+    fn stale_replies_are_skipped() {
+        let stale = r#"{"request_id":3,"error":"success"}"#;
+        assert!(next_response(stale, 4).unwrap().is_none());
+        let current = r#"{"request_id":4,"error":"success","data":null}"#;
+        assert!(next_response(current, 4).unwrap().is_some());
+    }
+
+    #[test]
+    fn command_errors_are_reported() {
+        let error = r#"{"request_id":1,"error":"property unavailable"}"#;
+        let err = next_response(error, 1).unwrap_err().to_string();
+        assert!(err.contains("property unavailable"), "{err}");
+    }
+
+    #[test]
+    fn malformed_lines_are_ignored() {
+        assert!(next_response("not json", 1).unwrap().is_none());
+        assert!(next_response("", 1).unwrap().is_none());
+    }
+
+    /// End-to-end: events written before the reply must not desync the stream,
+    /// and the reply must be read even though it arrives after them.
+    #[test]
+    fn exchange_reads_past_events() {
+        let (client, mut server) = UnixStream::pair().unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let mut ipc = Ipc {
+            reader: BufReader::new(client.try_clone().unwrap()),
+            writer: client,
+            next_request: 0,
+        };
+
+        let peer = std::thread::spawn(move || {
+            {
+                let mut request = String::new();
+                BufReader::new(&mut server).read_line(&mut request).unwrap();
+                assert!(request.contains("\"request_id\":0"), "{request}");
+            }
+            server
+                .write_all(b"{\"event\":\"audio-reconfig\"}\n")
+                .unwrap();
+            server
+                .write_all(b"{\"request_id\":0,\"error\":\"success\"}\n")
+                .unwrap();
+            server.flush().unwrap();
+        });
+
+        let response = exchange(&mut ipc, json!(["set_property", "volume", 12])).unwrap();
+        peer.join().unwrap();
+        assert_eq!(response["error"], "success");
     }
 }

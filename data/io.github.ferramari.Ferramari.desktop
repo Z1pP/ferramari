@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Ferramari
+GenericName=Video Wallpaper
+Comment=Video wallpaper for Linux, written in Rust
+Exec=ferramari
+Icon=io.github.ferramari.Ferramari
+Terminal=false
+Type=Application
+Categories=GTK;Utility;
+Keywords=wallpaper;video;live;stream;
+StartupNotify=true

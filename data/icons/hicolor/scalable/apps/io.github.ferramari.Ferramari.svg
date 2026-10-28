@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="8" y1="8" x2="120" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B3B45"/>
+      <stop offset="1" stop-color="#15706F"/>
+    </linearGradient>
+    <linearGradient id="shell" x1="48" y1="52" x2="82" y2="98" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFB067"/>
+      <stop offset="0.55" stop-color="#F8763F"/>
+      <stop offset="1" stop-color="#E23E25"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="36" cy="30" r="19" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFF0B8"/>
+      <stop offset="0.65" stop-color="#FFD166"/>
+      <stop offset="1" stop-color="#FFC247"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <circle cx="36" cy="31" r="18" fill="url(#sun)"/>
+
+  <!-- walking legs (behind the body) -->
+  <g fill="none" stroke="#F2542D" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M37 82 C28 85 22 91 19 98"/>
+    <path d="M43 89 C36 95 31 101 29 108"/>
+    <path d="M52 94 C49 101 47 107 46 113"/>
+    <path d="M91 82 C100 85 106 91 109 98"/>
+    <path d="M85 89 C92 95 97 101 99 108"/>
+    <path d="M76 94 C79 101 81 107 82 113"/>
+  </g>
+
+  <!-- arms -->
+  <g fill="none" stroke="#F2542D" stroke-width="7" stroke-linecap="round">
+    <path d="M39 65 C32 62 27 57 26 51"/>
+    <path d="M89 65 C96 62 101 57 102 51"/>
+  </g>
+
+  <!-- claws -->
+  <g fill="none" stroke="url(#shell)" stroke-width="7.5" stroke-linecap="round">
+    <path d="M28 34 C18 33 12 39 13 46 C14 54 21 57 28 53"/>
+    <path d="M100 34 C110 33 116 39 115 46 C114 54 107 57 100 53"/>
+  </g>
+
+  <!-- carapace -->
+  <ellipse cx="64" cy="76" rx="31" ry="22" fill="url(#shell)"/>
+  <path d="M44 67 C54 57 74 57 84 67" fill="none" stroke="#FFD9AE" stroke-width="4" stroke-linecap="round" opacity="0.55"/>
+
+  <!-- eyes on stalks -->
+  <g stroke="#E23E25" stroke-width="5" stroke-linecap="round">
+    <path d="M53 60 L53 48"/>
+    <path d="M75 60 L75 48"/>
+  </g>
+  <circle cx="53" cy="45" r="6" fill="#082A32"/>
+  <circle cx="75" cy="45" r="6" fill="#082A32"/>
+  <circle cx="54.8" cy="43" r="1.8" fill="#FFF6E9"/>
+  <circle cx="76.8" cy="43" r="1.8" fill="#FFF6E9"/>
+
+  <!-- play symbol -->
+  <path d="M57 68 L57 86 L74 77 Z" fill="#FFF6E9"/>
+</svg>

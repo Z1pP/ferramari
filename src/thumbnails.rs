@@ -1,0 +1,75 @@
+//! Video thumbnails for the control window.
+//!
+//! Rendering happens on a worker thread; the resulting file is loaded into a
+//! `gdk_pixbuf::Pixbuf` on the GTK thread. Frames are cached per (path, mtime).
+
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::UNIX_EPOCH;
+
+use crate::paths;
+
+/// Return a cached 96px-tall JPEG for `video`, generating it with ffmpeg when
+/// no cache entry exists. Returns `None` when no thumbnail can be produced.
+pub fn generate(video: &Path) -> Option<PathBuf> {
+    let metadata = std::fs::metadata(video).ok()?;
+    let modified = metadata
+        .modified()
+        .ok()?
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    video.hash(&mut hasher);
+    modified.hash(&mut hasher);
+    let cache_dir = paths::thumbnail_cache_dir();
+    std::fs::create_dir_all(&cache_dir).ok()?;
+    let target = cache_dir.join(format!("{:016x}.jpg", hasher.finish()));
+    if target.is_file() {
+        return Some(target);
+    }
+
+    let partial = cache_dir.join(format!(
+        "{}.part.jpg",
+        target.file_stem()?.to_string_lossy()
+    ));
+    let ok = run_ffmpeg(video, &partial, true) || run_ffmpeg(video, &partial, false);
+    if !ok || !partial.is_file() {
+        let _ = std::fs::remove_file(&partial);
+        return None;
+    }
+    if std::fs::rename(&partial, &target).is_err() {
+        let _ = std::fs::remove_file(&partial);
+        return None;
+    }
+    Some(target)
+}
+
+fn run_ffmpeg(video: &Path, output: &Path, seek: bool) -> bool {
+    let mut command = Command::new("ffmpeg");
+    command
+        .arg("-y")
+        .arg("-v")
+        .arg("error")
+        .arg("-i")
+        .arg(video);
+    if seek {
+        command.args(["-ss", "1"]);
+    }
+    command
+        .args(["-vf", "thumbnail,scale=-1:96", "-frames:v", "1"])
+        .arg(output);
+    matches!(command.status(), Ok(status) if status.success())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_file_has_no_thumbnail() {
+        assert!(generate(Path::new("/nonexistent/video.mp4")).is_none());
+    }
+}

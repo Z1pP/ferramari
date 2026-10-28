@@ -1,0 +1,293 @@
+# Japanese translation for Ferramari.
+# Based on the Hidamari translation by Jeff Shee (jeffshee8969@gmail.com).
+# This file is distributed under the same license as the ferramari package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: ferramari\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-07-10 02:19+0900\n"
+"PO-Revision-Date: 2026-07-10 01:30+0900\n"
+"Last-Translator: Jeff Shee <jeffshee8969@gmail.com>\n"
+"Language-Team: Japanese\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/ui/control.rs
+#, python-brace-format
+msgid "Set For {monitor}"
+msgstr "{monitor} に設定"
+
+#. add all option
+#: src/ui/control.rs
+msgid "Set For All"
+msgstr "すべてに設定"
+
+#: src/ui/control.rs
+msgid "Couldn't connect to server"
+msgstr "サーバーに接続できませんでした"
+
+#: src/ui/control.rs
+msgid "Welcome to Ferramari 🤗"
+msgstr "Ferramari へようこそ 🤗"
+
+#: src/ui/control.rs
+msgid ""
+"Quickstart for adding local videos:\n"
+" ・Click the folder icon to open the Ferramari folder\n"
+" ・Put your videos there\n"
+" ・Click the refresh button"
+msgstr ""
+"ローカル動画を追加するクイックスタート:\n"
+" ・フォルダーアイコンをクリックして Ferramari フォルダーを開きます\n"
+" ・動画をそこに入れます\n"
+" ・更新ボタンをクリックします"
+
+#: src/ui/control.rs
+msgid "Oops!"
+msgstr "おっと！"
+
+#: src/ui/control.rs
+msgid "No Video Selected"
+msgstr "動画が選択されていません"
+
+#: src/ui/control.rs
+msgid ""
+"There are no video selected.\n"
+"Please choose one first."
+msgstr ""
+"動画が選択されていません。\n"
+"まず動画を1つ選択してください。"
+
+#: src/ui/control.rs
+msgid "Please choose a HTML file"
+msgstr "HTML ファイルを選択してください"
+
+#: src/ui/control.rs
+#, python-brace-format
+msgid ""
+"Failed to access {url}. Error:\n"
+"{error}"
+msgstr ""
+"{url} にアクセスできませんでした。エラー:\n"
+"{error}"
+
+#: src/ui/control.rs
+#, python-brace-format
+msgid "Failed to access {url}. Error code: {code}"
+msgstr "{url} にアクセスできませんでした。エラーコード: {code}"
+
+#: src/ui/control.rs
+#, python-brace-format
+msgid ""
+"Failed to stream {url}. Error:\n"
+"{error}"
+msgstr ""
+"{url} のストリーミングに失敗しました。エラー:\n"
+"{error}"
+
+#.
+#: src/ui/menu.rs
+msgid "Show Ferramari"
+msgstr "Ferramari を表示"
+
+#.
+#: src/ui/menu.rs
+msgid "Toggle Mute Audio"
+msgstr "音声ミュートの切り替え"
+
+#.
+#: src/ui/menu.rs
+msgid "Toggle Play/Pause"
+msgstr "再生 / 一時停止の切り替え"
+
+#.
+#: src/ui/menu.rs
+msgid "Reload"
+msgstr "再読み込み"
+
+#.
+#: src/ui/menu.rs
+msgid "I'm Feeling Lucky"
+msgstr "おまかせ再生"
+
+#.
+#: src/ui/menu.rs
+msgid "Quit Ferramari"
+msgstr "Ferramari を終了"
+
+#: src/ui/control.rs
+msgid ""
+"Video wallpaper for Linux. Written in Rust. 🦀\n"
+"\n"
+"Ferramari — a Rust rewrite of Hidamari (日溜まり, \"sunny spot\")\n"
+"by Jeff Shee."
+msgstr ""
+"Linux 向けの動画ウォールペーパー。Rust で書かれています。🦀\n"
+"\n"
+"Ferramari — Jeff Shee による Hidamari（日溜まり、「日の当たる場所」）の\n"
+"Rust リライトです。"
+
+#: src/ui/control.rs
+msgid "Quick toggles"
+msgstr "クイック切り替え"
+
+#: src/ui/control.rs
+msgid "Autostart after login"
+msgstr "ログイン後に自動起動"
+
+#: src/ui/control.rs
+msgid "Video frame can be applied as system wallpaper, look great in GNOME"
+msgstr "動画のフレームをシステム壁紙として適用でき、GNOME で美しく表示されます"
+
+#: src/ui/control.rs
+msgid "Apply static wallpaper"
+msgstr "静止画壁紙を適用"
+
+#: src/ui/control.rs
+msgid ""
+"Automatically pauses playback when maximized window or full screen mode is "
+"detected"
+msgstr ""
+"ウィンドウの最大化やフルスクリーンを検出すると自動的に再生を一時停止します"
+
+#: src/ui/control.rs
+msgid "Pause when maximized window"
+msgstr "ウィンドウ最大化時に一時停止"
+
+#: src/ui/control.rs
+msgid ""
+"Automatically mutes playback when maximized window or full screen mode is "
+"detected"
+msgstr "ウィンドウの最大化やフルスクリーンを検出すると自動的にミュートします"
+
+#: src/ui/control.rs
+msgid "Mute when maximized window"
+msgstr "ウィンドウ最大化時にミュート"
+
+#: src/ui/control.rs
+msgid "Volume control"
+msgstr "音量調整"
+
+#: src/ui/control.rs
+msgid "Static wallpaper blur radius"
+msgstr "静止画壁紙のぼかし半径"
+
+#: src/ui/control.rs
+msgid "Open config file"
+msgstr "設定ファイルを開く"
+
+#: src/ui/control.rs
+msgid "About Ferramari"
+msgstr "Ferramari について"
+
+#: src/ui/control.rs
+msgid ""
+"<span size=\"x-large\"><b>Local Video</b></span>\n"
+"Videos located in Ferramari folder"
+msgstr ""
+"<span size=\"x-large\"><b>ローカル動画</b></span>\n"
+"Ferramari フォルダー内の動画"
+
+#: src/ui/control.rs
+msgid "Refresh"
+msgstr "更新"
+
+#: src/ui/control.rs
+msgid "Open Ferramari folder"
+msgstr "Ferramari フォルダーを開く"
+
+#: src/ui/control.rs
+msgid "Apply"
+msgstr "適用"
+
+#: src/ui/control.rs
+msgid "Local Video"
+msgstr "ローカル動画"
+
+#: src/ui/control.rs
+msgid ""
+"<span size=\"x-large\"><b>Streaming</b></span>\n"
+"Videos from streaming services"
+msgstr ""
+"<span size=\"x-large\"><b>ストリーミング</b></span>\n"
+"ストリーミングサービスの動画"
+
+#: src/ui/control.rs
+msgid "<b>Streaming URL</b>"
+msgstr "<b>ストリーミング URL</b>"
+
+#: src/ui/control.rs
+msgid "💡\tThis feature uses <i>yt-dlp</i> as backend"
+msgstr "💡\tこの機能はバックエンドに <i>yt-dlp</i> を使用します"
+
+#: src/ui/control.rs
+msgid ""
+"😉\tTry playing any YouTube video! <a href=\"https://github.com/yt-dlp/yt-"
+"dlp/blob/master/supportedsites.md\">Supported sites (yt-dlp)</a>"
+msgstr ""
+"😉\tYouTube の動画を再生してみましょう！<a href=\"https://github.com/yt-dlp/"
+"yt-dlp/blob/master/supportedsites.md\">対応サイト (yt-dlp)</a>"
+
+#: src/ui/control.rs
+msgid "Hint"
+msgstr "ヒント"
+
+#: src/ui/control.rs
+msgid "Streaming"
+msgstr "ストリーミング"
+
+#: src/ui/control.rs
+msgid ""
+"<span size=\"x-large\"><b>Web Page</b></span>\n"
+"Set a web page as wallpaper"
+msgstr ""
+"<span size=\"x-large\"><b>ウェブページ</b></span>\n"
+"ウェブページを壁紙に設定"
+
+#: src/ui/control.rs
+msgid "<b>Web Page URL</b>"
+msgstr "<b>ウェブページ URL</b>"
+
+#: src/ui/control.rs
+msgid ""
+"💡\tCheck this website for some really amazing examples!\n"
+"\t<a href=\"https://alteredqualia.com/\">https://alteredqualia.com/</a>"
+msgstr ""
+"💡\tこのウェブサイトで素晴らしい例をチェックしてみましょう！\n"
+"\t<a href=\"https://alteredqualia.com/\">https://alteredqualia.com/</a>"
+
+#: src/ui/control.rs
+msgid "<b>Local Web Page</b>"
+msgstr "<b>ローカルウェブページ</b>"
+
+#: src/ui/control.rs
+msgid "Alternately, you can choose a HTML file on your PC"
+msgstr "または、PC 上の HTML ファイルを選択することもできます"
+
+#: src/ui/control.rs
+msgid "Web Page"
+msgstr "ウェブページ"
+
+#: src/ui/control.rs
+msgid "Original Hidamari project"
+msgstr "オリジナルの Hidamari プロジェクト"
+
+#: src/ui/control.rs
+msgid "😉\tTry playing any YouTube video!"
+msgstr "😉	YouTube の動画を再生してみましょう！"
+
+#: src/ui/control.rs
+msgid "Check this website for some really amazing examples!"
+msgstr "このウェブサイトで素晴らしい例をチェックしてみましょう！"
+
+#: src/ui/control.rs
+msgid "Volume"
+msgstr "音量"
+
+#: src/ui/control.rs
+msgid "Mute"
+msgstr "ミュート"

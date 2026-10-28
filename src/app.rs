@@ -267,6 +267,9 @@ impl App {
             Command::Stream { url } => self.resolve_stream(url),
             Command::StreamReady { url, result } => {
                 self.stream_resolving = false;
+                if let Some(control) = &self.control {
+                    control.set_streaming(false);
+                }
                 match result {
                     Ok(info) => {
                         log::info!("[Stream] {}x{} from {url}", info.width, info.height);
@@ -279,6 +282,7 @@ impl App {
                     Err(err) => {
                         self.stream = None;
                         self.notify_error(err);
+                        self.refresh_ui();
                     }
                 }
             }
@@ -417,6 +421,9 @@ impl App {
             return;
         }
         self.stream_resolving = true;
+        if let Some(control) = &self.control {
+            control.set_streaming(true);
+        }
         let screen_height = self
             .monitors
             .iter()
@@ -697,6 +704,7 @@ impl App {
             ));
         }
         let first_time = self.config.is_first_time;
+        let is_playing = self.should_play() && !self.windows.is_empty();
         if let Some(control) = self.control.as_ref() {
             control.present();
             control.refresh(
@@ -704,6 +712,7 @@ impl App {
                 &self.monitors,
                 autostart::is_enabled(),
                 self.paused_by_user,
+                is_playing,
             );
             if !self.gui_shown && first_time {
                 control.show_welcome();
@@ -758,11 +767,13 @@ impl App {
 
     fn refresh_ui(&self) {
         if let Some(control) = &self.control {
+            let is_playing = self.should_play() && !self.windows.is_empty();
             control.refresh(
                 &self.config,
                 &self.monitors,
                 autostart::is_enabled(),
                 self.paused_by_user,
+                is_playing,
             );
         }
     }

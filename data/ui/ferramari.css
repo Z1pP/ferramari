@@ -1,0 +1,839 @@
+/*
+ * Ferramari — Liquid Glass design system.
+ *
+ * This is a template: tokens written as {{TOKEN}} are substituted by
+ * src/ui/theme.rs for the active light/dark palette. Keep every user-visible
+ * value here so pages stay consistent.
+ *
+ * GTK 3 has no backdrop-filter. The glass material is therefore built from a
+ * custom painted, pre-softened backdrop plus translucent layers, inner light
+ * and edge gradients. That keeps the effect cheap and predictable.
+ */
+
+/* ------------------------------------------------------------------ base */
+window.ferramari-window {
+  background-color: @@BG_BOTTOM@@;
+  color: @@TEXT@@;
+  font-family: "Lato", "Noto Sans";
+  font-size: 14px;
+}
+
+window.ferramari-window:backdrop {
+  color: @@TEXT@@;
+}
+
+/* -------------------------------------------------------------- titlebar */
+headerbar.ferramari-header {
+  min-height: 62px;
+  padding: 8px 14px;
+  background-image: linear-gradient(to bottom, @@HEADER_TOP@@, @@HEADER_BOTTOM@@);
+  background-color: @@HEADER_BOTTOM@@;
+  border: none;
+  border-bottom: 1px solid @@BORDER@@;
+  box-shadow: inset 0 1px 0 @@SHINE@@, 0 10px 28px @@SHADOW_SOFT@@;
+}
+
+headerbar.ferramari-header:backdrop {
+  background-image: linear-gradient(to bottom, @@HEADER_TOP@@, @@HEADER_BOTTOM@@);
+}
+
+headerbar.ferramari-header button.titlebutton {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  margin: 0 2px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: @@TEXT_SECONDARY@@;
+}
+
+headerbar.ferramari-header button.titlebutton:hover {
+  background-color: @@SURFACE_HOVER@@;
+  border-color: @@BORDER@@;
+  color: @@TEXT@@;
+}
+
+headerbar.ferramari-header button.titlebutton:active {
+  background-color: @@SURFACE_ACTIVE@@;
+}
+
+/* ------------------------------------------------------------- brand mark */
+.brand-mark {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 5px;
+  border: 1px solid @@BORDER@@;
+  border-radius: 11px;
+  background-color: @@SURFACE@@;
+  background-image: linear-gradient(145deg, @@SHINE@@, @@SHINE_SOFT@@);
+  box-shadow: inset 0 1px 0 @@SHINE@@, 0 6px 16px @@SHADOW_SOFT@@;
+}
+
+.brand-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: @@TEXT@@;
+}
+
+.brand-subtitle {
+  font-size: 11px;
+  color: @@TEXT_MUTED@@;
+}
+
+/* --------------------------------------------------------------- surfaces */
+.sidebar {
+  background-color: @@SURFACE@@;
+  background-image: linear-gradient(160deg, @@SHINE@@, @@SHINE_SOFT@@);
+  border: 1px solid @@BORDER@@;
+  border-radius: 24px;
+  box-shadow: inset 0 1px 0 @@SHINE@@, 0 24px 56px @@SHADOW_SOFT@@;
+}
+
+.glass-card {
+  background-color: @@SURFACE@@;
+  background-image: linear-gradient(145deg, @@SHINE@@, @@SHINE_SOFT@@);
+  border: 1px solid @@BORDER@@;
+  border-radius: 22px;
+  box-shadow: inset 0 1px 0 @@SHINE@@, 0 22px 52px @@SHADOW_SOFT@@;
+}
+
+.glass-toolbar {
+  background-color: @@SURFACE_STRONG@@;
+  background-image: linear-gradient(to bottom, @@SHINE@@, @@SHINE_SOFT@@);
+  border: 1px solid @@BORDER@@;
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 @@SHINE@@, 0 12px 28px @@SHADOW_SOFT@@;
+}
+
+.now-card {
+  background-color: @@SURFACE_HOVER@@;
+  background-image: linear-gradient(150deg, @@SHINE@@, @@SHINE_SOFT@@);
+  border: 1px solid @@BORDER@@;
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 @@SHINE@@, 0 12px 26px @@SHADOW_SOFT@@;
+}
+
+.selection-bar {
+  background-color: @@SURFACE_STRONG@@;
+  background-image: linear-gradient(to bottom, @@SHINE@@, @@SHINE_SOFT@@);
+  border: 1px solid @@BORDER@@;
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 @@SHINE@@, 0 16px 38px @@SHADOW_SOFT@@;
+}
+
+/* ----------------------------------------------------------- type system */
+.page-title {
+  font-size: 27px;
+  font-weight: 800;
+  color: @@TEXT@@;
+}
+
+.page-subtitle {
+  font-size: 13px;
+  color: @@TEXT_SECONDARY@@;
+}
+
+.section-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: @@TEXT_MUTED@@;
+}
+
+.form-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: @@TEXT@@;
+}
+
+.form-copy {
+  font-size: 13px;
+  color: @@TEXT_SECONDARY@@;
+}
+
+.field-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: @@TEXT_SECONDARY@@;
+}
+
+.field-hint {
+  font-size: 12px;
+  color: @@TEXT_MUTED@@;
+}
+
+.danger-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: @@DANGER@@;
+}
+
+.count-pill {
+  padding: 3px 10px;
+  border: 1px solid @@BORDER@@;
+  border-radius: 999px;
+  background-color: @@SURFACE_HOVER@@;
+  color: @@TEXT_SECONDARY@@;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.value-pill {
+  padding: 4px 10px;
+  border: 1px solid @@ACCENT_BORDER@@;
+  border-radius: 999px;
+  background-color: @@ACCENT_SOFT@@;
+  color: @@ACCENT_TEXT@@;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* --------------------------------------------------------------- status */
+.status-chip {
+  padding: 5px 12px;
+  border: 1px solid @@BORDER@@;
+  border-radius: 999px;
+  background-color: @@SURFACE@@;
+  background-image: linear-gradient(to bottom, @@SHINE@@, @@SHINE_SOFT@@);
+  box-shadow: inset 0 1px 0 @@SHINE@@, 0 6px 18px @@SHADOW_SOFT@@;
+}
+
+.status-dot {
+  min-width: 8px;
+  min-height: 8px;
+  border-radius: 999px;
+  background-color: @@TEXT_MUTED@@;
+}
+
+.status-dot.playing {
+  background-color: @@ACCENT@@;
+  box-shadow: 0 0 0 3px @@ACCENT_SOFT@@;
+}
+
+.status-dot.paused {
+  background-color: @@TEXT_MUTED@@;
+}
+
+.status-dot.busy {
+  background-color: @@FOCUS@@;
+  box-shadow: 0 0 0 3px @@FOCUS_SOFT@@;
+}
+
+.status-text {
+  font-size: 12px;
+  font-weight: 700;
+  color: @@TEXT_SECONDARY@@;
+}
+
+/* -------------------------------------------------------------- buttons */
+button {
+  min-height: 24px;
+  padding: 7px 14px;
+  border: 1px solid @@BORDER@@;
+  border-radius: 12px;
+  background-color: @@SURFACE_HOVER@@;
+  background-image: linear-gradient(to bottom, @@SHINE@@, @@SHINE_SOFT@@);
+  box-shadow: inset 0 1px 0 @@SHINE@@;
+  color: @@TEXT@@;
+  font-weight: 600;
+  transition: background-color 140ms ease, border-color 140ms ease,
+              box-shadow 140ms ease, color 140ms ease;
+}
+
+button:hover {
+  background-color: @@SURFACE_ACTIVE@@;
+  border-color: @@BORDER_STRONG@@;
+}
+
+button:active {
+  background-color: @@SURFACE_ACTIVE@@;
+  box-shadow: inset 0 2px 4px @@SHADOW_SOFT@@;
+}
+
+button:focus {
+  border-color: @@FOCUS@@;
+  box-shadow: 0 0 0 3px @@FOCUS_SOFT@@, inset 0 1px 0 @@SHINE@@;
+}
+
+button:disabled {
+  opacity: 0.42;
+  background-color: @@SURFACE@@;
+  box-shadow: none;
+}
+
+button.primary {
+  border-color: @@ACCENT_BORDER@@;
+  background-color: @@ACCENT_BG2@@;
+  background-image: linear-gradient(to bottom, @@ACCENT_BG@@, @@ACCENT_BG2@@);
+  box-shadow: inset 0 1px 0 @@SHINE@@, 0 10px 24px @@ACCENT_SHADOW@@;
+  color: @@ACCENT_INK@@;
+  font-weight: 800;
+}
+
+button.primary:hover {
+  background-image: linear-gradient(to bottom, @@ACCENT_BG_HOVER@@, @@ACCENT_BG2@@);
+}
+
+button.primary:active {
+  background-image: linear-gradient(to bottom, @@ACCENT_BG2@@, @@ACCENT_BG@@);
+  box-shadow: inset 0 2px 5px @@ACCENT_SHADOW@@;
+}
+
+button.secondary {
+  background-color: @@SURFACE@@;
+  border-color: @@BORDER@@;
+}
+
+button.ghost {
+  background-color: transparent;
+  background-image: none;
+  border-color: transparent;
+  box-shadow: none;
+  color: @@TEXT_SECONDARY@@;
+}
+
+button.ghost:hover {
+  background-color: @@SURFACE_HOVER@@;
+  border-color: @@BORDER@@;
+  color: @@TEXT@@;
+}
+
+button.ghost:active {
+  background-color: @@SURFACE_ACTIVE@@;
+}
+
+button.icon-button {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-color: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: @@TEXT_SECONDARY@@;
+}
+
+button.icon-button:hover {
+  background-color: @@SURFACE_HOVER@@;
+  border-color: @@BORDER@@;
+  color: @@TEXT@@;
+}
+
+button.icon-button:active {
+  background-color: @@SURFACE_ACTIVE@@;
+}
+
+button.icon-button:checked {
+  background-color: @@ACCENT_SOFT@@;
+  border-color: @@ACCENT_BORDER@@;
+  color: @@ACCENT_TEXT@@;
+}
+
+button.transport {
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 999px;
+  border-color: @@ACCENT_BORDER@@;
+  background-image: linear-gradient(to bottom, @@ACCENT_BG@@, @@ACCENT_BG2@@);
+  box-shadow: inset 0 1px 0 @@SHINE@@, 0 8px 22px @@ACCENT_SHADOW@@;
+  color: @@ACCENT_INK@@;
+}
+
+button.transport:hover {
+  background-image: linear-gradient(to bottom, @@ACCENT_BG_HOVER@@, @@ACCENT_BG2@@);
+}
+
+/* ---------------------------------------------------------------- nav */
+.nav-item {
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: @@TEXT_SECONDARY@@;
+  transition: background-color 140ms ease, border-color 140ms ease,
+              color 140ms ease, box-shadow 140ms ease;
+}
+
+.nav-item:hover {
+  background-color: @@SURFACE_HOVER@@;
+  border-color: @@BORDER@@;
+  color: @@TEXT@@;
+}
+
+.nav-item:active {
+  background-color: @@SURFACE_ACTIVE@@;
+}
+
+.nav-item.active {
+  background-color: @@ACCENT_SOFT@@;
+  background-image: linear-gradient(to bottom, @@ACCENT_SOFT@@, @@SHINE_SOFT@@);
+  border-color: @@ACCENT_BORDER@@;
+  box-shadow: inset 3px 0 0 @@ACCENT@@, inset 0 1px 0 @@SHINE@@;
+  color: @@TEXT@@;
+}
+
+.nav-item label {
+  color: @@TEXT_SECONDARY@@;
+}
+
+.nav-item:hover label {
+  color: @@TEXT@@;
+}
+
+.nav-item.active label.nav-title {
+  color: @@ACCENT_TEXT@@;
+}
+
+.nav-item.active label.nav-desc {
+  color: @@TEXT_SECONDARY@@;
+}
+
+.nav-item label.nav-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.nav-item label.nav-desc {
+  font-size: 11px;
+  color: @@TEXT_MUTED@@;
+}
+
+.nav-icon {
+  color: @@TEXT_MUTED@@;
+}
+
+.nav-item:hover .nav-icon {
+  color: @@TEXT@@;
+}
+
+.nav-item.active .nav-icon {
+  color: @@ACCENT_TEXT@@;
+}
+
+.top-nav {
+  background-color: @@SURFACE@@;
+  background-image: linear-gradient(to bottom, @@SHINE@@, @@SHINE_SOFT@@);
+  border: 1px solid @@BORDER@@;
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 @@SHINE@@, 0 12px 28px @@SHADOW_SOFT@@;
+}
+
+.top-nav .nav-item {
+  padding: 8px 12px;
+  border-radius: 12px;
+}
+
+/* ---------------------------------------------------------------- input */
+entry {
+  min-height: 26px;
+  padding: 8px 12px;
+  border: 1px solid @@BORDER@@;
+  border-radius: 12px;
+  background-color: @@INPUT_BG@@;
+  color: @@TEXT@@;
+  transition: background-color 140ms ease, border-color 140ms ease,
+              box-shadow 140ms ease;
+}
+
+entry:hover {
+  border-color: @@BORDER_STRONG@@;
+}
+
+entry:focus {
+  border-color: @@FOCUS@@;
+  background-color: @@INPUT_BG_FOCUS@@;
+  box-shadow: 0 0 0 3px @@FOCUS_SOFT@@;
+}
+
+entry:disabled {
+  opacity: 0.45;
+}
+
+entry.error {
+  border-color: @@DANGER@@;
+  box-shadow: 0 0 0 3px @@DANGER_SOFT@@;
+}
+
+entry image {
+  color: @@TEXT_MUTED@@;
+}
+
+entry.search-entry {
+  min-height: 30px;
+  padding: 9px 14px;
+  border-radius: 14px;
+}
+
+/* --------------------------------------------------------------- switch */
+switch {
+  min-width: 42px;
+  min-height: 24px;
+  border: 1px solid @@BORDER@@;
+  border-radius: 999px;
+  background-color: @@SURFACE_ACTIVE@@;
+  background-image: none;
+  box-shadow: inset 0 1px 2px @@SHADOW_SOFT@@;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+switch:checked {
+  border-color: @@ACCENT_BORDER@@;
+  background-color: @@ACCENT_BG2@@;
+  background-image: linear-gradient(to right, @@ACCENT_BG2@@, @@ACCENT_BG@@);
+  box-shadow: inset 0 1px 0 @@SHINE@@, 0 4px 12px @@ACCENT_SHADOW@@;
+}
+
+switch slider {
+  min-width: 18px;
+  min-height: 18px;
+  border-radius: 999px;
+  background-color: #FFFFFF;
+  box-shadow: 0 1px 4px @@SHADOW@@;
+}
+
+switch text {
+  opacity: 0;
+}
+
+switch:focus {
+  border-color: @@FOCUS@@;
+  box-shadow: 0 0 0 3px @@FOCUS_SOFT@@;
+}
+
+/* --------------------------------------------------------------- scales */
+scale {
+  min-height: 22px;
+}
+
+scale trough {
+  min-height: 6px;
+  border: 1px solid @@BORDER@@;
+  border-radius: 999px;
+  background-color: @@SURFACE_ACTIVE@@;
+  box-shadow: inset 0 1px 2px @@SHADOW_SOFT@@;
+}
+
+scale highlight {
+  border-radius: 999px;
+  background-image: linear-gradient(to right, @@ACCENT_BG2@@, @@ACCENT_BG@@);
+  box-shadow: inset 0 1px 0 @@SHINE@@;
+}
+
+scale slider {
+  min-width: 16px;
+  min-height: 16px;
+  margin: -6px;
+  border: 1px solid @@BORDER_STRONG@@;
+  border-radius: 999px;
+  background-color: #FFFFFF;
+  box-shadow: 0 2px 7px @@SHADOW@@;
+}
+
+scale:focus slider {
+  border-color: @@FOCUS@@;
+  box-shadow: 0 0 0 3px @@FOCUS_SOFT@@, 0 2px 7px @@SHADOW@@;
+}
+
+scale:disabled {
+  opacity: 0.4;
+}
+
+/* ------------------------------------------------------------ spinbutton */
+spinbutton {
+  min-height: 28px;
+  border: 1px solid @@BORDER@@;
+  border-radius: 10px;
+  background-color: @@INPUT_BG@@;
+}
+
+spinbutton:focus {
+  border-color: @@FOCUS@@;
+  box-shadow: 0 0 0 3px @@FOCUS_SOFT@@;
+}
+
+spinbutton entry {
+  border: none;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+spinbutton button {
+  min-width: 28px;
+  min-height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: @@TEXT_SECONDARY@@;
+}
+
+spinbutton button:hover {
+  background-color: @@SURFACE_HOVER@@;
+  color: @@TEXT@@;
+}
+
+/* ---------------------------------------------------------------- cards */
+.video-card {
+  border: 1px solid @@BORDER@@;
+  border-radius: 20px;
+  background-color: @@SURFACE@@;
+  background-image: linear-gradient(150deg, @@SHINE@@, @@SHINE_SOFT@@);
+  box-shadow: inset 0 1px 0 @@SHINE@@, 0 14px 32px @@SHADOW_SOFT@@;
+  transition: background-color 150ms ease, border-color 150ms ease,
+              box-shadow 150ms ease;
+}
+
+.video-info {
+  padding: 11px 12px 12px 12px;
+  background-color: @@SURFACE@@;
+  border-radius: 0 0 19px 19px;
+}
+
+.video-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: @@TEXT@@;
+}
+
+.video-meta {
+  font-size: 11px;
+  color: @@TEXT_MUTED@@;
+}
+
+flowbox {
+  background-color: transparent;
+}
+
+flowboxchild,
+flowboxchild:selected {
+  padding: 0;
+  border-radius: 20px;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  transition: box-shadow 150ms ease;
+}
+
+flowboxchild:hover .video-card {
+  background-color: @@SURFACE_HOVER@@;
+  border-color: @@BORDER_STRONG@@;
+  box-shadow: inset 0 1px 0 @@SHINE@@, 0 18px 38px @@SHADOW_SOFT@@;
+}
+
+flowboxchild:selected .video-card {
+  border-color: @@ACCENT@@;
+  background-color: @@SURFACE_ACTIVE@@;
+  box-shadow: 0 0 0 1px @@ACCENT@@ inset, inset 0 1px 0 @@SHINE@@,
+              0 18px 40px @@SHADOW_SOFT@@;
+}
+
+flowboxchild:selected .video-name {
+  color: @@ACCENT_TEXT@@;
+}
+
+flowboxchild:focus .video-card {
+  border-color: @@FOCUS@@;
+  box-shadow: 0 0 0 3px @@FOCUS_SOFT@@, inset 0 1px 0 @@SHINE@@,
+              0 18px 40px @@SHADOW_SOFT@@;
+}
+
+/* ---------------------------------------------------------- empty state */
+.empty-state {
+  padding: 34px;
+}
+
+.empty-icon {
+  color: @@TEXT_MUTED@@;
+}
+
+.empty-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: @@TEXT@@;
+}
+
+.empty-body {
+  font-size: 13px;
+  color: @@TEXT_SECONDARY@@;
+}
+
+/* ------------------------------------------------------------- settings */
+.setting-row {
+  padding: 8px 0;
+}
+
+.setting-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: @@TEXT@@;
+}
+
+.setting-description {
+  font-size: 11px;
+  color: @@TEXT_MUTED@@;
+}
+
+.popover-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: @@TEXT@@;
+}
+
+.popover-copy {
+  font-size: 12px;
+  color: @@TEXT_SECONDARY@@;
+}
+
+/* ------------------------------------------------------------- popovers */
+popover.background {
+  padding: 0;
+  border: 1px solid @@BORDER@@;
+  border-radius: 18px;
+  background-color: @@POPOVER_BG@@;
+  background-image: linear-gradient(155deg, @@SHINE@@, @@SHINE_SOFT@@);
+  box-shadow: inset 0 1px 0 @@SHINE@@, 0 26px 64px @@SHADOW@@;
+}
+
+popover.background > arrow {
+  border: 1px solid @@BORDER@@;
+  background-color: @@POPOVER_BG@@;
+}
+
+menu {
+  padding: 6px;
+  border: 1px solid @@BORDER@@;
+  border-radius: 14px;
+  background-color: @@POPOVER_BG@@;
+  box-shadow: inset 0 1px 0 @@SHINE@@, 0 18px 44px @@SHADOW@@;
+}
+
+menuitem {
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: @@TEXT@@;
+}
+
+menuitem:hover {
+  background-color: @@SURFACE_HOVER@@;
+}
+
+menuitem:disabled {
+  color: @@TEXT_MUTED@@;
+}
+
+/* -------------------------------------------------------------- dialogs */
+dialog,
+messagedialog,
+aboutdialog {
+  background-color: @@BG_BOTTOM@@;
+  color: @@TEXT@@;
+}
+
+messagedialog {
+  border: 1px solid @@BORDER@@;
+  border-radius: 18px;
+}
+
+messagedialog .message-area {
+  padding: 20px 22px 12px 22px;
+}
+
+messagedialog .dialog-action-area {
+  padding: 0 18px 16px 18px;
+}
+
+messagedialog .dialog-action-area button {
+  min-width: 90px;
+}
+
+dialog headerbar,
+aboutdialog headerbar {
+  min-height: 46px;
+  background-image: linear-gradient(to bottom, @@HEADER_TOP@@, @@HEADER_BOTTOM@@);
+  border-bottom: 1px solid @@BORDER@@;
+}
+
+dialog .dialog-vbox {
+  padding: 18px;
+}
+
+
+/* ---------------------------------------------------------------- misc */
+separator {
+  min-width: 1px;
+  min-height: 1px;
+  background-color: @@DIVIDER@@;
+  border: none;
+  margin: 6px 0;
+}
+
+scrolledwindow {
+  background-color: transparent;
+  border: none;
+}
+
+viewport {
+  background-color: transparent;
+}
+
+scrollbar {
+  border: none;
+  background-color: transparent;
+}
+
+scrollbar slider {
+  min-width: 6px;
+  min-height: 30px;
+  margin: 2px;
+  border-radius: 999px;
+  background-color: @@SCROLLBAR@@;
+}
+
+scrollbar slider:hover {
+  background-color: @@TEXT_MUTED@@;
+}
+
+scrollbar.horizontal slider {
+  min-width: 30px;
+  min-height: 6px;
+}
+
+scrollbar button {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  opacity: 0;
+}
+
+tooltip.background {
+  padding: 6px 10px;
+  border: 1px solid @@BORDER@@;
+  border-radius: 8px;
+  background-color: @@TOOLTIP_BG@@;
+  box-shadow: 0 10px 24px @@SHADOW@@;
+}
+
+tooltip {
+  color: @@TOOLTIP_TEXT@@;
+  font-size: 12px;
+}
+
+spinner {
+  color: @@ACCENT_TEXT@@;
+}
+
+/* ------------------------------------------------------- reduced motion */
+window.reduce-motion button,
+window.reduce-motion entry,
+window.reduce-motion .nav-item,
+window.reduce-motion flowboxchild,
+window.reduce-motion .video-card {
+  transition: none;
+}

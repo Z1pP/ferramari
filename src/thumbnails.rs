@@ -10,8 +10,9 @@ use std::time::UNIX_EPOCH;
 
 use crate::paths;
 
-/// Return a cached 96px-tall JPEG for `video`, generating it with ffmpeg when
-/// no cache entry exists. Returns `None` when no thumbnail can be produced.
+/// Return a cached 16:9 JPEG preview for `video`, generating it with ffmpeg
+/// when no cache entry exists. Returns `None` when no thumbnail can be
+/// produced. The 400×225 size covers the card grid at HiDPI.
 pub fn generate(video: &Path) -> Option<PathBuf> {
     let metadata = std::fs::metadata(video).ok()?;
     let modified = metadata
@@ -24,6 +25,7 @@ pub fn generate(video: &Path) -> Option<PathBuf> {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     video.hash(&mut hasher);
     modified.hash(&mut hasher);
+    "card-400x225".hash(&mut hasher);
     let cache_dir = paths::thumbnail_cache_dir();
     std::fs::create_dir_all(&cache_dir).ok()?;
     let target = cache_dir.join(format!("{:016x}.jpg", hasher.finish()));
@@ -59,7 +61,12 @@ fn run_ffmpeg(video: &Path, output: &Path, seek: bool) -> bool {
         command.args(["-ss", "1"]);
     }
     command
-        .args(["-vf", "thumbnail,scale=-1:96", "-frames:v", "1"])
+        .args([
+            "-vf",
+            "thumbnail,scale=400:225:force_original_aspect_ratio=increase,crop=400:225",
+            "-frames:v",
+            "1",
+        ])
         .arg(output);
     matches!(command.status(), Ok(status) if status.success())
 }

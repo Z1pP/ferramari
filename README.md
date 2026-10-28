@@ -179,6 +179,11 @@ Threading rule: GTK widgets never leave the main thread. Background work
 (yt-dlp, HTTP checks, thumbnails, X11 polling, D-Bus, tray) sends commands or
 messages into the main loop.
 
+The control window's Liquid Glass design system (tokens, material layers,
+typography, motion and accessibility rules) is documented in
+[`docs/DESIGN.md`](docs/DESIGN.md). The stylesheet lives in
+`data/ui/ferramari.css` and is compiled into the binary.
+
 ## Differences from Hidamari
 
 - GTK 3 is kept on purpose: WebKitGTK 4.1 is the only WebKit line with a

@@ -1550,7 +1550,7 @@ fn build_navigation(stack: &gtk::Stack) -> (gtk::Box, gtk::Box) {
             "online",
             "folder-download-symbolic",
             tr("Wallpapers"),
-            tr("from winzoro.net"),
+            tr("Preview before installing"),
         ),
         (
             "stream",
@@ -2292,21 +2292,11 @@ fn show_about(parent: &gtk::Window, version: &str) {
     about.set_modal(true);
     about.set_program_name("Ferramari");
     about.set_version(Some(version));
-    about.set_comments(Some(
-        "Video wallpaper for Linux. Written in Rust. 🦀\n\n\
-         Ferramari — a Rust rewrite of Hidamari (日溜まり, \"sunny spot\")\n\
-         by Jeff Shee.",
-    ));
-    about.set_copyright(Some(
-        "Copyright © 2022 Jeff Shee (original Hidamari)\n\
-         Copyright © 2026 Ferramari contributors",
-    ));
-    about.set_website(Some("https://github.com/jeffshee/hidamari"));
-    about.set_website_label(Some(&tr("Original Hidamari project")));
-    about.set_authors(&[
-        "Jeff Shee (original Hidamari) https://github.com/jeffshee",
-        "Ferramari contributors",
-    ]);
+    about.set_comments(Some("Video wallpaper for Linux. Written in Rust. 🦀"));
+    about.set_copyright(Some("Copyright © 2026 Ferramari contributors"));
+    about.set_website(Some("https://github.com/ferramari/ferramari"));
+    about.set_website_label(Some(&tr("Project website")));
+    about.set_authors(&["Ferramari contributors"]);
     about.set_artists(&["Ferramari icon: original artwork"]);
     about.set_logo_icon_name(Some(paths::APP_ID));
     about.connect_response(|about, _| about.close());

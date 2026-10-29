@@ -14,13 +14,21 @@
     wallpaper, one source per monitor. It can pause or mute itself when a
     window is maximized, apply a blurred video frame as the GNOME static
     wallpaper, and restore your original background on exit.</p>
-    <p>Ferramari is a Rust rewrite of Hidamari by Jeff Shee. The name comes
-    from ferrum (iron) and Hidamari (日溜まり, a sunny spot).</p>
   </description>
   <releases>
+    <release version="0.2.0" date="2026-10-29" type="stable">
+      <description>
+        <p>Wallpaper catalogue and previews.</p>
+        <ul>
+          <li>Browse live wallpapers with categories, search and pagination</li>
+          <li>Preview a still and six frames before installing</li>
+          <li>Download cache with age and size limits</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-10-26" type="stable">
       <description>
-        <p>First release of the Rust rewrite.</p>
+        <p>First release.</p>
         <ul>
           <li>Local, streaming and web-page wallpapers</li>
           <li>Multi-monitor support with per-monitor sources</li>

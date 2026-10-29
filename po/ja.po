@@ -1,5 +1,4 @@
 # Japanese translation for Ferramari.
-# Based on the Hidamari translation by Jeff Shee (jeffshee8969@gmail.com).
 # This file is distributed under the same license as the ferramari package.
 #
 msgid ""
@@ -8,7 +7,7 @@ msgstr ""
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-07-10 02:19+0900\n"
 "PO-Revision-Date: 2026-07-10 01:30+0900\n"
-"Last-Translator: Jeff Shee <jeffshee8969@gmail.com>\n"
+"Last-Translator: Ferramari contributors\n"
 "Language-Team: Japanese\n"
 "Language: ja\n"
 "MIME-Version: 1.0\n"
@@ -120,16 +119,8 @@ msgid "Quit Ferramari"
 msgstr "Ferramari を終了"
 
 #: src/ui/control.rs
-msgid ""
-"Video wallpaper for Linux. Written in Rust. 🦀\n"
-"\n"
-"Ferramari — a Rust rewrite of Hidamari (日溜まり, \"sunny spot\")\n"
-"by Jeff Shee."
-msgstr ""
-"Linux 向けの動画ウォールペーパー。Rust で書かれています。🦀\n"
-"\n"
-"Ferramari — Jeff Shee による Hidamari（日溜まり、「日の当たる場所」）の\n"
-"Rust リライトです。"
+msgid "Video wallpaper for Linux. Written in Rust. 🦀"
+msgstr "Linux 向けの動画ウォールペーパー。Rust で書かれています。🦀"
 
 #: src/ui/control.rs
 msgid "Quick toggles"
@@ -273,8 +264,8 @@ msgid "Web Page"
 msgstr "ウェブページ"
 
 #: src/ui/control.rs
-msgid "Original Hidamari project"
-msgstr "オリジナルの Hidamari プロジェクト"
+msgid "Project website"
+msgstr "プロジェクトのウェブサイト"
 
 #: src/ui/control.rs
 msgid "😉\tTry playing any YouTube video!"

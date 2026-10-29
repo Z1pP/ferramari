@@ -4,16 +4,14 @@ Video wallpaper for Linux, written in Rust.
 
 <img src="data/icons/hicolor/scalable/apps/io.github.ferramari.Ferramari.svg" width="128" height="128" alt="Ferramari icon: a crab holding the sun">
 
-Ferramari is a Rust rewrite of [Hidamari](https://github.com/jeffshee/hidamari)
-by Jeff Shee. The name combines *ferrum* (iron, as in Rust's mascot) with
-*Hidamari* (日溜まり, a sunny spot).
+Ferramari makes video and web content your desktop wallpaper. The name nods to
+iron (*ferrum*) and Rust's crab mascot.
 
 ## Features
 
 - Play a local video as the wallpaper, one video per monitor
-- Browse live wallpapers from [winzoro.net](https://winzoro.net/wallpapers_all/):
-  categories, search, and a preview with six frames from the video before it is
-  installed
+- Browse a catalogue of live wallpapers with categories and search, and
+  preview six frames before installing
 - Streaming URLs through `yt-dlp` (YouTube and many other sites)
 - Any web page as the wallpaper (WebKitGTK, so WebGL/Unity/Godot work)
 - GNOME static wallpaper with a blurred frame from the video
@@ -23,8 +21,7 @@ by Jeff Shee. The name combines *ferrum* (iron, as in Rust's mascot) with
 - Autostart after login
 - “I'm Feeling Lucky” random video
 - Tray icon (StatusNotifierItem) for GNOME/KDE and friends
-- Config file compatible with the Hidamari schema (version 4), including the
-  3.x → 4 migration
+- Config format schema version 4, including the 3.x → 4 migration
 - D-Bus API for scripting and the tray/CLI
 
 ## Requirements
@@ -114,22 +111,19 @@ thumbnail grid, and apply a video to one monitor or all of them.
 
 ### Wallpaper catalogue
 
-The **Wallpapers** page lists the live wallpapers from
-[winzoro.net](https://winzoro.net/wallpapers_all/): pick a category, search the
-site, or load more pages. Opening a card shows the still preview; the metadata
-(size, resolution, frame rate, duration) and a 3×2 sheet of frames are fetched
-after you press **Download**, so you can inspect the motion before deciding.
-**Install…** extracts the video into `$XDG_VIDEOS_DIR/Ferramari` and opens the
-same monitor menu as a local video. **Apply…** reuses the installed file.
+The **Wallpapers** page lists live wallpapers: pick a category, search, or load
+more pages. Opening a card shows the still preview; after you press
+**Download** it fetches the file, reads the metadata (size, resolution, frame
+rate, duration) and builds a 3×2 sheet of frames, so you can inspect the motion
+before deciding. **Install…** puts the video into
+`$XDG_VIDEOS_DIR/Ferramari` and opens the same monitor menu as a local video.
+**Apply…** reuses the installed file.
 
-Downloads only start when you ask for them. The preview, the ZIP and the
-extracted video are cached in `$XDG_CACHE_HOME/ferramari/winzoro` (default
-`~/.cache/ferramari/winzoro`); cached videos older than seven days or beyond
-the 2 GB budget are removed on start, and **Remove download** deletes one entry.
-The site limits how many files an address may download per period; when that
-limit is hit, its message is shown instead of a generic HTTP error. Ferramari
-does not use paths disallowed by `robots.txt` (only `/engine/go.php` is
-disallowed there) and keeps a visible link back to winzoro.net.
+Downloads only start when you ask for them. Previews, archives and extracted
+videos are cached in `$XDG_CACHE_HOME/ferramari/catalogue` (default
+`~/.cache/ferramari/catalogue`); cached videos older than seven days or beyond
+the 2 GB budget are removed on start, and **Remove download** deletes one
+entry.
 
 ### D-Bus
 
@@ -159,12 +153,9 @@ gdbus call --session --dest io.github.ferramari.Ferramari.server \
 ### Configuration
 
 `$XDG_CONFIG_HOME/ferramari/config.json` (default
-`~/.config/ferramari/config.json`). The format follows Hidamari schema 4;
-unknown keys are ignored, missing keys get defaults, and a schema-3 file is
-migrated on first start.
-
-Ferramari uses its own config directory and video folder, so it can be
-installed next to Hidamari without touching the old installation.
+`~/.config/ferramari/config.json`). The format uses schema version 4; unknown
+keys are ignored, missing keys get defaults, and a schema-3 file is migrated on
+first start.
 
 ## Architecture
 
@@ -189,8 +180,8 @@ WallpaperWindow   Config/D-Bus    GNOME background
 | `src/config.rs` | schema-v4 config, validation, 3.x migration |
 | `src/mpv.rs` | mpv process + JSON IPC (volume, mute, pause) |
 | `src/ui/control.rs` | control window (videos, streaming, web page, toggles) |
-| `src/ui/online.rs` | winzoro.net catalogue and preview/install dialog |
-| `src/winzoro.rs` | winzoro.net client: listing/search parsing, cache, download, frames |
+| `src/ui/online.rs` | wallpaper catalogue and preview/install dialog |
+| `src/catalogue.rs` | catalogue client: listing/search parsing, cache, download, frames |
 | `src/ui/wallpaper.rs` | one desktop-type window per monitor |
 | `src/x11.rs` | EWMH polling for maximized/fullscreen windows (replaces libwnck) |
 | `src/dbus.rs` | zbus server/player interfaces, single-instance logic |
@@ -222,7 +213,7 @@ typography, motion and accessibility rules) is documented in
 - KDE Plasma is not part of the tested matrix; the XWayland desktop window is
   the only supported path there.
 
-## Differences from Hidamari
+## Implementation notes
 
 - GTK 3 is kept on purpose: WebKitGTK 4.1 is the only WebKit line with a
   maintained Rust binding, and the web-page wallpaper needs it. A GTK4 port is
@@ -237,14 +228,13 @@ typography, motion and accessibility rules) is documented in
   sudo chmod +x /usr/local/bin/yt-dlp
   ```
 
-- `mpv` replaces libvlc. It is embedded with `--wid`, uses `--panscan=1.0` for
-  the center-crop effect and is driven through its JSON IPC socket.
-- Everything runs in one process; Hidamari's separate server/player/GUI/systray
-  processes are gone. D-Bus keeps the same method/property shape under new
-  names.
-- Window state detection uses EWMH atoms over X11 instead of libwnck.
-- `-b` and `-p` behave as before; `-r` resets the config (only when no instance
-  is running).
+- `mpv` is embedded with `--wid`, uses `--panscan=1.0` for the center-crop
+  effect and is driven through its JSON IPC socket.
+- Everything runs in one process; the D-Bus method and property shape stays
+  stable for scripts and desktop integrations.
+- Window state detection uses EWMH atoms over X11.
+- `-b` starts only the wallpaper, `-p` adds a startup delay, and `-r` resets the
+  config (only when no instance is running).
 - No Flatpak manifest is shipped in this tree yet; the code keeps the Flatpak
   code paths (`flatpak-spawn`, background portal, WebKit NVIDIA workaround).
 
@@ -252,7 +242,7 @@ typography, motion and accessibility rules) is documented in
 
 `cargo test` covers config parsing/migration, yt-dlp format selection and
 process timeouts, EWMH decisions, mpv IPC framing, monitor naming, the fade
-maths, path handling and the winzoro.net parsers (cards, categories, search,
+maths, path handling and the catalogue parsers (cards, categories, search,
 signed download links, archive extraction, video probing and frame sheets).
 The GUI, video embedding, streaming, webpage and catalogue modes were
 smoke-tested on Ubuntu 26.04 / GNOME Wayland (XWayland). To exercise the
@@ -262,11 +252,6 @@ static-wallpaper code without touching your real background:
 GSETTINGS_BACKEND=memory ferramari -b -d
 ```
 
-## Credits and license
+## License
 
-Ferramari is based on [Hidamari](https://github.com/jeffshee/hidamari) by
-[Jeff Shee](https://github.com/jeffshee) and contributors. The original design,
-feature set, config format and D-Bus API come from that project; this tree is a
-Rust implementation.
-
-GPL-3.0-or-later, same as the original. See `LICENSE`.
+GPL-3.0-or-later. See `LICENSE`.

@@ -1,14 +1,12 @@
-//! Client for the live-wallpaper catalogue at <https://winzoro.net>.
+//! Client for the remote live-wallpaper catalogue.
 //!
-//! The site is a DLE catalogue: listing pages contain everything needed to
-//! show a card (title, category, preview, post id), and `/download/id<post>`
-//! returns an HTML page with a short-lived signed link to a ZIP that holds one
-//! video. Nothing here talks to the GUI; the online page drives these
-//! functions from worker threads.
+//! Listing pages contain everything needed to show a card (title, category,
+//! preview, post id), and `/download/id<post>` returns an HTML page with a
+//! short-lived signed link to a ZIP that holds one video. Nothing here talks
+//! to the GUI; the online page drives these functions from worker threads.
 //!
 //! Network access is deliberately conservative: a browser User-Agent, hard
 //! size limits, no cookies and no crawling beyond what the user asks for.
-//! `robots.txt` only disallows `/engine/go.php`, which is never used.
 
 use std::fs;
 use std::io::{BufReader, Read, Write};
@@ -48,7 +46,6 @@ pub struct Wallpaper {
     pub id: String,
     pub title: String,
     pub category: String,
-    pub page_url: String,
     pub thumb_url: String,
     pub preview_url: String,
 }
@@ -99,7 +96,7 @@ pub fn download_page_url(id: &str) -> String {
 }
 
 pub fn cache_dir() -> PathBuf {
-    paths::winzoro_cache_dir()
+    paths::catalogue_cache_dir()
 }
 
 fn video_cache_dir() -> PathBuf {
@@ -196,7 +193,7 @@ pub fn parse_download(html: &str) -> Result<DownloadInfo> {
         .captures(html)
         .map(|captures| decode_entities(&captures[1]))
         .filter(|url| url.starts_with("https://") || url.starts_with("http://"))
-        .ok_or_else(|| anyhow!("winzoro.net did not return a download link"))?;
+        .ok_or_else(|| anyhow!("the catalogue did not return a download link"))?;
     let file_name = file
         .captures(html)
         .map(|captures| clean_text(&captures[1]))
@@ -248,16 +245,16 @@ fn http_error(err: ureq::Error) -> anyhow::Error {
                 .take(64 * 1024)
                 .read_to_string(&mut body);
             match page_error_message(&body) {
-                Some(message) => anyhow!("winzoro.net: {message} (HTTP {code})"),
-                None => anyhow!("winzoro.net returned HTTP {code}"),
+                Some(message) => anyhow!("{message} (HTTP {code})"),
+                None => anyhow!("the wallpaper server returned HTTP {code}"),
             }
         }
-        other => anyhow!("could not reach winzoro.net: {other}"),
+        other => anyhow!("network error: {other}"),
     }
 }
 
 /// Site errors such as the per-IP download limit arrive as an HTML page with
-/// a descriptive `<title>`; S3 errors use `<Message>`. Show that text instead
+/// a descriptive `<title>`; XML errors use `<Message>`. Show that text instead
 /// of a bare status code.
 fn page_error_message(html: &str) -> Option<String> {
     static TITLE: OnceLock<Regex> = OnceLock::new();
@@ -288,10 +285,7 @@ fn read_limited(mut reader: impl Read, limit: u64) -> Result<Vec<u8>> {
             break;
         }
         if buffer.len() as u64 + read as u64 > limit {
-            bail!(
-                "winzoro.net response is larger than {} MB",
-                limit / (1024 * 1024)
-            );
+            bail!("the response is larger than {} MB", limit / (1024 * 1024));
         }
         buffer.extend_from_slice(&chunk[..read]);
     }
@@ -317,7 +311,7 @@ fn parse_cards(html: &str) -> Vec<Wallpaper> {
     for chunk in html.split(r#"class="fiveShort short"#).skip(1) {
         let page_url = href.captures(chunk).map(|captures| captures[1].to_string());
         let id = rate.captures(chunk).map(|captures| captures[1].to_string());
-        let (Some(page_url), Some(id)) = (page_url, id) else {
+        let (Some(_), Some(id)) = (page_url, id) else {
             continue;
         };
         let title = title
@@ -337,7 +331,6 @@ fn parse_cards(html: &str) -> Vec<Wallpaper> {
             id,
             title,
             category,
-            page_url: absolute_url(&page_url),
             preview_url: large_preview(&thumb_url),
             thumb_url,
         });
@@ -592,7 +585,7 @@ pub fn ensure_preview(url: &str) -> Result<PathBuf> {
         .unwrap_or_default()
         .to_ascii_lowercase();
     if !content_type.starts_with("image/") {
-        bail!("winzoro.net did not return an image");
+        bail!("the server did not return an image");
     }
     let bytes = read_limited(response.into_reader(), PREVIEW_LIMIT)?;
     if bytes.is_empty() {
@@ -657,7 +650,8 @@ pub fn download_video(
     if let Some(video) = cached_video(id) {
         return Ok(Downloaded {
             video,
-            original_name: cached_original_name(id).unwrap_or_else(|| format!("winzoro-{id}.mp4")),
+            original_name: cached_original_name(id)
+                .unwrap_or_else(|| format!("wallpaper-{id}.mp4")),
         });
     }
     fs::create_dir_all(video_cache_dir())?;
@@ -757,7 +751,7 @@ fn download_zip(
         }
         file.flush()?;
         if done == 0 {
-            bail!("winzoro.net returned an empty archive");
+            bail!("the server returned an empty archive");
         }
         fs::rename(&temporary, target)?;
         Ok(())
@@ -952,7 +946,7 @@ pub fn library_name(original_name: &str, id: &str, extension: &str) -> String {
     }
     let clean = clean.trim_matches('-').trim_matches('.');
     let clean = if clean.is_empty() {
-        format!("winzoro-{id}")
+        format!("wallpaper-{id}")
     } else {
         clean.to_string()
     };
@@ -1144,10 +1138,6 @@ mod tests {
             first.preview_url,
             "https://winzoro.net/uploads/posts/2026-10/ruins_preview.png"
         );
-        assert_eq!(
-            listing.items[1].page_url,
-            "https://winzoro.net/2026/10/29/witch.html"
-        );
     }
 
     #[test]
@@ -1226,7 +1216,7 @@ mod tests {
             library_name("../../ayleid ruins (4K).zip", "1", "mp4"),
             "ayleid-ruins-4K.mp4"
         );
-        assert_eq!(library_name("", "42", "mp4"), "winzoro-42.mp4");
+        assert_eq!(library_name("", "42", "mp4"), "wallpaper-42.mp4");
     }
 
     #[test]

@@ -1,4 +1,4 @@
-//! Command-line interface. Mirrors the flags of the original Hidamari.
+//! Command-line interface.
 
 use clap::Parser;
 

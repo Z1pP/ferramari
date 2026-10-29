@@ -1,10 +1,10 @@
-//! D-Bus API. The shape is inherited from Hidamari 3.7; the names belong
+//! D-Bus API. The interface shape follows schema version 4; the names belong
 //! to Ferramari.
 //!
-//! Even though the GUI, player and server now live in one process, the same
-//! two interfaces are exported so existing scripts and desktop integrations
-//! keep working. Method and property names are pinned to the upstream spelling
-//! (snake_case) with `#[zbus(name = ...)]`.
+//! Even though the GUI, player and server live in one process, the same two
+//! interfaces are exported so existing scripts and desktop integrations keep
+//! working. Method and property names use the established snake_case spelling
+//! with `#[zbus(name = ...)]`.
 
 use std::collections::HashMap;
 use std::sync::mpsc::Sender;

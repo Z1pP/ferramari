@@ -1,4 +1,4 @@
-//! The online wallpaper catalogue: browse winzoro.net, preview a wallpaper,
+//! The online wallpaper catalogue: browse it, preview a wallpaper,
 //! download it on request and install it through the normal monitor menu.
 //!
 //! Network work runs on plain threads; results are marshalled back to the GTK
@@ -21,12 +21,12 @@ use gtk::glib;
 use gtk::pango;
 use gtk::prelude::*;
 
+use crate::catalogue::{self, Category, DownloadInfo, Downloaded, Listing, Probe, Wallpaper};
 use crate::ui::control::{
     draw_video_frame, icon_image, label, labeled_icon_button, page_heading, primary_button,
     set_a11y_name, PendingTimer, ThumbSlot,
 };
 use crate::util::tr;
-use crate::winzoro::{self, Category, DownloadInfo, Downloaded, Listing, Probe, Wallpaper};
 
 pub type ApplyFn = Rc<dyn Fn(&gtk::Button, String)>;
 pub type RefreshFn = Rc<dyn Fn()>;
@@ -89,21 +89,10 @@ pub fn build(context: Context) -> Rc<OnlinePage> {
     root.set_margin_top(26);
     root.set_margin_bottom(26);
 
-    let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    header.pack_start(
-        &page_heading(
-            &tr("Wallpaper catalogue"),
-            &tr("Live wallpapers from winzoro.net, previewed before installing"),
-        ),
-        true,
-        true,
-        0,
+    let header = page_heading(
+        &tr("Wallpaper catalogue"),
+        &tr("Preview live wallpapers before installing them"),
     );
-    let source = gtk::LinkButton::with_label(winzoro::SOURCE_URL, "winzoro.net");
-    source.style_context().add_class("secondary");
-    source.set_tooltip_text(Some(&tr("Open winzoro.net in your browser")));
-    source.set_valign(gtk::Align::Center);
-    header.pack_end(&source, false, false, 0);
     root.pack_start(&header, false, false, 0);
 
     let toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 10);
@@ -122,7 +111,7 @@ pub fn build(context: Context) -> Rc<OnlinePage> {
     toolbar.pack_start(&category, false, false, 0);
 
     let search = gtk::Entry::new();
-    search.set_placeholder_text(Some(&tr("Search winzoro.net…")));
+    search.set_placeholder_text(Some(&tr("Search wallpapers…")));
     search.style_context().add_class("search-entry");
     search.set_hexpand(true);
     search.set_icon_from_icon_name(gtk::EntryIconPosition::Primary, Some("edit-find-symbolic"));
@@ -237,7 +226,7 @@ pub fn build(context: Context) -> Rc<OnlinePage> {
     bottom.pack_start(&footer, true, true, 0);
     let show_more = gtk::Button::with_label(&tr("Show more"));
     show_more.style_context().add_class("secondary");
-    show_more.set_tooltip_text(Some(&tr("Load the next page from winzoro.net")));
+    show_more.set_tooltip_text(Some(&tr("Load the next page")));
     show_more.hide();
     show_more.set_no_show_all(true);
     bottom.pack_end(&show_more, false, false, 0);
@@ -279,7 +268,7 @@ pub fn build(context: Context) -> Rc<OnlinePage> {
     wire_page(&page);
     // Reclaim old downloads in the background; the first request is not
     // blocked by cache maintenance.
-    std::thread::spawn(winzoro::cleanup_cache);
+    std::thread::spawn(catalogue::cleanup_cache);
 
     page
 }
@@ -288,7 +277,11 @@ pub fn build(context: Context) -> Rc<OnlinePage> {
 /// existing catalogue, including search and scroll position.
 pub fn show(page: &Rc<OnlinePage>) {
     if page.state.list_generation.get() == 0 && !page.state.loading.get() {
-        load_page(page, Request::Listing(winzoro::listing_url(None, 1)), false);
+        load_page(
+            page,
+            Request::Listing(catalogue::listing_url(None, 1)),
+            false,
+        );
     }
 }
 
@@ -412,7 +405,7 @@ fn update_search_icon(entry: &gtk::Entry) {
 fn load_current(page: &Rc<OnlinePage>, append: bool) {
     let query = page.state.query.borrow().clone();
     if query.is_empty() {
-        let url = winzoro::listing_url(page.state.category_url.borrow().as_deref(), 1);
+        let url = catalogue::listing_url(page.state.category_url.borrow().as_deref(), 1);
         load_page(page, Request::Listing(url), append);
     } else {
         load_page(page, Request::Search(query), append);
@@ -463,8 +456,8 @@ fn load_page(page: &Rc<OnlinePage>, request: Request, append: bool) {
     let (sender, receiver) = mpsc::channel();
     std::thread::spawn(move || {
         let result = match request {
-            Request::Listing(url) => winzoro::load_listing(&url),
-            Request::Search(query) => winzoro::search(&query),
+            Request::Listing(url) => catalogue::load_listing(&url),
+            Request::Search(query) => catalogue::search(&query),
         };
         let _ = sender.send(result);
     });
@@ -703,7 +696,7 @@ fn start_thumbnails(page: &Rc<OnlinePage>) {
             if cancel.load(Ordering::Relaxed) {
                 return;
             }
-            if let Ok(path) = winzoro::ensure_preview(&item.thumb_url) {
+            if let Ok(path) = catalogue::ensure_preview(&item.thumb_url) {
                 if sender.send((index, path)).is_err() {
                     return;
                 }
@@ -808,10 +801,7 @@ fn open_preview(parent: &gtk::Window, context: &Context, item: Wallpaper) {
     title.set_line_wrap(true);
     title.set_max_width_chars(72);
     content.pack_start(&title, false, false, 0);
-    let category = label(
-        &format!("{} · winzoro.net", short_category(&item.category)),
-        "field-hint",
-    );
+    let category = label(&short_category(&item.category), "field-hint");
     content.pack_start(&category, false, false, 0);
 
     let slot: ThumbSlot = Rc::new(RefCell::new(None));
@@ -860,9 +850,6 @@ fn open_preview(parent: &gtk::Window, context: &Context, item: Wallpaper) {
     content.pack_start(&status, false, false, 0);
 
     let links = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    let source = gtk::LinkButton::with_label(&item.page_url, &tr("Open on winzoro.net"));
-    source.style_context().add_class("ghost");
-    links.pack_start(&source, false, false, 0);
     let cache = labeled_icon_button(
         "edit-delete-symbolic",
         &tr("Remove download"),
@@ -912,7 +899,7 @@ fn open_preview(parent: &gtk::Window, context: &Context, item: Wallpaper) {
         let (sender, receiver) = mpsc::channel::<PathBuf>();
         let preview_url = item.preview_url.clone();
         std::thread::spawn(move || {
-            if let Ok(path) = winzoro::ensure_preview(&preview_url) {
+            if let Ok(path) = catalogue::ensure_preview(&preview_url) {
                 let _ = sender.send(path);
             }
         });
@@ -936,7 +923,7 @@ fn open_preview(parent: &gtk::Window, context: &Context, item: Wallpaper) {
         let (sender, receiver) = mpsc::channel();
         let id = item.id.clone();
         std::thread::spawn(move || {
-            let _ = sender.send(winzoro::fetch_download_info(&id));
+            let _ = sender.send(catalogue::fetch_download_info(&id));
         });
         let info = info.clone();
         let state = state.clone();
@@ -973,9 +960,9 @@ fn open_preview(parent: &gtk::Window, context: &Context, item: Wallpaper) {
         state.aux_timers.borrow_mut().push(timer);
     }
 
-    if let Some(video) = winzoro::cached_video(&item.id) {
+    if let Some(video) = catalogue::cached_video(&item.id) {
         *state.video.borrow_mut() = Some(video.clone());
-        *state.original_name.borrow_mut() = winzoro::cached_original_name(&item.id);
+        *state.original_name.borrow_mut() = catalogue::cached_original_name(&item.id);
         install.set_sensitive(true);
         download.set_label(&tr("Downloaded"));
         download.set_sensitive(false);
@@ -1029,13 +1016,13 @@ fn open_preview(parent: &gtk::Window, context: &Context, item: Wallpaper) {
                         .as_ref()
                         .map(|info| info.file_name.clone())
                 })
-                .unwrap_or_else(|| format!("winzoro-{id}.mp4"));
+                .unwrap_or_else(|| format!("wallpaper-{id}.mp4"));
             let extension = video
                 .extension()
                 .and_then(|extension| extension.to_str())
                 .unwrap_or("mp4");
-            let name = winzoro::library_name(&original, &id, extension);
-            match winzoro::install(&video, &name) {
+            let name = catalogue::library_name(&original, &id, extension);
+            match catalogue::install(&video, &name) {
                 Ok(path) => {
                     (context.refresh_library)();
                     *state.installed.borrow_mut() = Some(path.clone());
@@ -1057,7 +1044,7 @@ fn open_preview(parent: &gtk::Window, context: &Context, item: Wallpaper) {
         let widgets = widgets.clone();
         let id = item.id.clone();
         cache.connect_clicked(move |_| {
-            winzoro::clear_cached(&id);
+            catalogue::clear_cached(&id);
             *state.video.borrow_mut() = None;
             *state.original_name.borrow_mut() = None;
             state.has_frames.set(false);
@@ -1137,8 +1124,8 @@ fn load_cached_frames(
     widgets.status.set_text(status);
     let (sender, receiver) = mpsc::channel::<(Option<Probe>, Option<PathBuf>, Option<u64>)>();
     std::thread::spawn(move || {
-        let probe = winzoro::probe(&video);
-        let sheet = winzoro::ensure_sheet(&video, &id);
+        let probe = catalogue::probe(&video);
+        let sheet = catalogue::ensure_sheet(&video, &id);
         let size = std::fs::metadata(&video)
             .ok()
             .map(|metadata| metadata.len());
@@ -1191,17 +1178,17 @@ fn start_download(state: &PreviewState, widgets: &PreviewWidgets, id: &str) {
         let mut progress = |done, total| {
             let _ = sender.send(DownloadEvent::Progress { done, total });
         };
-        match winzoro::download_video(&thread_id, &cancel, &mut progress) {
+        match catalogue::download_video(&thread_id, &cancel, &mut progress) {
             Ok(downloaded) => {
-                let probe = winzoro::probe(&downloaded.video);
-                let sheet = winzoro::ensure_sheet(&downloaded.video, &thread_id);
+                let probe = catalogue::probe(&downloaded.video);
+                let sheet = catalogue::ensure_sheet(&downloaded.video, &thread_id);
                 let _ = sender.send(DownloadEvent::Done {
                     downloaded,
                     probe,
                     sheet,
                 });
             }
-            Err(err) if err.to_string().contains(winzoro::CANCELLED) => {
+            Err(err) if err.to_string().contains(catalogue::CANCELLED) => {
                 let _ = sender.send(DownloadEvent::Cancelled);
             }
             Err(err) => {

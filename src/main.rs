@@ -2,6 +2,7 @@
 
 mod app;
 mod autostart;
+mod catalogue;
 mod cli;
 mod config;
 mod dbus;
@@ -15,7 +16,6 @@ mod tray;
 mod ui;
 mod util;
 mod wallpaper;
-mod winzoro;
 mod x11;
 mod ytdlp;
 

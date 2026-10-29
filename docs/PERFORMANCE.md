@@ -1,7 +1,7 @@
 # Performance baseline and optimisation paths
 
 Measured 2026-10-26 on Ubuntu 26.04, GNOME Shell 50.1, Wayland session
-(Ferramari runs through XWayland), release build (`ferramari 0.1.0`),
+(Ferramari runs through XWayland), release build (`ferramari 0.2.0`),
 single 1920×1080 monitor. Numbers are relative indicators, not a benchmark
 suite: warm page cache, one local 1080p H.264 video, one synthetic 4K clip.
 

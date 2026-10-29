@@ -1,7 +1,7 @@
 //! User configuration: `~/.config/ferramari/config.json`.
 //!
-//! The file format is byte-compatible with Hidamari 3.7 (schema version 4) so
-//! an existing install keeps its settings. Loading is deliberately forgiving:
+//! The file format uses schema version 4 so existing settings keep working.
+//! Loading is deliberately forgiving:
 //! anything missing, unknown or broken falls back to the template, and schema
 //! 3 files are migrated in place.
 
@@ -235,7 +235,7 @@ fn merge(mut template: Value, parsed: &Value) -> Value {
     Value::Object(template.clone())
 }
 
-/// Hidamari 3.x stored the source of *all* monitors in one string and called
+/// Schema 3 stored the source of *all* monitors in one string and called
 /// the maximise setting `is_detect_maximized`.
 fn migrate_v3_to_v4(value: &mut Value) -> Option<bool> {
     let object = value.as_object_mut()?;

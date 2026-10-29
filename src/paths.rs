@@ -108,6 +108,11 @@ pub fn thumbnail_cache_dir() -> PathBuf {
     xdg_cache_home().join("ferramari").join("thumbnails")
 }
 
+/// Cache for the online wallpaper catalogue (pages, previews, downloads).
+pub fn winzoro_cache_dir() -> PathBuf {
+    xdg_cache_home().join("ferramari").join("winzoro")
+}
+
 /// `$XDG_VIDEOS_DIR/Ferramari`, falling back to `$HOME/Ferramari` when
 /// `xdg-user-dir` is unavailable.
 pub fn video_wallpaper_dir() -> PathBuf {
@@ -170,6 +175,7 @@ pub fn ensure_dirs() {
         config_dir(),
         video_wallpaper_dir(),
         thumbnail_cache_dir(),
+        winzoro_cache_dir(),
         autostart_dir(),
     ] {
         if let Err(err) = fs::create_dir_all(&dir) {

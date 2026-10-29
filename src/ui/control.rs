@@ -25,18 +25,35 @@ use crate::config::{Config, Mode};
 use crate::monitors::MonitorInfo;
 use crate::paths;
 use crate::thumbnails;
+use crate::ui::online;
 use crate::ui::theme::Theme;
 use crate::util::{self, tr};
 
-type ThumbSlot = Rc<RefCell<Option<Pixbuf>>>;
+pub(crate) type ThumbSlot = Rc<RefCell<Option<Pixbuf>>>;
 type ThumbStates = Rc<RefCell<Vec<Option<(ThumbSlot, gtk::DrawingArea)>>>>;
+
+/// A GLib source that may already have removed itself after returning
+/// `ControlFlow::Break`. `SourceId::remove` panics for such sources, so the
+/// completion flag lets cleanup skip them.
+pub(crate) struct PendingTimer {
+    pub(crate) id: glib::SourceId,
+    pub(crate) done: Rc<Cell<bool>>,
+}
+
+impl PendingTimer {
+    pub(crate) fn cancel(self) {
+        if !self.done.get() {
+            self.id.remove();
+        }
+    }
+}
 
 struct Shared {
     tx: Sender<Command>,
     videos: RefCell<Vec<PathBuf>>,
     monitors: RefCell<Vec<MonitorInfo>>,
     menu: RefCell<Option<gtk::Menu>>,
-    thumb_timer: RefCell<Option<glib::SourceId>>,
+    thumb_timer: RefCell<Option<PendingTimer>>,
 }
 
 struct HeaderParts {
@@ -188,6 +205,34 @@ impl ControlWindow {
 
         let video_page = build_video_page();
         stack.add_titled(&video_page.root, "video", &tr("Local Video"));
+
+        let online_context = {
+            let apply_shared = Rc::downgrade(&shared);
+            let refresh_shared = Rc::downgrade(&shared);
+            let refresh_page = video_page.clone();
+            online::Context {
+                apply: Rc::new(move |button, path| {
+                    if let Some(shared) = apply_shared.upgrade() {
+                        show_monitor_menu(&shared, button, None, path);
+                    }
+                }),
+                refresh_library: Rc::new(move || {
+                    if let Some(shared) = refresh_shared.upgrade() {
+                        fill_grid(&shared, &refresh_page);
+                    }
+                }),
+            }
+        };
+        let online_page = online::build(online_context);
+        stack.add_titled(&online_page.root, "online", &tr("Wallpapers"));
+        {
+            let online_page = Rc::clone(&online_page);
+            stack.connect_notify_local(Some("visible-child-name"), move |stack, _| {
+                if stack.visible_child_name().as_deref() == Some("online") {
+                    online::show(&online_page);
+                }
+            });
+        }
 
         let stream_page = build_stream_page(&tx);
         stack.add_titled(&stream_page.root, "stream", &tr("Streaming"));
@@ -1502,6 +1547,12 @@ fn build_navigation(stack: &gtk::Stack) -> (gtk::Box, gtk::Box) {
             tr("Your own files"),
         ),
         (
+            "online",
+            "folder-download-symbolic",
+            tr("Wallpapers"),
+            tr("from winzoro.net"),
+        ),
+        (
             "stream",
             "network-server-symbolic",
             tr("Streaming"),
@@ -1626,7 +1677,7 @@ fn build_now_playing_card() -> NowPlaying {
     }
 }
 
-fn page_heading(title: &str, subtitle: &str) -> gtk::Box {
+pub(crate) fn page_heading(title: &str, subtitle: &str) -> gtk::Box {
     let box_ = gtk::Box::new(gtk::Orientation::Vertical, 3);
     let title = label(title, "page-title");
     let subtitle = label(subtitle, "page-subtitle");
@@ -1683,7 +1734,7 @@ fn switch_row(title: &str, description: &str, switch: &gtk::Switch) -> gtk::Box 
     row
 }
 
-fn labeled_icon_button(icon: &str, text: &str, tooltip: &str) -> gtk::Button {
+pub(crate) fn labeled_icon_button(icon: &str, text: &str, tooltip: &str) -> gtk::Button {
     let button = gtk::Button::new();
     button.style_context().add_class("secondary");
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 7);
@@ -1709,7 +1760,7 @@ fn menu_action_button(icon: &str, text: &str) -> gtk::Button {
     button
 }
 
-fn primary_button(text: &str) -> gtk::Button {
+pub(crate) fn primary_button(text: &str) -> gtk::Button {
     let button = gtk::Button::with_label(text);
     button.style_context().add_class("primary");
     set_a11y_name(&button, text);
@@ -1769,7 +1820,7 @@ fn nav_button_base(icon: &str, title: &str) -> gtk::Button {
 
 fn fill_grid(shared: &Rc<Shared>, page: &VideoPage) {
     if let Some(timer) = shared.thumb_timer.borrow_mut().take() {
-        timer.remove();
+        timer.cancel();
     }
 
     let previous: Vec<gtk::Widget> = page.flow.children();
@@ -1825,7 +1876,9 @@ fn fill_grid(shared: &Rc<Shared>, page: &VideoPage) {
     drop(sender);
 
     let states_for_timer = Rc::clone(&states);
-    let timer = glib::timeout_add_local(Duration::from_millis(80), move || loop {
+    let done = Rc::new(Cell::new(false));
+    let finished = Rc::clone(&done);
+    let id = glib::timeout_add_local(Duration::from_millis(80), move || loop {
         match receiver.try_recv() {
             Ok((index, path)) => {
                 if let Ok(pixbuf) = Pixbuf::from_file(&path) {
@@ -1836,10 +1889,13 @@ fn fill_grid(shared: &Rc<Shared>, page: &VideoPage) {
                 }
             }
             Err(mpsc::TryRecvError::Empty) => return glib::ControlFlow::Continue,
-            Err(mpsc::TryRecvError::Disconnected) => return glib::ControlFlow::Break,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                finished.set(true);
+                return glib::ControlFlow::Break;
+            }
         }
     });
-    *shared.thumb_timer.borrow_mut() = Some(timer);
+    *shared.thumb_timer.borrow_mut() = Some(PendingTimer { id, done });
 
     let query = page.search.text().trim().to_lowercase();
     page.flow.invalidate_filter();
@@ -1875,7 +1931,7 @@ fn video_card(name: &str, image: &gtk::DrawingArea) -> gtk::Box {
     card
 }
 
-fn draw_video_frame(
+pub(crate) fn draw_video_frame(
     cr: &gtk::cairo::Context,
     area: &gtk::DrawingArea,
     slot: &Rc<RefCell<Option<Pixbuf>>>,
@@ -2118,13 +2174,13 @@ fn set_dot_state(dot: &gtk::Box, state: &str) {
     context.add_class(state);
 }
 
-fn set_a11y_name(widget: &impl IsA<gtk::Widget>, name: &str) {
+pub(crate) fn set_a11y_name(widget: &impl IsA<gtk::Widget>, name: &str) {
     if let Some(object) = widget.accessible() {
         object.set_accessible_name(Some(name));
     }
 }
 
-fn label(text: &str, class: &str) -> gtk::Label {
+pub(crate) fn label(text: &str, class: &str) -> gtk::Label {
     let label = gtk::Label::new(Some(text));
     label.style_context().add_class(class);
     label.set_xalign(0.0);
@@ -2138,7 +2194,7 @@ fn section_label(text: &str) -> gtk::Label {
     label
 }
 
-fn icon_image(icon: &str, pixels: i32) -> gtk::Image {
+pub(crate) fn icon_image(icon: &str, pixels: i32) -> gtk::Image {
     let image = gtk::Image::from_icon_name(Some(icon), gtk::IconSize::Button);
     image.set_pixel_size(pixels);
     image

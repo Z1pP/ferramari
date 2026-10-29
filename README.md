@@ -11,6 +11,9 @@ by Jeff Shee. The name combines *ferrum* (iron, as in Rust's mascot) with
 ## Features
 
 - Play a local video as the wallpaper, one video per monitor
+- Browse live wallpapers from [winzoro.net](https://winzoro.net/wallpapers_all/):
+  categories, search, and a preview with six frames from the video before it is
+  installed
 - Streaming URLs through `yt-dlp` (YouTube and many other sites)
 - Any web page as the wallpaper (WebKitGTK, so WebGL/Unity/Godot work)
 - GNOME static wallpaper with a blurred frame from the video
@@ -109,6 +112,25 @@ Local videos are read from `$XDG_VIDEOS_DIR/Ferramari` (usually
 `~/Videos/Ferramari`). The control window can open that folder, refresh the
 thumbnail grid, and apply a video to one monitor or all of them.
 
+### Wallpaper catalogue
+
+The **Wallpapers** page lists the live wallpapers from
+[winzoro.net](https://winzoro.net/wallpapers_all/): pick a category, search the
+site, or load more pages. Opening a card shows the still preview; the metadata
+(size, resolution, frame rate, duration) and a 3×2 sheet of frames are fetched
+after you press **Download**, so you can inspect the motion before deciding.
+**Install…** extracts the video into `$XDG_VIDEOS_DIR/Ferramari` and opens the
+same monitor menu as a local video. **Apply…** reuses the installed file.
+
+Downloads only start when you ask for them. The preview, the ZIP and the
+extracted video are cached in `$XDG_CACHE_HOME/ferramari/winzoro` (default
+`~/.cache/ferramari/winzoro`); cached videos older than seven days or beyond
+the 2 GB budget are removed on start, and **Remove download** deletes one entry.
+The site limits how many files an address may download per period; when that
+limit is hit, its message is shown instead of a generic HTTP error. Ferramari
+does not use paths disallowed by `robots.txt` (only `/engine/go.php` is
+disallowed there) and keeps a visible link back to winzoro.net.
+
 ### D-Bus
 
 The server owns `io.github.ferramari.Ferramari.server` and exports
@@ -167,6 +189,8 @@ WallpaperWindow   Config/D-Bus    GNOME background
 | `src/config.rs` | schema-v4 config, validation, 3.x migration |
 | `src/mpv.rs` | mpv process + JSON IPC (volume, mute, pause) |
 | `src/ui/control.rs` | control window (videos, streaming, web page, toggles) |
+| `src/ui/online.rs` | winzoro.net catalogue and preview/install dialog |
+| `src/winzoro.rs` | winzoro.net client: listing/search parsing, cache, download, frames |
 | `src/ui/wallpaper.rs` | one desktop-type window per monitor |
 | `src/x11.rs` | EWMH polling for maximized/fullscreen windows (replaces libwnck) |
 | `src/dbus.rs` | zbus server/player interfaces, single-instance logic |
@@ -228,8 +252,10 @@ typography, motion and accessibility rules) is documented in
 
 `cargo test` covers config parsing/migration, yt-dlp format selection and
 process timeouts, EWMH decisions, mpv IPC framing, monitor naming, the fade
-maths and path handling. The GUI, video embedding, streaming and webpage modes
-were smoke-tested on Ubuntu 26.04 / GNOME Wayland (XWayland). To exercise the
+maths, path handling and the winzoro.net parsers (cards, categories, search,
+signed download links, archive extraction, video probing and frame sheets).
+The GUI, video embedding, streaming, webpage and catalogue modes were
+smoke-tested on Ubuntu 26.04 / GNOME Wayland (XWayland). To exercise the
 static-wallpaper code without touching your real background:
 
 ```sh

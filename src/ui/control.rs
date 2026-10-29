@@ -27,7 +27,7 @@ use crate::paths;
 use crate::thumbnails;
 use crate::ui::online;
 use crate::ui::theme::Theme;
-use crate::util::{self, tr};
+use crate::util::{self, tr, tr_n};
 
 pub(crate) type ThumbSlot = Rc<RefCell<Option<Pixbuf>>>;
 type ThumbStates = Rc<RefCell<Vec<Option<(ThumbSlot, gtk::DrawingArea)>>>>;
@@ -74,6 +74,7 @@ struct VolumeParts {
 
 struct QuickSettings {
     popover: gtk::Popover,
+    combo_language: gtk::ComboBoxText,
     switch_autostart: gtk::Switch,
     switch_static: gtk::Switch,
     switch_pause_max: gtk::Switch,
@@ -158,6 +159,7 @@ pub struct ControlWindow {
     switch_static: gtk::Switch,
     switch_pause_max: gtk::Switch,
     switch_mute_max: gtk::Switch,
+    combo_language: gtk::ComboBoxText,
     play_button: gtk::Button,
     stack: gtk::Stack,
     video_search: gtk::Entry,
@@ -316,6 +318,7 @@ impl ControlWindow {
             switch_static: quick.switch_static,
             switch_pause_max: quick.switch_pause_max,
             switch_mute_max: quick.switch_mute_max,
+            combo_language: quick.combo_language,
             play_button: header_parts.play_button,
             stack: stack.clone(),
             video_search: video_page.search.clone(),
@@ -356,6 +359,14 @@ impl ControlWindow {
         *self.shared.monitors.borrow_mut() = monitors.to_vec();
 
         self.switch_autostart.set_active(autostart_enabled);
+        let language = if config.language.is_empty() {
+            "system"
+        } else {
+            config.language.as_str()
+        };
+        if !self.combo_language.set_active_id(Some(language)) {
+            self.combo_language.set_active_id(Some("system"));
+        }
         self.switch_static.set_active(config.is_static_wallpaper);
         self.switch_pause_max
             .set_active(config.is_pause_when_maximized);
@@ -772,6 +783,25 @@ fn build_quick_settings(
     content.pack_start(&wallpaper_separator, false, false, 0);
     content.pack_start(&section_label(&tr("System")), false, false, 0);
 
+    let row_language = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    row_language.style_context().add_class("setting-row");
+    let language_text = gtk::Box::new(gtk::Orientation::Vertical, 1);
+    let language_title = label(&tr("Language"), "setting-title");
+    let language_hint = label(&tr("Interface language"), "setting-description");
+    language_text.pack_start(&language_title, false, false, 0);
+    language_text.pack_start(&language_hint, false, false, 0);
+    let combo_language = gtk::ComboBoxText::new();
+    combo_language.append(Some("system"), &tr("System default"));
+    combo_language.append(Some("en"), "English");
+    combo_language.append(Some("ru"), "Русский");
+    combo_language.append(Some("ja"), "日本語");
+    combo_language.set_active_id(Some("system"));
+    combo_language.set_valign(gtk::Align::Center);
+    set_a11y_name(&combo_language, &tr("Language"));
+    row_language.pack_start(&language_text, true, true, 0);
+    row_language.pack_end(&combo_language, false, false, 0);
+    content.pack_start(&row_language, false, false, 0);
+
     let switch_autostart = gtk::Switch::new();
     switch_autostart.set_valign(gtk::Align::Center);
     let row_autostart = switch_row(&tr("Autostart after login"), "", &switch_autostart);
@@ -839,6 +869,29 @@ fn build_quick_settings(
     {
         let tx = tx.clone();
         let syncing = Rc::clone(syncing);
+        let popover = popover.clone();
+        let window = window.clone();
+        combo_language.connect_changed(move |combo| {
+            if syncing.get() {
+                return;
+            }
+            let language = combo
+                .active_id()
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| "system".to_string());
+            let _ = tx.send(Command::SetLanguage(language));
+            popover.popdown();
+            show_message(
+                Some(window.upcast_ref()),
+                gtk::MessageType::Info,
+                &tr("Language"),
+                &tr("Restart Ferramari to apply the language."),
+            );
+        });
+    }
+    {
+        let tx = tx.clone();
+        let syncing = Rc::clone(syncing);
         spin_blur.connect_value_changed(move |spin| {
             if !syncing.get() {
                 let _ = tx.send(Command::SetBlurRadius(spin.value() as i64));
@@ -888,6 +941,7 @@ fn build_quick_settings(
 
     QuickSettings {
         popover,
+        combo_language,
         switch_autostart,
         switch_static,
         switch_pause_max,
@@ -2050,7 +2104,8 @@ fn update_library_state(shared: &Rc<Shared>, page: &VideoPage, query: &str) {
         page.library_stack.set_visible_child_name("empty");
         page.empty_folder.set_visible(false);
         page.empty_clear.set_visible(true);
-        page.count.set_text(&format!("0 {}", tr("matches")));
+        page.count
+            .set_text(&format!("0 {}", tr_n("match", "matches", 0)));
         page.count
             .set_tooltip_text(Some(&tr("No videos match your search")));
     } else {
@@ -2062,8 +2117,11 @@ fn update_library_state(shared: &Rc<Shared>, page: &VideoPage, query: &str) {
             page.count.set_tooltip_text(None);
         } else {
             page.count.set_text(&format!("{matches} / {total}"));
-            page.count
-                .set_tooltip_text(Some(&format!("{} {}", matches, tr("matches"))));
+            page.count.set_tooltip_text(Some(&format!(
+                "{} {}",
+                matches,
+                tr_n("match", "matches", matches as u32)
+            )));
         }
     }
 
@@ -2115,11 +2173,7 @@ fn selected_video(flow: &gtk::FlowBox, shared: &Shared) -> Option<String> {
 }
 
 fn video_count(total: usize) -> String {
-    if total == 1 {
-        format!("1 {}", tr("video"))
-    } else {
-        format!("{total} {}", tr("videos"))
-    }
+    format!("{total} {}", tr_n("video", "videos", total as u32))
 }
 
 fn mode_text(mode: Mode) -> String {
@@ -2292,7 +2346,7 @@ fn show_about(parent: &gtk::Window, version: &str) {
     about.set_modal(true);
     about.set_program_name("Ferramari");
     about.set_version(Some(version));
-    about.set_comments(Some("Video wallpaper for Linux. Written in Rust. 🦀"));
+    about.set_comments(Some(&tr("Video wallpaper for Linux. Written in Rust. 🦀")));
     about.set_copyright(Some("Copyright © 2026 Ferramari contributors"));
     about.set_website(Some("https://github.com/ferramari/ferramari"));
     about.set_website_label(Some(&tr("Project website")));

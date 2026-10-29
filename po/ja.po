@@ -282,3 +282,31 @@ msgstr "音量"
 #: src/ui/control.rs
 msgid "Mute"
 msgstr "ミュート"
+
+msgid "Language"
+msgstr "言語"
+
+msgid "Interface language"
+msgstr "表示言語"
+
+msgid "System default"
+msgstr "システム設定"
+
+msgid "Restart Ferramari to apply the language."
+msgstr "言語を適用するには Ferramari を再起動してください。"
+
+msgid "video"
+msgid_plural "videos"
+msgstr[0] "ビデオ"
+
+msgid "wallpaper"
+msgid_plural "wallpapers"
+msgstr[0] "壁紙"
+
+msgid "result"
+msgid_plural "results"
+msgstr[0] "結果"
+
+msgid "match"
+msgid_plural "matches"
+msgstr[0] "一致"

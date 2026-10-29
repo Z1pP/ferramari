@@ -16,6 +16,15 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="0.3.0" date="2026-10-29" type="stable">
+      <description>
+        <p>Localization and language selection.</p>
+        <ul>
+          <li>Russian interface</li>
+          <li>Language selector for System, English, Russian and Japanese</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-10-29" type="stable">
       <description>
         <p>Wallpaper catalogue and previews.</p>

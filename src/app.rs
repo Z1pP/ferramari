@@ -70,6 +70,7 @@ pub enum Command {
     WindowState(WindowState),
     MonitorsChanged,
     SetAutostart(bool),
+    SetLanguage(String),
 }
 
 /// Read-only view of the current state for the D-Bus interfaces.
@@ -380,6 +381,12 @@ impl App {
                 self.sync_snapshot();
             }
             Command::SetAutostart(enabled) => self.set_autostart(enabled),
+            Command::SetLanguage(language) => {
+                if self.config.language != language {
+                    self.config.language = language;
+                    self.save_config();
+                }
+            }
             Command::MonitorsChanged => {
                 log::info!("[Monitors] Layout changed");
                 self.monitors = monitors::list();

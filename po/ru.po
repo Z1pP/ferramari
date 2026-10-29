@@ -1,0 +1,660 @@
+# Russian translation for Ferramari.
+msgid ""
+msgstr ""
+"Project-Id-Version: ferramari\n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: 2026-10-29 21:00+0300\n"
+"Last-Translator: Ferramari contributors\n"
+"Language-Team: Russian\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+#: src/ui/control.rs:2119
+msgid "video"
+msgid_plural "videos"
+msgstr[0] "видео"
+msgstr[1] "видео"
+msgstr[2] "видео"
+
+#: src/ui/online.rs:581
+msgid "wallpaper"
+msgid_plural "wallpapers"
+msgstr[0] "обои"
+msgstr[1] "обои"
+msgstr[2] "обоев"
+
+#: src/ui/online.rs:559
+#: src/ui/online.rs:579
+msgid "result"
+msgid_plural "results"
+msgstr[0] "результат"
+msgstr[1] "результата"
+msgstr[2] "результатов"
+
+#: src/ui/control.rs:2053
+#: src/ui/control.rs:2066
+msgid "match"
+msgid_plural "matches"
+msgstr[0] "совпадение"
+msgstr[1] "совпадения"
+msgstr[2] "совпадений"
+
+#: src/ui/control.rs:788
+msgid "About Ferramari"
+msgstr "О Ferramari"
+
+#: src/ui/control.rs:2036
+msgid "Add videos to your Ferramari folder, then refresh the list."
+msgstr "Добавьте видео в папку Ferramari и обновите список."
+
+#: src/ui/control.rs:712
+msgid "Adjust playback, wallpaper and startup behaviour."
+msgstr "Настройте воспроизведение, обои и автозапуск."
+
+#: src/ui/online.rs:106
+#: src/ui/online.rs:604
+msgid "All wallpapers"
+msgstr "Все обои"
+
+#: src/ui/control.rs:1410
+msgid "Alternately, you can choose a HTML file on your PC"
+msgstr "Или выберите HTML-файл на компьютере"
+
+#: src/ui/control.rs:1314
+msgid "Any website that renders in WebKitGTK can become your wallpaper."
+msgstr "Любой сайт, который открывается в WebKitGTK, может стать обоями."
+
+#: src/ui/control.rs:1029
+#: src/ui/control.rs:1329
+#: src/ui/control.rs:1432
+msgid "Apply"
+msgstr "Применить"
+
+#: src/ui/control.rs:749
+msgid "Apply static wallpaper"
+msgstr "Применять статичные обои"
+
+#: src/ui/control.rs:2230
+msgid "Apply to"
+msgstr "Применить к"
+
+#: src/ui/control.rs:1031
+msgid "Apply to wallpaper"
+msgstr "Применить как обои"
+
+#: src/ui/online.rs:1029
+#: src/ui/online.rs:1066
+msgid "Apply…"
+msgstr "Применить…"
+
+#: src/ui/control.rs:736
+msgid "Automatically mutes playback when maximized window or full screen mode is detected"
+msgstr "Автоматически выключать звук при развёрнутом окне или полноэкранном режиме"
+
+#: src/ui/control.rs:727
+msgid "Automatically pauses playback when maximized window or full screen mode is detected"
+msgstr "Автоматически приостанавливать воспроизведение при развёрнутом окне или полноэкранном режиме"
+
+#: src/ui/control.rs:777
+msgid "Autostart after login"
+msgstr "Запускать при входе в систему"
+
+#: src/ui/control.rs:1524
+msgid "Browse"
+msgstr "Обзор"
+
+#: src/ui/control.rs:1459
+#: src/ui/online.rs:1166
+msgid "Cancel"
+msgstr "Отмена"
+
+#: src/ui/online.rs:987
+#: src/ui/online.rs:988
+msgid "Cancelling…"
+msgstr "Отмена…"
+
+#: src/ui/control.rs:1344
+msgid "Check this website for some really amazing examples!"
+msgstr "На этом сайте есть отличные примеры!"
+
+#: src/ui/control.rs:1423
+#: src/ui/control.rs:1424
+#: src/ui/control.rs:1455
+msgid "Choose a HTML file"
+msgstr "Выбрать HTML-файл"
+
+#: src/ui/control.rs:1507
+msgid "Choose an HTML file first."
+msgstr "Сначала выберите HTML-файл."
+
+#: src/ui/control.rs:996
+#: src/ui/control.rs:997
+#: src/ui/control.rs:1106
+#: src/ui/online.rs:401
+msgid "Clear search"
+msgstr "Очистить поиск"
+
+#: src/ui/online.rs:863
+#: src/ui/online.rs:1354
+msgid "Close"
+msgstr "Закрыть"
+
+#: src/ui/online.rs:1037
+msgid "Could not install"
+msgstr "Не удалось установить"
+
+#: src/ui/online.rs:514
+msgid "Could not load more"
+msgstr "Не удалось загрузить ещё"
+
+#: src/ui/online.rs:198
+msgid "Could not load wallpapers"
+msgstr "Не удалось загрузить обои"
+
+#: src/ui/online.rs:956
+msgid "Could not read file details"
+msgstr "Не удалось прочитать данные файла"
+
+#: src/ui/online.rs:856
+msgid "Delete the cached video and frames"
+msgstr "Удалить видео и кадры из кэша"
+
+#: src/ui/online.rs:866
+#: src/ui/online.rs:1063
+#: src/ui/online.rs:1274
+msgid "Download"
+msgstr "Скачать"
+
+#: src/ui/online.rs:1277
+msgid "Download cancelled."
+msgstr "Загрузка отменена."
+
+#: src/ui/online.rs:1267
+msgid "Download failed"
+msgstr "Не удалось скачать"
+
+#: src/ui/online.rs:1057
+msgid "Download removed from the cache."
+msgstr "Загрузка удалена из кэша."
+
+#: src/ui/online.rs:967
+#: src/ui/online.rs:1235
+msgid "Downloaded"
+msgstr "Скачано"
+
+#: src/ui/online.rs:1251
+msgid "Downloaded, but the preview frames could not be generated."
+msgstr "Скачано, но кадры предпросмотра создать не удалось."
+
+#: src/ui/online.rs:1150
+#: src/ui/online.rs:1243
+msgid "Downloaded. Check the frames, then install."
+msgstr "Скачано. Проверьте кадры и установите."
+
+#: src/ui/online.rs:1172
+msgid "Downloading the wallpaper…"
+msgstr "Загрузка обоев…"
+
+#: src/ui/control.rs:1250
+msgid "Enter a streaming URL first."
+msgstr "Сначала введите ссылку для стриминга."
+
+#: src/ui/control.rs:1357
+msgid "Enter a web page URL first."
+msgstr "Сначала введите адрес веб-страницы."
+
+#: src/ui/online.rs:838
+msgid "Fetching details…"
+msgstr "Получение данных…"
+
+#: src/ui/online.rs:109
+msgid "Filter by category"
+msgstr "Фильтр по категории"
+
+#: src/ui/control.rs:1236
+#: src/ui/control.rs:1343
+msgid "Hint"
+msgstr "Подсказка"
+
+#: src/ui/control.rs:546
+msgid "I'm Feeling Lucky"
+msgstr "Мне повезёт"
+
+#: src/ui/online.rs:1032
+msgid "Installed to"
+msgstr "Установлено в"
+
+#: src/ui/online.rs:869
+#: src/ui/online.rs:1069
+#: src/ui/online.rs:1237
+msgid "Install…"
+msgstr "Установить…"
+
+#: src/ui/control.rs
+msgid "Interface language"
+msgstr "Язык интерфейса"
+
+#: src/ui/control.rs
+msgid "Language"
+msgstr "Язык"
+
+#: src/ui/online.rs:229
+msgid "Load the next page"
+msgstr "Загрузить следующую страницу"
+
+#: src/ui/online.rs:975
+msgid "Loading frames…"
+msgstr "Загрузка кадров…"
+
+#: src/ui/online.rs:166
+#: src/ui/online.rs:449
+msgid "Loading wallpapers…"
+msgstr "Загрузка обоев…"
+
+#: src/ui/online.rs:453
+msgid "Loading…"
+msgstr "Загрузка…"
+
+#: src/ui/control.rs:207
+#: src/ui/control.rs:909
+#: src/ui/control.rs:1546
+#: src/ui/control.rs:2127
+msgid "Local Video"
+msgstr "Локальное видео"
+
+#: src/ui/control.rs:1408
+msgid "Local Web Page"
+msgstr "Локальная веб-страница"
+
+#: src/ui/control.rs:473
+#: src/ui/control.rs:648
+#: src/ui/control.rs:651
+msgid "Mute"
+msgstr "Выключить звук"
+
+#: src/ui/control.rs:735
+msgid "Mute when maximized window"
+msgstr "Выключать звук при развёрнутом окне"
+
+#: src/ui/control.rs:2155
+msgid "No displays detected"
+msgstr "Дисплеи не обнаружены"
+
+#: src/ui/control.rs:1426
+msgid "No file selected"
+msgstr "Файл не выбран"
+
+#: src/ui/control.rs:2042
+msgid "No videos"
+msgstr "Нет видео"
+
+#: src/ui/control.rs:2044
+msgid "No videos in the Ferramari folder"
+msgstr "В папке Ferramari нет видео"
+
+#: src/ui/control.rs:2047
+#: src/ui/control.rs:2055
+msgid "No videos match your search"
+msgstr "Нет видео по вашему запросу"
+
+#: src/ui/control.rs:2035
+msgid "No videos yet"
+msgstr "Видео пока нет"
+
+#: src/ui/control.rs:414
+#: src/ui/control.rs:418
+#: src/ui/control.rs:1653
+#: src/ui/control.rs:2130
+#: src/ui/control.rs:2136
+msgid "No wallpaper set"
+msgstr "Обои не выбраны"
+
+#: src/ui/online.rs:562
+msgid "No wallpapers found"
+msgstr "Обои не найдены"
+
+#: src/ui/online.rs:569
+msgid "No wallpapers in this category"
+msgstr "В этой категории нет обоев"
+
+#: src/ui/control.rs:1638
+msgid "Now playing"
+msgstr "Сейчас воспроизводится"
+
+#: src/ui/online.rs:149
+msgid "Online wallpapers"
+msgstr "Живые обои"
+
+#: src/ui/control.rs:483
+msgid "Oops!"
+msgstr "Ой!"
+
+#: src/ui/control.rs:1460
+msgid "Open"
+msgstr "Открыть"
+
+#: src/ui/control.rs:787
+msgid "Open config file"
+msgstr "Открыть файл конфигурации"
+
+#: src/ui/control.rs:925
+#: src/ui/control.rs:990
+msgid "Open Ferramari folder"
+msgstr "Открыть папку Ferramari"
+
+#: src/ui/control.rs:924
+#: src/ui/control.rs:989
+msgid "Open folder"
+msgstr "Открыть папку"
+
+#: src/ui/control.rs:1399
+msgid "or"
+msgstr "или"
+
+#: src/ui/control.rs:1194
+msgid "Paste a video link. Ferramari resolves it with yt-dlp and starts playback."
+msgstr "Вставьте ссылку на видео. Ferramari обработает её через yt-dlp и запустит воспроизведение."
+
+#: src/ui/control.rs:384
+#: src/ui/control.rs:544
+msgid "Pause wallpaper"
+msgstr "Приостановить обои"
+
+#: src/ui/control.rs:726
+msgid "Pause when maximized window"
+msgstr "Приостанавливать при развёрнутом окне"
+
+#: src/ui/control.rs:393
+msgid "Paused"
+msgstr "Пауза"
+
+#: src/ui/control.rs:1209
+msgid "Play"
+msgstr "Воспроизвести"
+
+#: src/ui/control.rs:720
+msgid "Playback"
+msgstr "Воспроизведение"
+
+#: src/ui/control.rs:395
+msgid "Playing"
+msgstr "Воспроизводится"
+
+#: src/ui/control.rs:1553
+msgid "Preview before installing"
+msgstr "Предпросмотр перед установкой"
+
+#: src/ui/online.rs:94
+msgid "Preview live wallpapers before installing them"
+msgstr "Смотрите живые обои перед установкой"
+
+#: src/ui/control.rs:2298
+msgid "Project website"
+msgstr "Сайт проекта"
+
+#: src/ui/control.rs:555
+#: src/ui/control.rs:557
+#: src/ui/control.rs:709
+msgid "Quick toggles"
+msgstr "Быстрые настройки"
+
+#: src/ui/control.rs:493
+msgid "Quickstart for adding local videos:\n・Click the folder icon to open the Ferramari folder\n・Put your videos there\n・Click the refresh button"
+msgstr "Быстрый старт для локальных видео:\n・Нажмите на значок папки, чтобы открыть папку Ferramari\n・Положите туда видео\n・Нажмите кнопку обновления"
+
+#: src/ui/control.rs:789
+msgid "Quit Ferramari"
+msgstr "Выйти из Ferramari"
+
+#: src/ui/control.rs:391
+#: src/ui/control.rs:530
+#: src/ui/control.rs:1647
+msgid "Ready"
+msgstr "Готово"
+
+#: src/ui/control.rs:928
+#: src/ui/control.rs:928
+msgid "Refresh"
+msgstr "Обновить"
+
+#: src/ui/menu.rs:17
+#: src/tray.rs:50
+msgid "Reload"
+msgstr "Обновить"
+
+#: src/ui/online.rs:128
+#: src/ui/online.rs:129
+msgid "Reload the catalogue"
+msgstr "Обновить каталог"
+
+#: src/ui/online.rs:855
+msgid "Remove download"
+msgstr "Удалить загрузку"
+
+#: src/ui/control.rs:447
+#: src/ui/control.rs:451
+#: src/ui/control.rs:453
+msgid "Resolving stream…"
+msgstr "Получение ссылки на поток…"
+
+#: src/ui/control.rs
+msgid "Restart Ferramari to apply the language."
+msgstr "Перезапустите Ferramari, чтобы применить язык."
+
+#: src/ui/control.rs:382
+msgid "Resume wallpaper"
+msgstr "Возобновить обои"
+
+#: src/ui/online.rs:1262
+msgid "Retry download"
+msgstr "Повторить загрузку"
+
+#: src/ui/control.rs:943
+#: src/ui/control.rs:947
+#: src/ui/control.rs:948
+msgid "Search videos"
+msgstr "Поиск видео"
+
+#: src/ui/online.rs:120
+#: src/ui/online.rs:122
+msgid "Search wallpapers"
+msgstr "Поиск обоев"
+
+#: src/ui/online.rs:114
+msgid "Search wallpapers…"
+msgstr "Поиск обоев…"
+
+#: src/ui/control.rs:1025
+#: src/ui/control.rs:2097
+msgid "Select a video to apply"
+msgstr "Выберите видео для применения"
+
+#: src/ui/control.rs:1303
+msgid "Set a web page as wallpaper"
+msgstr "Сделать веб-страницу обоями"
+
+#: src/ui/control.rs:2235
+msgid "Set For"
+msgstr "Для"
+
+#: src/ui/control.rs:2248
+msgid "Set For All"
+msgstr "Для всех"
+
+#: src/ui/menu.rs:14
+#: src/tray.rs:41
+msgid "Show Ferramari"
+msgstr "Показать Ferramari"
+
+#: src/ui/online.rs:227
+#: src/ui/online.rs:502
+msgid "Show more"
+msgstr "Показать ещё"
+
+#: src/ui/online.rs:1170
+msgid "Starting…"
+msgstr "Запуск…"
+
+#: src/ui/control.rs:758
+#: src/ui/control.rs:765
+#: src/ui/control.rs:766
+msgid "Static wallpaper blur radius"
+msgstr "Размытие статичных обоев"
+
+#: src/ui/control.rs:238
+#: src/ui/control.rs:1182
+#: src/ui/control.rs:1558
+#: src/ui/control.rs:2128
+msgid "Streaming"
+msgstr "Стриминг"
+
+#: src/ui/control.rs:1237
+msgid "Streaming is resolved with yt-dlp."
+msgstr "Ссылка обрабатывается через yt-dlp."
+
+#: src/ui/control.rs:1192
+#: src/ui/control.rs:1208
+msgid "Streaming URL"
+msgstr "Ссылка для стриминга"
+
+#: src/ui/control.rs:773
+msgid "System"
+msgstr "Система"
+
+#: src/ui/control.rs
+msgid "System default"
+msgstr "Как в системе"
+
+#: src/ui/online.rs:1060
+msgid "The cached video and frames were deleted. Installed wallpapers are not touched."
+msgstr "Видео и кадры удалены из кэша. Установленные обои не затронуты."
+
+#: src/ui/menu.rs:15
+#: src/tray.rs:44
+msgid "Toggle Mute Audio"
+msgstr "Выключить/включить звук"
+
+#: src/ui/control.rs:543
+msgid "Toggle Play/Pause"
+msgstr "Пауза/воспроизведение"
+
+#: src/ui/control.rs:2049
+msgid "Try a different name or clear the search."
+msgstr "Попробуйте другое название или очистите поиск."
+
+#: src/ui/online.rs:563
+msgid "Try a different search, or clear it to browse the catalogue."
+msgstr "Попробуйте другой запрос или очистите поиск, чтобы вернуться к каталогу."
+
+#: src/ui/online.rs:204
+msgid "Try again"
+msgstr "Повторить"
+
+#: src/ui/online.rs:570
+msgid "Try another category or reload the catalogue."
+msgstr "Выберите другую категорию или обновите каталог."
+
+#: src/ui/online.rs:510
+msgid "Unavailable"
+msgstr "Недоступно"
+
+#: src/ui/control.rs:473
+msgid "Unmute"
+msgstr "Включить звук"
+
+#: src/ui/control.rs:1859
+msgid "Untitled video"
+msgstr "Без названия"
+
+#: src/ui/control.rs:1565
+msgid "URL or HTML"
+msgstr "URL или HTML"
+
+#: src/ui/control.rs:1927
+msgid "Video"
+msgstr "Видео"
+
+#: src/ui/online.rs:1311
+msgid "Video downloaded"
+msgstr "Видео скачано"
+
+#: src/ui/control.rs:750
+msgid "Video frame can be applied as system wallpaper, look great in GNOME"
+msgstr "Кадр из видео можно использовать как системные обои — отлично смотрится в GNOME"
+
+#: src/ui/control.rs:962
+msgid "Video library"
+msgstr "Библиотека видео"
+
+#: src/ui/control.rs:1559
+msgid "Video links"
+msgstr "Ссылки на видео"
+
+#: src/ui/control.rs:515
+msgid "Video wallpaper"
+msgstr "Видеообои"
+
+#: src/ui/control.rs
+msgid "Video wallpaper for Linux. Written in Rust. 🦀"
+msgstr "Видеообои для Linux. Написано на Rust. 🦀"
+
+#: src/ui/control.rs:1182
+msgid "Videos from streaming services"
+msgstr "Видео со стриминговых сервисов"
+
+#: src/ui/control.rs:914
+msgid "Videos located in Ferramari folder"
+msgstr "Видео в папке Ferramari"
+
+#: src/ui/control.rs:476
+#: src/ui/control.rs:631
+#: src/ui/control.rs:643
+#: src/ui/control.rs:644
+#: src/ui/control.rs:660
+#: src/ui/control.rs:663
+msgid "Volume"
+msgstr "Громкость"
+
+#: src/ui/control.rs:743
+msgid "Wallpaper"
+msgstr "Обои"
+
+#: src/ui/online.rs:1111
+msgid "Wallpaper archive"
+msgstr "Архив обоев"
+
+#: src/ui/online.rs:93
+msgid "Wallpaper catalogue"
+msgstr "Каталог обоев"
+
+#: src/ui/online.rs:110
+msgid "Wallpaper category"
+msgstr "Категория обоев"
+
+#: src/ui/control.rs:227
+#: src/ui/control.rs:1552
+msgid "Wallpapers"
+msgstr "Обои"
+
+#: src/ui/control.rs:241
+#: src/ui/control.rs:1303
+#: src/ui/control.rs:1564
+#: src/ui/control.rs:2129
+msgid "Web Page"
+msgstr "Веб-страница"
+
+#: src/ui/control.rs:1312
+#: src/ui/control.rs:1328
+msgid "Web Page URL"
+msgstr "Адрес веб-страницы"
+
+#: src/ui/control.rs:492
+msgid "Welcome to Ferramari 🤗"
+msgstr "Добро пожаловать в Ferramari 🤗"
+
+#: src/ui/control.rs:1547
+msgid "Your own files"
+msgstr "Ваши файлы"

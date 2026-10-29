@@ -4,6 +4,7 @@
 
 use std::sync::mpsc::Sender;
 
+use crate::util::tr;
 use ksni::blocking::{Handle, TrayMethods};
 use ksni::menu::StandardItem;
 use ksni::{MenuItem, Tray as KsniTray};
@@ -66,7 +67,7 @@ where
     F: Fn(&mut Tray) + Send + 'static,
 {
     MenuItem::Standard(StandardItem {
-        label: label.to_string(),
+        label: tr(label),
         activate: Box::new(activate),
         ..Default::default()
     })

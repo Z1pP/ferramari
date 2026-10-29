@@ -26,7 +26,7 @@ use crate::ui::control::{
     draw_video_frame, icon_image, label, labeled_icon_button, page_heading, primary_button,
     set_a11y_name, PendingTimer, ThumbSlot,
 };
-use crate::util::tr;
+use crate::util::{tr, tr_n};
 
 pub type ApplyFn = Rc<dyn Fn(&gtk::Button, String)>;
 pub type RefreshFn = Rc<dyn Fn()>;
@@ -556,14 +556,16 @@ fn apply_page(
     let total = page.state.items.borrow().len();
     if total == 0 {
         if searching {
-            page.count.set_text(&format!("0 {}", tr("results")));
+            page.count
+                .set_text(&format!("0 {}", tr_n("result", "results", 0)));
             set_empty(
                 page,
                 &tr("No wallpapers found"),
                 &tr("Try a different search, or clear it to browse the catalogue."),
             );
         } else {
-            page.count.set_text(&format!("0 {}", tr("wallpapers")));
+            page.count
+                .set_text(&format!("0 {}", tr_n("wallpaper", "wallpapers", 0)));
             set_empty(
                 page,
                 &tr("No wallpapers in this category"),
@@ -576,12 +578,15 @@ fn apply_page(
 
     page.stack.set_visible_child_name("grid");
     if searching {
-        page.count.set_text(&format!("{total} {}", tr("results")));
-    } else if total == 1 {
-        page.count.set_text(&format!("1 {}", tr("wallpaper")));
+        page.count.set_text(&format!(
+            "{total} {}",
+            tr_n("result", "results", total as u32)
+        ));
     } else {
-        page.count
-            .set_text(&format!("{total} {}", tr("wallpapers")));
+        page.count.set_text(&format!(
+            "{total} {}",
+            tr_n("wallpaper", "wallpapers", total as u32)
+        ));
     }
     page.show_more
         .set_visible(page.state.next.borrow().is_some());

@@ -140,7 +140,7 @@ pub fn is_wayland() -> bool {
 }
 
 /// GNOME and Ubuntu report different values (`GNOME`, `ubuntu:GNOME`), so the
-/// check is a case-insensitive substring match, like upstream.
+/// check is a case-insensitive substring match.
 pub fn is_gnome() -> bool {
     env::var("XDG_CURRENT_DESKTOP")
         .map(|v| v.to_lowercase().contains("gnome"))

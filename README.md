@@ -21,6 +21,8 @@ iron (*ferrum*) and Rust's crab mascot.
 - Autostart after login
 - “I'm Feeling Lucky” random video
 - Tray icon (StatusNotifierItem) for GNOME/KDE and friends
+- English, Russian and Japanese interface; the language can be changed in
+  Quick toggles
 - Config format schema version 4, including the 3.x → 4 migration
 - D-Bus API for scripting and the tray/CLI
 
@@ -44,23 +46,25 @@ An X11 session is used directly; on Wayland the app runs through XWayland
 - `pkg-config`, a C compiler
 - GTK 3 development headers
 - WebKitGTK 4.1 development headers (>= 2.40)
+- gettext (`msgfmt`) to build the translations; without it the app still
+  builds and runs, but only the source (English) strings are installed
 
 Debian/Ubuntu:
 
 ```sh
-sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev gettext
 ```
 
 Fedora:
 
 ```sh
-sudo dnf install gcc pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel
+sudo dnf install gcc pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel gettext
 ```
 
 Arch Linux:
 
 ```sh
-sudo pacman -S base-devel pkgconf gtk3 webkit2gtk-4.1
+sudo pacman -S base-devel pkgconf gtk3 webkit2gtk-4.1 gettext
 ```
 
 ## Build, test, install
@@ -157,6 +161,14 @@ gdbus call --session --dest io.github.ferramari.Ferramari.server \
 keys are ignored, missing keys get defaults, and a schema-3 file is migrated on
 first start.
 
+### Language
+
+The interface follows the desktop locale (`LANG`/`LANGUAGE`). It can also be
+chosen explicitly in **Quick toggles → System → Language**:
+System default, English, Русский or 日本語. Applying a different language takes
+effect after restarting Ferramari. Catalogs live in `po/*.po`; `make install`
+compiles them with `msgfmt`.
+
 ## Architecture
 
 One process, one GTK main loop, and a single command channel:
@@ -180,6 +192,7 @@ WallpaperWindow   Config/D-Bus    GNOME background
 | `src/config.rs` | schema-v4 config, validation, 3.x migration |
 | `src/mpv.rs` | mpv process + JSON IPC (volume, mute, pause) |
 | `src/ui/control.rs` | control window (videos, streaming, web page, toggles) |
+| `src/util.rs` | gettext helpers, video discovery, string utilities |
 | `src/ui/online.rs` | wallpaper catalogue and preview/install dialog |
 | `src/catalogue.rs` | catalogue client: listing/search parsing, cache, download, frames |
 | `src/ui/wallpaper.rs` | one desktop-type window per monitor |

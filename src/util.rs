@@ -15,8 +15,13 @@ pub fn tr(text: &str) -> String {
     gettextrs::gettext(text)
 }
 
+/// Translate a counted noun. The catalog supplies the plural forms.
+pub fn tr_n(singular: &str, plural: &str, n: u32) -> String {
+    gettextrs::ngettext(singular, plural, n)
+}
+
 /// All regular files in the wallpaper folder whose content type is `video/*`.
-/// Sorted for a stable GUI order, like upstream.
+/// Sorted for a stable GUI order.
 pub fn video_paths() -> Vec<PathBuf> {
     video_paths_in(&paths::video_wallpaper_dir())
 }

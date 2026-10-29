@@ -33,6 +33,11 @@ fn main() {
     paths::prepare_env();
     let args = cli::Args::parse();
     init_logging(args.debug);
+    // GNU gettext gives `LANGUAGE` priority over the system locale. The
+    // in-app choice lets someone run a Russian UI on an English desktop.
+    if let Some(language) = config::Config::language_override() {
+        std::env::set_var("LANGUAGE", language);
+    }
     init_i18n();
 
     log::info!(

@@ -72,6 +72,9 @@ pub struct Config {
     pub is_show_systray: bool,
     #[serde(rename = "is_first_time")]
     pub is_first_time: bool,
+    /// `system`, `en`, `ru` or `ja`. Empty is treated as `system`.
+    #[serde(default)]
+    pub language: String,
 }
 
 impl Config {
@@ -95,6 +98,20 @@ impl Config {
             fade_interval: 0.1,
             is_show_systray: false,
             is_first_time: true,
+            language: "system".to_string(),
+        }
+    }
+
+    /// Read the UI language before gettext is initialised. Kept separate from
+    /// `load` because `load` needs monitor names and runs later.
+    pub fn language_override() -> Option<String> {
+        let text = fs::read_to_string(paths::config_path()).ok()?;
+        let value: Value = serde_json::from_str(&text).ok()?;
+        let language = value.get("language")?.as_str()?.trim();
+        if language.is_empty() || language == "system" {
+            None
+        } else {
+            Some(language.to_string())
         }
     }
 
@@ -305,6 +322,19 @@ mod tests {
         assert_eq!(config.mode, Mode::Unknown);
         assert!(config.is_mute);
         assert_eq!(config.volume, 21);
+    }
+
+    #[test]
+    fn language_defaults_and_persists() {
+        let template = Config::template(&monitors());
+        assert_eq!(template.language, "system");
+
+        let text = r#"{
+            "version": 4, "mode": "MODE_NULL",
+            "data_source": {"Default": ""}, "language": "ru"
+        }"#;
+        let (config, _) = Config::parse(text, &monitors());
+        assert_eq!(config.language, "ru");
     }
 
     #[test]

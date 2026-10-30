@@ -1,8 +1,9 @@
 //! Small utilities that do not own state: video discovery, GNOME Shell
 //! extension workarounds and a few string helpers.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Child, ExitStatus};
+use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -29,6 +30,33 @@ pub fn wait_with_timeout(child: &mut Child, timeout: Duration) -> Option<ExitSta
             }
         }
     }
+}
+
+/// Run a command with captured output and a hard deadline.
+pub fn output_with_timeout(command: &mut Command, timeout: Duration) -> Option<Output> {
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = command.spawn().ok()?;
+    let status = wait_with_timeout(&mut child, timeout)?;
+    let mut stdout = Vec::new();
+    child.stdout.take()?.read_to_end(&mut stdout).ok()?;
+    let mut stderr = Vec::new();
+    if let Some(mut pipe) = child.stderr.take() {
+        let _ = pipe.read_to_end(&mut stderr);
+    }
+    Some(Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+/// Run a command with discarded output and a hard deadline.
+pub fn run_with_timeout(command: &mut Command, timeout: Duration) -> bool {
+    command.stdout(Stdio::null()).stderr(Stdio::null());
+    let Ok(mut child) = command.spawn() else {
+        return false;
+    };
+    wait_with_timeout(&mut child, timeout).is_some_and(|status| status.success())
 }
 
 /// Translate a user-visible string through the `ferramari` gettext domain.

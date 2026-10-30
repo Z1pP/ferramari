@@ -141,9 +141,9 @@ impl GnomeBackground {
                 let _ = settings.set_string(key, value);
             }
         } else if paths::is_flatpak() {
-            let _ = Command::new("flatpak-spawn")
-                .args(["--host", "gsettings", "set", BACKGROUND_SCHEMA, key, value])
-                .status();
+            let mut command = Command::new("flatpak-spawn");
+            command.args(["--host", "gsettings", "set", BACKGROUND_SCHEMA, key, value]);
+            let _ = util::run_with_timeout(&mut command, Duration::from_secs(5));
         }
     }
 
@@ -171,10 +171,9 @@ fn schema_available() -> bool {
 }
 
 fn host_gsettings_get(key: &str) -> Option<String> {
-    let output = Command::new("flatpak-spawn")
-        .args(["--host", "gsettings", "get", BACKGROUND_SCHEMA, key])
-        .output()
-        .ok()?;
+    let mut command = Command::new("flatpak-spawn");
+    command.args(["--host", "gsettings", "get", BACKGROUND_SCHEMA, key]);
+    let output = util::output_with_timeout(&mut command, Duration::from_secs(5))?;
     if !output.status.success() {
         return None;
     }

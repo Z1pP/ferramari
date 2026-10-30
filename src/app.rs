@@ -19,6 +19,7 @@ use gtk::prelude::*;
 
 use crate::autostart;
 use crate::config::{Config, Mode};
+use crate::error::{ErrorKind, UserError};
 use crate::handlers;
 use crate::monitors::{self, MonitorInfo};
 use crate::paths;
@@ -319,7 +320,7 @@ impl App {
                     }
                     Err(err) => {
                         self.stream = None;
-                        self.notify_error(err);
+                        self.notify_user_error(UserError::new(ErrorKind::Network, err));
                         self.refresh_ui();
                     }
                 }
@@ -332,7 +333,7 @@ impl App {
                     self.save_config();
                     self.rebuild_windows();
                 }
-                Err(err) => self.notify_error(err),
+                Err(err) => self.notify_user_error(UserError::new(ErrorKind::Network, err)),
             },
             Command::PausePlayback => {
                 self.pause_all();
@@ -424,8 +425,10 @@ impl App {
             }
             Command::WebError { monitor, message } => {
                 log::warn!("[Web] {monitor}: {message}");
-                self.notify_error(format!(
-                    "Could not load the webpage on {monitor}: {message}"
+                self.notify_user_error(UserError::with_detail(
+                    ErrorKind::Network,
+                    format!("Could not load the webpage on {monitor}"),
+                    message,
                 ));
             }
             Command::StaticWallpaperReady {
@@ -551,7 +554,10 @@ impl App {
         }
         let path = Path::new(&url);
         if !path.is_file() {
-            self.notify_error(format!("File not found: {url}"));
+            self.notify_user_error(UserError::new(
+                ErrorKind::FileSystem,
+                format!("File not found: {url}"),
+            ));
             return;
         }
         self.config.mode = Mode::Webpage;
@@ -567,7 +573,10 @@ impl App {
         let Some(video) = util::random_other_video(&videos, self.config.default_source())
             .or_else(|| videos.first().cloned())
         else {
-            self.notify_error("No videos found in the Ferramari folder");
+            self.notify_user_error(UserError::new(
+                ErrorKind::FileSystem,
+                "No videos found in the Ferramari folder",
+            ));
             return;
         };
         let video = video.to_string_lossy().to_string();
@@ -676,49 +685,7 @@ impl App {
     }
 
     fn desired_windows(&self) -> Vec<WindowKey> {
-        match self.config.mode {
-            Mode::Video => self
-                .monitors
-                .iter()
-                .filter_map(|monitor| {
-                    let source = self.config.source_for(&monitor.name);
-                    (!source.is_empty()).then(|| WindowKey {
-                        kind: WindowKind::Video,
-                        monitor: monitor.name.clone(),
-                        source: source.to_string(),
-                    })
-                })
-                .collect(),
-            Mode::Stream => match &self.stream {
-                Some(stream) => self
-                    .monitors
-                    .iter()
-                    .map(|monitor| WindowKey {
-                        kind: WindowKind::Stream,
-                        monitor: monitor.name.clone(),
-                        source: stream.video_url.clone(),
-                    })
-                    .collect(),
-                None => Vec::new(),
-            },
-            Mode::Webpage => {
-                let uri = self.config.default_source();
-                if uri.is_empty() {
-                    log::info!("[Mode] No webpage configured");
-                    Vec::new()
-                } else {
-                    self.monitors
-                        .iter()
-                        .map(|monitor| WindowKey {
-                            kind: WindowKind::Web,
-                            monitor: monitor.name.clone(),
-                            source: uri.to_string(),
-                        })
-                        .collect()
-                }
-            }
-            Mode::Null | Mode::Unknown => Vec::new(),
-        }
+        desired_windows_for(&self.config, &self.monitors, self.stream.as_ref())
     }
 
     fn create_window(
@@ -746,17 +713,18 @@ impl App {
     }
 
     fn notify_window_error(&self, key: &WindowKey, err: anyhow::Error) {
-        match key.kind {
+        let (kind, summary) = match key.kind {
             WindowKind::Video => {
                 let name = Path::new(&key.source)
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| key.source.clone());
-                self.notify_error(format!("Could not play {name}: {err}"));
+                (ErrorKind::Playback, format!("Could not play {name}"))
             }
-            WindowKind::Stream => self.notify_error(format!("Could not stream: {err}")),
-            WindowKind::Web => self.notify_error(format!("Could not open webpage: {err}")),
-        }
+            WindowKind::Stream => (ErrorKind::Network, "Could not stream".to_string()),
+            WindowKind::Web => (ErrorKind::Network, "Could not open webpage".to_string()),
+        };
+        self.notify_user_error(UserError::with_detail(kind, summary, err.to_string()));
     }
 
     fn finish_rebuild(&mut self) {
@@ -1078,7 +1046,11 @@ impl App {
 
     pub fn set_autostart(&mut self, enabled: bool) {
         if let Err(err) = autostart::set_enabled(enabled) {
-            self.notify_error(format!("Could not update autostart: {err}"));
+            self.notify_user_error(UserError::with_detail(
+                ErrorKind::External,
+                "Could not update autostart",
+                err.to_string(),
+            ));
         }
         self.refresh_ui();
     }
@@ -1095,7 +1067,13 @@ impl App {
     }
 
     fn save_config(&self) {
-        self.config.save();
+        if let Err(err) = self.config.save() {
+            self.notify_user_error(UserError::with_detail(
+                ErrorKind::Config,
+                "Could not save the configuration",
+                err,
+            ));
+        }
     }
 
     fn sync_snapshot(&self) {
@@ -1129,12 +1107,61 @@ impl App {
         }
     }
 
-    fn notify_error(&self, message: impl Into<String>) {
-        let message = message.into();
-        log::error!("{message}");
+    fn notify_user_error(&self, error: UserError) {
+        error.log();
         if let Some(control) = &self.control {
-            control.show_error(&message);
+            control.show_error(&error.message());
         }
+    }
+}
+
+/// Pure planning step: which wallpaper window should exist for every monitor
+/// in the current mode. Keeping it free of GTK makes hotplug and monitor
+/// reattachment behaviour testable.
+fn desired_windows_for(
+    config: &Config,
+    monitors: &[MonitorInfo],
+    stream: Option<&ytdlp::StreamInfo>,
+) -> Vec<WindowKey> {
+    match config.mode {
+        Mode::Video => monitors
+            .iter()
+            .filter_map(|monitor| {
+                let source = config.source_for(&monitor.name);
+                (!source.is_empty()).then(|| WindowKey {
+                    kind: WindowKind::Video,
+                    monitor: monitor.name.clone(),
+                    source: source.to_string(),
+                })
+            })
+            .collect(),
+        Mode::Stream => match stream {
+            Some(stream) => monitors
+                .iter()
+                .map(|monitor| WindowKey {
+                    kind: WindowKind::Stream,
+                    monitor: monitor.name.clone(),
+                    source: stream.video_url.clone(),
+                })
+                .collect(),
+            None => Vec::new(),
+        },
+        Mode::Webpage => {
+            let uri = config.default_source();
+            if uri.is_empty() {
+                Vec::new()
+            } else {
+                monitors
+                    .iter()
+                    .map(|monitor| WindowKey {
+                        kind: WindowKind::Web,
+                        monitor: monitor.name.clone(),
+                        source: uri.to_string(),
+                    })
+                    .collect()
+            }
+        }
+        Mode::Null | Mode::Unknown => Vec::new(),
     }
 }
 
@@ -1164,4 +1191,66 @@ fn install_actions(app: &gtk::Application, tx: &Sender<Command>) {
         app.add_action(&action);
     }
     app.set_accels_for_action("app.quit", &["<Primary>q"]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn monitor(name: &str, x: i32) -> MonitorInfo {
+        MonitorInfo {
+            index: 0,
+            name: name.to_string(),
+            x,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            is_primary: x == 0,
+        }
+    }
+
+    #[test]
+    fn removing_and_reattaching_a_monitor_keeps_its_source() {
+        let names = vec!["eDP-1".to_string(), "HDMI-1".to_string()];
+        let mut config = Config::template(&names);
+        config.mode = Mode::Video;
+        config.data_source.insert("eDP-1".into(), "/a.mp4".into());
+        config.data_source.insert("HDMI-1".into(), "/b.mp4".into());
+        config.data_source.insert("Default".into(), "/a.mp4".into());
+
+        let both = vec![monitor("eDP-1", 0), monitor("HDMI-1", 1920)];
+        let keys = desired_windows_for(&config, &both, None);
+        assert_eq!(keys.len(), 2);
+        assert!(keys
+            .iter()
+            .any(|key| key.monitor == "HDMI-1" && key.source == "/b.mp4"));
+
+        // HDMI-1 disappears: only eDP-1 should have a window.
+        let only_laptop = vec![monitor("eDP-1", 0)];
+        let keys = desired_windows_for(&config, &only_laptop, None);
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].monitor, "eDP-1");
+
+        // The config still remembers HDMI-1's own source, so it is restored
+        // when the display comes back.
+        assert_eq!(config.source_for("HDMI-1"), "/b.mp4");
+        let keys = desired_windows_for(&config, &both, None);
+        assert!(keys
+            .iter()
+            .any(|key| key.monitor == "HDMI-1" && key.source == "/b.mp4"));
+    }
+
+    #[test]
+    fn a_monitor_without_a_source_gets_no_window() {
+        let names = vec!["eDP-1".to_string(), "HDMI-1".to_string()];
+        let mut config = Config::template(&names);
+        config.mode = Mode::Video;
+        config.data_source.insert("eDP-1".into(), "/a.mp4".into());
+        config.data_source.insert("HDMI-1".into(), String::new());
+        config.data_source.insert("Default".into(), String::new());
+        let monitors = vec![monitor("eDP-1", 0), monitor("HDMI-1", 1920)];
+        let keys = desired_windows_for(&config, &monitors, None);
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].monitor, "eDP-1");
+    }
 }

@@ -8,6 +8,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 pub const APP_ID: &str = "io.github.ferramari.Ferramari";
 pub const SERVER_NAME: &str = "io.github.ferramari.Ferramari.server";
@@ -116,10 +117,9 @@ pub fn catalogue_cache_dir() -> PathBuf {
 /// `$XDG_VIDEOS_DIR/Ferramari`, falling back to `$HOME/Ferramari` when
 /// `xdg-user-dir` is unavailable.
 pub fn video_wallpaper_dir() -> PathBuf {
-    let xdg = Command::new("xdg-user-dir")
-        .arg("VIDEOS")
-        .output()
-        .ok()
+    let mut command = Command::new("xdg-user-dir");
+    command.arg("VIDEOS");
+    let xdg = crate::util::output_with_timeout(&mut command, Duration::from_secs(2))
         .filter(|out| out.status.success())
         .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
         .filter(|dir| !dir.is_empty());

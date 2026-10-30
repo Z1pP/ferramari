@@ -179,7 +179,7 @@ impl Config {
                 Some(backup) => (backup, true),
                 None => {
                     let template = Self::template(monitors);
-                    template.save_to(path);
+                    let _ = template.save_to(path);
                     return template;
                 }
             },
@@ -199,7 +199,9 @@ impl Config {
 
         let (config, changed) = Self::parse(&text, monitors);
         if changed || used_backup {
-            config.save_to(path);
+            if let Err(err) = config.save_to(path) {
+                log::warn!("[Config] {err}");
+            }
         }
         config
     }
@@ -276,25 +278,19 @@ impl Config {
         (config, changed)
     }
 
-    pub fn save(&self) {
-        self.save_to(&paths::config_path());
+    pub fn save(&self) -> Result<(), String> {
+        self.save_to(&paths::config_path())
     }
 
-    fn save_to(&self, path: &Path) {
-        let text = match serde_json::to_string_pretty(self) {
-            Ok(text) => format!("{text}\n"),
-            Err(err) => {
-                log::warn!("[Config] Could not serialize config: {err}");
-                return;
-            }
-        };
-        if let Err(err) = write_atomic(path, text.as_bytes()) {
-            log::warn!("[Config] Could not write {}: {err}", path.display());
-        }
+    fn save_to(&self, path: &Path) -> Result<(), String> {
+        let text = serde_json::to_string_pretty(self)
+            .map_err(|err| format!("could not serialize the configuration: {err}"))?;
+        write_atomic(path, format!("{text}\n").as_bytes())
+            .map_err(|err| format!("could not write {}: {err}", path.display()))
     }
 
     pub fn reset(monitors: &[String]) {
-        Self::template(monitors).save();
+        let _ = Self::template(monitors).save();
     }
 
     pub fn default_source(&self) -> &str {

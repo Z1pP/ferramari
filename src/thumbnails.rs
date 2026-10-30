@@ -6,9 +6,10 @@
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, UNIX_EPOCH};
 
 use crate::paths;
+use crate::util;
 
 /// Return a cached 16:9 JPEG preview for `video`, generating it with ffmpeg
 /// when no cache entry exists. Returns `None` when no thumbnail can be
@@ -50,7 +51,7 @@ pub fn generate(video: &Path) -> Option<PathBuf> {
 }
 
 fn run_ffmpeg(video: &Path, output: &Path, seek: bool) -> bool {
-    let mut command = Command::new("ffmpeg");
+    let mut command = Command::new(paths::tool("ffmpeg"));
     command
         .arg("-y")
         .arg("-v")
@@ -68,7 +69,7 @@ fn run_ffmpeg(video: &Path, output: &Path, seek: bool) -> bool {
             "1",
         ])
         .arg(output);
-    matches!(command.status(), Ok(status) if status.success())
+    util::run_with_timeout(&mut command, Duration::from_secs(20))
 }
 
 #[cfg(test)]

@@ -16,6 +16,18 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="0.4.0" date="2026-10-30" type="stable">
+      <description>
+        <p>Reliability and recovery.</p>
+        <ul>
+          <li>Automatic player restart with capped backoff and a give-up limit</li>
+          <li>Crash-safe configuration with an automatic backup</li>
+          <li>WebKit load-error reporting and one automatic retry</li>
+          <li>Static wallpaper frames are generated off the UI thread</li>
+          <li>Timeouts for external tools and CI/release automation</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-10-29" type="stable">
       <description>
         <p>Localization and language selection.</p>

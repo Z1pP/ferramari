@@ -6,6 +6,7 @@ mod catalogue;
 mod cli;
 mod config;
 mod dbus;
+mod error;
 mod fade;
 mod handlers;
 mod monitors;

@@ -337,3 +337,9 @@ msgstr "メイン"
 
 msgid "Choose video…"
 msgstr "ビデオを選択…"
+
+msgid "Playback, wallpaper and system behaviour"
+msgstr "再生・壁紙・システムの動作"
+
+msgid "App behaviour"
+msgstr "アプリの動作"

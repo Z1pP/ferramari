@@ -685,3 +685,9 @@ msgstr "Основной"
 
 msgid "Choose video…"
 msgstr "Выбрать видео…"
+
+msgid "Playback, wallpaper and system behaviour"
+msgstr "Воспроизведение, обои и поведение системы"
+
+msgid "App behaviour"
+msgstr "Поведение приложения"

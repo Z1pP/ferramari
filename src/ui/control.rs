@@ -72,8 +72,9 @@ struct VolumeParts {
     label: gtk::Label,
 }
 
-struct QuickSettings {
-    popover: gtk::Popover,
+struct SettingsPage {
+    root: gtk::ScrolledWindow,
+    monitors_summary: gtk::Label,
     combo_language: gtk::ComboBoxText,
     switch_autostart: gtk::Switch,
     switch_static: gtk::Switch,
@@ -180,6 +181,7 @@ pub struct ControlWindow {
     switch_pause_max: gtk::Switch,
     switch_mute_max: gtk::Switch,
     combo_language: gtk::ComboBoxText,
+    settings_monitors: gtk::Label,
     play_button: gtk::Button,
     stack: gtk::Stack,
     video_search: gtk::Entry,
@@ -223,11 +225,13 @@ impl ControlWindow {
         stack.set_vexpand(true);
 
         let volume = build_volume_popover(&tx, &syncing);
-        let quick = build_quick_settings(&window, &tx, &syncing, version);
-        let header_parts = build_header(&tx, &volume, &quick);
+        let header_parts = build_header(&tx, &volume, &stack);
 
-        let home_page = build_home_page(&stack, &tx, &quick.popover);
+        let home_page = build_home_page(&stack, &tx);
         stack.add_titled(&home_page.root, "home", &tr("Home"));
+
+        let settings_page = build_settings_page(&window, &tx, &syncing, version);
+        stack.add_titled(&settings_page.root, "settings", &tr("Settings"));
 
         let video_page = build_video_page();
         stack.add_titled(&video_page.root, "video", &tr("Local Video"));
@@ -337,12 +341,13 @@ impl ControlWindow {
             toggle_mute: volume.toggle,
             volume_button: volume.button,
             volume_label: volume.label,
-            spin_blur: quick.spin_blur,
-            switch_autostart: quick.switch_autostart,
-            switch_static: quick.switch_static,
-            switch_pause_max: quick.switch_pause_max,
-            switch_mute_max: quick.switch_mute_max,
-            combo_language: quick.combo_language,
+            spin_blur: settings_page.spin_blur,
+            switch_autostart: settings_page.switch_autostart,
+            switch_static: settings_page.switch_static,
+            switch_pause_max: settings_page.switch_pause_max,
+            switch_mute_max: settings_page.switch_mute_max,
+            combo_language: settings_page.combo_language,
+            settings_monitors: settings_page.monitors_summary,
             play_button: header_parts.play_button,
             stack: stack.clone(),
             video_search: video_page.search.clone(),
@@ -386,6 +391,16 @@ impl ControlWindow {
         *self.shared.monitors.borrow_mut() = monitors.to_vec();
 
         self.switch_autostart.set_active(autostart_enabled);
+        if monitors.is_empty() {
+            self.settings_monitors.set_text(&tr("No displays detected"));
+        } else {
+            let summary = monitors
+                .iter()
+                .map(|monitor| format!("{} · {} × {}", monitor.name, monitor.width, monitor.height))
+                .collect::<Vec<_>>()
+                .join("\n");
+            self.settings_monitors.set_text(&summary);
+        }
         let language = if config.language.is_empty() {
             "system"
         } else {
@@ -472,6 +487,7 @@ impl ControlWindow {
         {
             Some("stream") => &self.stream_page.entry,
             Some("webpage") => &self.web_entry,
+            Some("settings") => return,
             _ => &self.video_search,
         };
         target.grab_focus();
@@ -536,7 +552,7 @@ impl ControlWindow {
     }
 }
 
-fn build_header(tx: &Sender<Command>, volume: &VolumeParts, quick: &QuickSettings) -> HeaderParts {
+fn build_header(tx: &Sender<Command>, volume: &VolumeParts, stack: &gtk::Stack) -> HeaderParts {
     let header = gtk::HeaderBar::new();
     header.style_context().add_class("ferramari-header");
     header.set_show_close_button(true);
@@ -586,15 +602,18 @@ fn build_header(tx: &Sender<Command>, volume: &VolumeParts, quick: &QuickSetting
     volume_button.set_valign(gtk::Align::Center);
     volume_button.style_context().add_class("icon-button");
 
-    let menu_button = gtk::MenuButton::new();
-    menu_button.style_context().add_class("icon-button");
-    menu_button.set_valign(gtk::Align::Center);
-    menu_button.set_image(Some(&icon_image("open-menu-symbolic", 16)));
-    menu_button.set_tooltip_text(Some(&tr("Quick toggles")));
-    menu_button.set_popover(Some(&quick.popover));
-    set_a11y_name(&menu_button, &tr("Quick toggles"));
+    let settings_button = gtk::Button::new();
+    settings_button.style_context().add_class("icon-button");
+    settings_button.set_valign(gtk::Align::Center);
+    settings_button.set_image(Some(&icon_image("preferences-system-symbolic", 16)));
+    settings_button.set_tooltip_text(Some(&tr("Settings")));
+    set_a11y_name(&settings_button, &tr("Settings"));
+    {
+        let stack = stack.clone();
+        settings_button.connect_clicked(move |_| stack.set_visible_child_name("settings"));
+    }
 
-    header.pack_end(&menu_button);
+    header.pack_end(&settings_button);
     header.pack_end(&volume_button);
     header.pack_end(&lucky_button);
     header.pack_end(&play_button);
@@ -731,29 +750,27 @@ fn build_volume_popover(tx: &Sender<Command>, syncing: &Rc<Cell<bool>>) -> Volum
     }
 }
 
-fn build_quick_settings(
+fn build_settings_page(
     window: &gtk::ApplicationWindow,
     tx: &Sender<Command>,
     syncing: &Rc<Cell<bool>>,
     version: &str,
-) -> QuickSettings {
-    let popover = gtk::Popover::builder().width_request(376).build();
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
-    content.set_margin_start(18);
-    content.set_margin_end(18);
-    content.set_margin_top(16);
-    content.set_margin_bottom(16);
+) -> SettingsPage {
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    content.set_margin_start(26);
+    content.set_margin_end(26);
+    content.set_margin_top(26);
+    content.set_margin_bottom(26);
 
-    let title = label(&tr("Quick toggles"), "popover-title");
-    title.set_xalign(0.0);
-    let subtitle = label(
-        &tr("Adjust playback, wallpaper and startup behaviour."),
-        "popover-copy",
+    content.pack_start(
+        &page_heading(
+            &tr("Settings"),
+            &tr("Playback, wallpaper and system behaviour"),
+        ),
+        false,
+        false,
+        0,
     );
-    subtitle.set_xalign(0.0);
-    subtitle.set_line_wrap(true);
-    content.pack_start(&title, false, false, 0);
-    content.pack_start(&subtitle, false, false, 0);
 
     let playback_label = section_label(&tr("Playback"));
     content.pack_start(&playback_label, false, false, 0);
@@ -840,6 +857,18 @@ fn build_quick_settings(
         false,
         0,
     );
+    content.pack_start(&section_label(&tr("Monitors")), false, false, 0);
+    let monitors_summary = label("", "field-hint");
+    monitors_summary.set_line_wrap(true);
+    monitors_summary.set_max_width_chars(64);
+    content.pack_start(&monitors_summary, false, false, 0);
+
+    content.pack_start(
+        &gtk::Separator::new(gtk::Orientation::Horizontal),
+        false,
+        false,
+        0,
+    );
 
     let config_button = menu_action_button("preferences-system-symbolic", &tr("Open config file"));
     let about_button = menu_action_button("help-about-symbolic", &tr("About Ferramari"));
@@ -848,8 +877,7 @@ fn build_quick_settings(
     content.pack_start(&about_button, false, false, 0);
     content.pack_start(&quit_button, false, false, 0);
 
-    popover.add(&content);
-    content.show_all();
+    let root = page_scroller(&content);
 
     {
         let tx = tx.clone();
@@ -896,7 +924,6 @@ fn build_quick_settings(
     {
         let tx = tx.clone();
         let syncing = Rc::clone(syncing);
-        let popover = popover.clone();
         let window = window.clone();
         combo_language.connect_changed(move |combo| {
             if syncing.get() {
@@ -907,7 +934,6 @@ fn build_quick_settings(
                 .map(|id| id.to_string())
                 .unwrap_or_else(|| "system".to_string());
             let _ = tx.send(Command::SetLanguage(language));
-            popover.popdown();
             show_message(
                 Some(window.upcast_ref()),
                 gtk::MessageType::Info,
@@ -936,9 +962,7 @@ fn build_quick_settings(
     {
         let window = window.clone();
         let version = version.to_string();
-        let popover = popover.clone();
         about_button.connect_clicked(move |_| {
-            popover.popdown();
             show_about(window.upcast_ref::<gtk::Window>(), &version);
         });
     }
@@ -966,8 +990,9 @@ fn build_quick_settings(
         }
     }
 
-    QuickSettings {
-        popover,
+    SettingsPage {
+        root,
+        monitors_summary,
         combo_language,
         switch_autostart,
         switch_static,
@@ -1646,6 +1671,12 @@ fn build_navigation(stack: &gtk::Stack) -> (gtk::Box, gtk::Box) {
             tr("Web Page"),
             tr("URL or HTML"),
         ),
+        (
+            "settings",
+            "preferences-system-symbolic",
+            tr("Settings"),
+            tr("App behaviour"),
+        ),
     ];
 
     let mut buttons: Vec<(String, gtk::Button)> = Vec::new();
@@ -1654,9 +1685,11 @@ fn build_navigation(stack: &gtk::Stack) -> (gtk::Box, gtk::Box) {
         nav_list.pack_start(&sidebar_button, false, false, 0);
         buttons.push((name.to_string(), sidebar_button));
 
-        let top_button = nav_button_compact(icon, &title);
-        top_nav_inner.pack_start(&top_button, true, true, 0);
-        buttons.push((name.to_string(), top_button));
+        if name != "settings" {
+            let top_button = nav_button_compact(icon, &title);
+            top_nav_inner.pack_start(&top_button, true, true, 0);
+            buttons.push((name.to_string(), top_button));
+        }
     }
 
     let buttons = Rc::new(buttons);
@@ -1698,7 +1731,7 @@ fn sync_navigation(buttons: &[(String, gtk::Button)], active: &str) {
     }
 }
 
-fn build_home_page(stack: &gtk::Stack, tx: &Sender<Command>, settings: &gtk::Popover) -> HomePage {
+fn build_home_page(stack: &gtk::Stack, tx: &Sender<Command>) -> HomePage {
     let content = gtk::Box::new(gtk::Orientation::Vertical, 16);
     content.set_margin_start(26);
     content.set_margin_end(26);
@@ -1746,8 +1779,8 @@ fn build_home_page(stack: &gtk::Stack, tx: &Sender<Command>, settings: &gtk::Pop
         catalogue.connect_clicked(move |_| stack.set_visible_child_name("online"));
     }
     {
-        let settings = settings.clone();
-        settings_button.connect_clicked(move |_| settings.popup());
+        let stack = stack.clone();
+        settings_button.connect_clicked(move |_| stack.set_visible_child_name("settings"));
     }
 
     let monitors_label = section_label(&tr("Monitors"));

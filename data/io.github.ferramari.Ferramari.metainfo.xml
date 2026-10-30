@@ -16,6 +16,16 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="0.6.0" date="2026-10-31" type="stable">
+      <description>
+        <p>Settings page.</p>
+        <ul>
+          <li>Playback, wallpaper, language and autostart grouped on one page</li>
+          <li>Settings reachable from the sidebar, header gear and Home</li>
+          <li>Configuration, About and Quit actions moved next to the settings</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.5.0" date="2026-10-31" type="stable">
       <description>
         <p>Home screen and per-monitor wallpapers.</p>

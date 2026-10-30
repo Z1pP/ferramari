@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0 — 2026-10-31
+
+- Dedicated Settings page with playback, wallpaper and system sections.
+- Settings is available from the sidebar, the header gear and the Home page.
+- Configuration file, About and Quit actions live on the Settings page.
+- The old quick-toggles popover was removed to avoid duplicating controls.
+
 ## 0.5.0 — 2026-10-31
 
 Home screen and per-monitor wallpapers.

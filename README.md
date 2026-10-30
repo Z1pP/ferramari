@@ -24,8 +24,9 @@ iron (*ferrum*) and Rust's crab mascot.
 - Autostart after login
 - “I'm Feeling Lucky” random video
 - Tray icon (StatusNotifierItem) for GNOME/KDE and friends
+- Settings page grouped by playback, wallpaper and system behaviour
 - English, Russian and Japanese interface; the language can be changed in
-  Quick toggles
+  Settings
 - Config format schema version 4, including the 3.x → 4 migration
 - D-Bus API for scripting and the tray/CLI
 
@@ -172,7 +173,7 @@ settings.
 ### Language
 
 The interface follows the desktop locale (`LANG`/`LANGUAGE`). It can also be
-chosen explicitly in **Quick toggles → System → Language**:
+chosen explicitly in **Settings → System → Language**:
 System default, English, Русский or 日本語. Applying a different language takes
 effect after restarting Ferramari. Catalogs live in `po/*.po`; `make install`
 compiles them with `msgfmt`.

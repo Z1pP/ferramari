@@ -1,6 +1,6 @@
 //! X11 window-state watcher.
 //!
-//! Upstream depended on libwnck. The same information is available straight
+//! The same information is available straight
 //! from EWMH properties, so this module polls `_NET_CLIENT_LIST` and friends
 //! from a background thread. Polling keeps it robust: no event races, no
 //! per-window signal bookkeeping, and windows disappearing mid-query is
@@ -38,7 +38,7 @@ impl Drop for Watcher {
     }
 }
 
-/// Start polling. Returns `None` on Wayland (upstream disables the feature
+/// Start polling. Returns `None` on Wayland (the feature is disabled
 /// there too) or when X11 is not reachable.
 pub fn start(tx: Sender<Command>) -> Option<Watcher> {
     if crate::paths::is_wayland() {

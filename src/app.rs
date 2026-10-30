@@ -7,11 +7,13 @@
 //! serialised in one place.
 
 use std::cell::RefCell;
-use std::path::Path;
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gtk::prelude::*;
 
@@ -20,6 +22,7 @@ use crate::config::{Config, Mode};
 use crate::handlers;
 use crate::monitors::{self, MonitorInfo};
 use crate::paths;
+use crate::supervisor::{RestartPolicy, Retry, MAX_RETRIES};
 use crate::tray;
 use crate::ui::control::ControlWindow;
 use crate::ui::wallpaper::{WallpaperWindow, WindowKey, WindowKind};
@@ -71,6 +74,16 @@ pub enum Command {
     MonitorsChanged,
     SetAutostart(bool),
     SetLanguage(String),
+    WebError {
+        monitor: String,
+        message: String,
+    },
+    StaticWallpaperReady {
+        source: String,
+        blur: i64,
+        generation: u64,
+        file: Option<PathBuf>,
+    },
 }
 
 /// Read-only view of the current state for the D-Bus interfaces.
@@ -123,6 +136,9 @@ pub struct App {
     stream: Option<ytdlp::StreamInfo>,
     stream_resolving: bool,
     background_wallpaper: GnomeBackground,
+    static_job: Option<(String, i64)>,
+    static_generation: u64,
+    policies: HashMap<WindowKey, RestartPolicy>,
     window_watcher: Option<x11::Watcher>,
     tray_handle: Option<ksni::blocking::Handle<tray::Tray>>,
     quit_requested: bool,
@@ -165,6 +181,9 @@ impl App {
             stream: None,
             stream_resolving: false,
             background_wallpaper,
+            static_job: None,
+            static_generation: 0,
+            policies: HashMap::new(),
             window_watcher: None,
             tray_handle: None,
             quit_requested: false,
@@ -181,12 +200,13 @@ impl App {
         app.borrow_mut().weak_self = Rc::downgrade(&app);
 
         // Keep the process alive even when there is no wallpaper window and
-        // the control window is hidden (upstream's background server).
+        // the control window is hidden (the background server role).
         app.borrow_mut().hold_guard = Some(gtk_app.hold());
 
         install_actions(gtk_app, &tx);
         Self::start_command_loop(&app, rx);
         Self::start_external_watchers(&app);
+        Self::start_player_watch(&app);
         app
     }
 
@@ -209,6 +229,21 @@ impl App {
                     Err(mpsc::TryRecvError::Disconnected) => return glib::ControlFlow::Break,
                 }
             }
+            glib::ControlFlow::Continue
+        });
+    }
+
+    fn start_player_watch(app: &Rc<RefCell<Self>>) {
+        let weak = Rc::downgrade(app);
+        glib::timeout_add_local(Duration::from_secs(1), move || {
+            let Some(app) = weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            let mut state = app.borrow_mut();
+            if state.quit_requested {
+                return glib::ControlFlow::Break;
+            }
+            state.watch_players();
             glib::ControlFlow::Continue
         });
     }
@@ -387,6 +422,50 @@ impl App {
                     self.save_config();
                 }
             }
+            Command::WebError { monitor, message } => {
+                log::warn!("[Web] {monitor}: {message}");
+                self.notify_error(format!(
+                    "Could not load the webpage on {monitor}: {message}"
+                ));
+            }
+            Command::StaticWallpaperReady {
+                source,
+                blur,
+                generation,
+                file,
+            } => {
+                if generation != self.static_generation {
+                    if let Some(file) = file {
+                        let _ = fs::remove_file(file);
+                    }
+                    return;
+                }
+                let still_current = self.config.mode == Mode::Video
+                    && self.config.is_static_wallpaper
+                    && self.config.default_source() == source
+                    && self.config.blur_radius.max(0) == blur;
+                if !still_current {
+                    if let Some(file) = file {
+                        let _ = fs::remove_file(file);
+                    }
+                    return;
+                }
+                match file {
+                    Some(file) => {
+                        if self
+                            .background_wallpaper
+                            .apply_static_frame(&file)
+                            .is_none()
+                        {
+                            let _ = fs::remove_file(&file);
+                        }
+                    }
+                    None => {
+                        self.static_job = None;
+                        log::warn!("[StaticWallpaper] Frame generation failed");
+                    }
+                }
+            }
             Command::MonitorsChanged => {
                 log::info!("[Monitors] Layout changed");
                 self.monitors = monitors::list();
@@ -528,7 +607,9 @@ impl App {
     /// change. A per-monitor video change therefore leaves the other monitors
     /// playing instead of restarting every decoder.
     fn sync_windows(&mut self) {
+        let now = Instant::now();
         let desired = self.desired_windows();
+        self.policies.retain(|key, _| desired.contains(key));
         // While a stream is being re-resolved the old windows have no
         // replacement yet; keep them playing rather than showing a black
         // desktop, then swap once `StreamReady` arrives.
@@ -541,6 +622,13 @@ impl App {
         let mut created = Vec::new();
         for key in desired {
             if self.windows.iter().any(|window| window.key() == &key) {
+                continue;
+            }
+            if self
+                .policies
+                .get(&key)
+                .is_some_and(|policy| policy.waits_before_start(now))
+            {
                 continue;
             }
             let Some(monitor) = self
@@ -561,6 +649,11 @@ impl App {
                 Ok(window) => {
                     self.windows.push(window);
                     created.push(self.windows.len() - 1);
+                    let policy = self
+                        .policies
+                        .entry(key.clone())
+                        .or_insert_with(|| RestartPolicy::new(now));
+                    policy.on_started(now);
                 }
                 Err(err) => self.notify_window_error(&key, err),
             }
@@ -646,7 +739,9 @@ impl App {
                     .ok_or_else(|| anyhow::anyhow!("stream is not resolved yet"))?;
                 WallpaperWindow::stream(&self.gtk_app, monitor, stream, volume, muted)
             }
-            WindowKind::Web => WallpaperWindow::web(&self.gtk_app, monitor, &key.source, muted),
+            WindowKind::Web => {
+                WallpaperWindow::web(&self.gtk_app, monitor, &key.source, muted, self.tx.clone())
+            }
         }
     }
 
@@ -690,7 +785,7 @@ impl App {
     }
 
     /// D-Bus `quit_player`: stop playback but keep the server (D-Bus, tray,
-    /// config) alive, matching upstream's separate player process.
+    /// config) alive while the player itself is stopped.
     fn quit_player(&mut self) {
         log::info!("[Player] Stopped by request");
         self.close_windows();
@@ -700,6 +795,117 @@ impl App {
 
     fn close_windows(&mut self) {
         self.windows.clear();
+        self.policies.clear();
+    }
+
+    /// Poll every player once. A dead mpv is removed and recreated according to
+    /// `RestartPolicy`; the policy prevents a broken file from spawning mpv in
+    /// a tight loop.
+    fn watch_players(&mut self) {
+        let now = Instant::now();
+        let mut crashed = Vec::new();
+        for window in &mut self.windows {
+            if !window.player_alive() {
+                crashed.push(window.key().clone());
+            }
+        }
+        if !crashed.is_empty() {
+            self.windows
+                .retain(|window| !crashed.iter().any(|key| key == window.key()));
+            for key in crashed {
+                let outcome = {
+                    let policy = self
+                        .policies
+                        .entry(key.clone())
+                        .or_insert_with(|| RestartPolicy::new(now));
+                    policy.on_exit(now)
+                };
+                match outcome {
+                    Retry::Scheduled(delay) => {
+                        log::warn!("[Player] {} stopped; retrying in {delay:?}", key.monitor)
+                    }
+                    Retry::GivenUp => {
+                        log::error!(
+                            "[Player] {} stopped {} times; giving up",
+                            key.monitor,
+                            MAX_RETRIES + 1
+                        );
+                        self.notify_window_error(
+                            &key,
+                            anyhow::anyhow!("playback stopped repeatedly"),
+                        );
+                        // Stop the automatic loop. A later user action (Apply,
+                        // Reload, monitor change) starts with a clean policy.
+                        self.policies.remove(&key);
+                    }
+                }
+            }
+        }
+
+        let desired = self.desired_windows();
+        let pending_stream = self.config.mode == Mode::Stream && self.stream.is_none();
+        if !pending_stream {
+            self.policies.retain(|key, _| desired.contains(key));
+        }
+        let due: Vec<WindowKey> = self
+            .policies
+            .iter_mut()
+            .filter_map(|(key, policy)| policy.retry_is_due(now).then(|| key.clone()))
+            .collect();
+        if due.is_empty() {
+            return;
+        }
+
+        let volume = self.config.volume;
+        let duration = self.config.fade_duration_sec;
+        let interval = self.config.fade_interval;
+        let should_play = self.should_play();
+        for key in due {
+            if self.windows.iter().any(|window| window.key() == &key) || !desired.contains(&key) {
+                continue;
+            }
+            let Some(monitor) = self
+                .monitors
+                .iter()
+                .find(|monitor| monitor.name == key.monitor)
+                .cloned()
+            else {
+                continue;
+            };
+            match self.create_window(&key, &monitor) {
+                Ok(mut window) => {
+                    if should_play {
+                        window.play_fade(volume, duration, interval);
+                    } else {
+                        window.pause_fade(duration, interval);
+                    }
+                    self.windows.push(window);
+                    if let Some(policy) = self.policies.get_mut(&key) {
+                        policy.on_started(now);
+                    }
+                    log::info!("[Player] restarted {} ({:?})", key.monitor, key.kind);
+                }
+                Err(err) => {
+                    let outcome = {
+                        let policy = self
+                            .policies
+                            .entry(key.clone())
+                            .or_insert_with(|| RestartPolicy::new(now));
+                        policy.on_exit(now)
+                    };
+                    match outcome {
+                        Retry::Scheduled(delay) => log::warn!(
+                            "[Player] restart of {} failed: {err}; retrying in {delay:?}",
+                            key.monitor
+                        ),
+                        Retry::GivenUp => {
+                            self.notify_window_error(&key, err);
+                            self.policies.remove(&key);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fn should_play(&self) -> bool {
@@ -804,15 +1010,40 @@ impl App {
 
     fn update_static_wallpaper(&mut self) {
         let source = self.config.default_source().to_string();
-        if self.config.mode == Mode::Video
+        let blur = self.config.blur_radius.max(0);
+        let wanted = self.config.mode == Mode::Video
             && self.config.is_static_wallpaper
             && Path::new(&source).is_file()
-        {
-            self.background_wallpaper
-                .apply_static(Path::new(&source), self.config.blur_radius.max(0) as u32);
-        } else {
+            && self.background_wallpaper.is_supported();
+        if !wanted {
+            self.static_generation += 1;
+            self.static_job = None;
             self.background_wallpaper.restore();
+            return;
         }
+        if self.static_job.as_ref() == Some(&(source.clone(), blur)) {
+            return;
+        }
+
+        // ffmpeg can take seconds on 4K video; never run it under the GTK
+        // main loop. The generation counter discards a stale result if the
+        // source or blur radius changes while the worker is running.
+        self.static_generation += 1;
+        let generation = self.static_generation;
+        self.static_job = Some((source.clone(), blur));
+        let tx = self.tx.clone();
+        std::thread::Builder::new()
+            .name("ferramari-static-frame".to_string())
+            .spawn(move || {
+                let file = crate::wallpaper::render_static_frame(Path::new(&source), blur as u32);
+                let _ = tx.send(Command::StaticWallpaperReady {
+                    source,
+                    blur,
+                    generation,
+                    file,
+                });
+            })
+            .ok();
     }
 
     pub fn show_gui(&mut self) {

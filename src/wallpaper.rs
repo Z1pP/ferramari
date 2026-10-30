@@ -2,11 +2,13 @@
 //! install it as the desktop background, and put the user's original
 //! background back on exit.
 //!
-//! Non-GNOME desktops are left untouched, matching upstream.
+//! Non-GNOME desktops are left untouched.
 
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::Duration;
 
 use gtk::gio;
 use gtk::prelude::*;
@@ -15,6 +17,53 @@ use crate::paths;
 use crate::util;
 
 const BACKGROUND_SCHEMA: &str = "org.gnome.desktop.background";
+const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+const FRAME_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Extract a frame at the golden-ratio point of the video, blur it and return
+/// the generated file. This is CPU/GPU work and must run off the GTK thread.
+pub fn render_static_frame(video: &Path, blur_radius: u32) -> Option<PathBuf> {
+    let duration = probe_duration(video).unwrap_or(0.0);
+    let seek = util::format_hms(duration / std::f64::consts::PI);
+    let file = paths::config_dir().join(format!(
+        "static-{:06}.png",
+        rand::random::<u32>() % 1_000_000
+    ));
+
+    let mut command = Command::new(paths::tool("ffmpeg"));
+    command
+        .arg("-y")
+        .arg("-v")
+        .arg("error")
+        .arg("-ss")
+        .arg(&seek)
+        .arg("-i")
+        .arg(video)
+        .arg("-frames:v")
+        .arg("1");
+    if blur_radius > 0 {
+        command.arg("-vf").arg(format!("gblur=sigma={blur_radius}"));
+    }
+    let Ok(mut child) = command
+        .arg(&file)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return None;
+    };
+    let rendered =
+        util::wait_with_timeout(&mut child, FRAME_TIMEOUT).is_some_and(|status| status.success());
+    if !rendered || !file.is_file() {
+        log::warn!(
+            "[StaticWallpaper] Could not extract a frame from {}",
+            video.display()
+        );
+        let _ = fs::remove_file(&file);
+        return None;
+    }
+    Some(file)
+}
 
 pub struct GnomeBackground {
     settings: Option<gio::Settings>,
@@ -58,50 +107,19 @@ impl GnomeBackground {
         self.settings.is_some() || (paths::is_flatpak() && self.original.is_some())
     }
 
-    /// Extract a frame at the golden-ratio point of the video, blur it and set
-    /// it as the background. Returns the generated file on success.
-    pub fn apply_static(&mut self, video: &Path, blur_radius: u32) -> Option<PathBuf> {
+    /// Install an already rendered frame as the background. Rendering itself
+    /// happens on a worker thread so ffmpeg never stalls the GTK loop.
+    pub fn apply_static_frame(&mut self, file: &Path) -> Option<PathBuf> {
         if !self.is_supported() {
             return None;
         }
-        let duration = probe_duration(video).unwrap_or(0.0);
-        let seek = util::format_hms(duration / std::f64::consts::PI);
-        let file = paths::config_dir().join(format!(
-            "static-{:06}.png",
-            rand::random::<u32>() % 1_000_000
-        ));
-
-        let mut command = Command::new("ffmpeg");
-        command
-            .arg("-y")
-            .arg("-v")
-            .arg("error")
-            .arg("-ss")
-            .arg(&seek)
-            .arg("-i")
-            .arg(video)
-            .arg("-frames:v")
-            .arg("1");
-        if blur_radius > 0 {
-            command.arg("-vf").arg(format!("gblur=sigma={blur_radius}"));
-        }
-        let status = command.arg(&file).status();
-        if !matches!(status, Ok(status) if status.success()) || !file.is_file() {
-            log::warn!(
-                "[StaticWallpaper] Could not extract a frame from {}",
-                video.display()
-            );
-            let _ = fs::remove_file(&file);
-            return None;
-        }
-
-        let uri = util::path_to_uri(&file);
+        let uri = util::path_to_uri(file);
         self.set_uri("picture-uri", &uri);
         self.set_uri("picture-uri-dark", &uri);
-        self.cleanup_files_except(Some(&file));
-        self.active_file = Some(file.clone());
+        self.cleanup_files_except(Some(file));
+        self.active_file = Some(file.to_path_buf());
         log::info!("[StaticWallpaper] Applied {uri}");
-        Some(file)
+        Some(file.to_path_buf())
     }
 
     /// Restore the background captured at startup and drop generated frames.
@@ -164,7 +182,7 @@ fn host_gsettings_get(key: &str) -> Option<String> {
 }
 
 fn probe_duration(video: &Path) -> Option<f64> {
-    let output = Command::new("ffprobe")
+    let mut child = Command::new(paths::tool("ffprobe"))
         .args([
             "-v",
             "error",
@@ -174,10 +192,15 @@ fn probe_duration(video: &Path) -> Option<f64> {
             "default=noprint_wrappers=1:nokey=1",
         ])
         .arg(video)
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
         .ok()?;
-    if !output.status.success() {
+    let status = util::wait_with_timeout(&mut child, PROBE_TIMEOUT)?;
+    if !status.success() {
         return None;
     }
-    String::from_utf8_lossy(&output.stdout).trim().parse().ok()
+    let mut stdout = Vec::new();
+    child.stdout.take()?.read_to_end(&mut stdout).ok()?;
+    String::from_utf8_lossy(&stdout).trim().parse().ok()
 }

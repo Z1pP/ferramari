@@ -1,6 +1,6 @@
 //! yt-dlp integration.
 //!
-//! Upstream used the `yt_dlp` Python module. Here the `yt-dlp` executable is
+//! The `yt-dlp` executable is used instead of the Python module. It is
 //! asked for the JSON description of a video (`-J`), and the format selection
 //! is plain Rust so it can be unit-tested without network access.
 
@@ -256,7 +256,7 @@ fn read_to_end(mut pipe: impl Read) -> Vec<u8> {
     buffer
 }
 
-/// Lightweight reachability check, matching upstream's pre-flight request.
+/// Lightweight reachability check before asking yt-dlp to resolve a stream.
 pub fn check_url(url: &str) -> Result<(), String> {
     match ureq::get(url).timeout(Duration::from_secs(20)).call() {
         Ok(response) if response.status() < 400 => Ok(()),

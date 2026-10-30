@@ -7,12 +7,62 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use crate::paths;
+
+const CONFIG_BACKUP_EXTENSION: &str = "json.bak";
+const CONFIG_TEMP_EXTENSION: &str = "json.tmp";
+
+fn backup_path(path: &Path) -> PathBuf {
+    path.with_extension(CONFIG_BACKUP_EXTENSION)
+}
+
+fn temp_path(path: &Path) -> PathBuf {
+    path.with_extension(CONFIG_TEMP_EXTENSION)
+}
+
+fn is_json_object(text: &str) -> bool {
+    serde_json::from_str::<Value>(text)
+        .map(|value| value.is_object())
+        .unwrap_or(false)
+}
+
+fn read_with_backup(path: &Path) -> Option<String> {
+    fs::read_to_string(path)
+        .ok()
+        .or_else(|| fs::read_to_string(backup_path(path)).ok())
+}
+
+/// Write through a temporary file and rename it over the target, keeping the
+/// previous copy as `config.json.bak`. The rename is atomic on one filesystem,
+/// so a crash never leaves a half-written config behind.
+fn write_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let temp = temp_path(path);
+    {
+        let mut file = fs::File::create(&temp)?;
+        file.write_all(contents)?;
+        file.sync_all()?;
+    }
+    if path.is_file() {
+        fs::copy(path, backup_path(path))?;
+    }
+    fs::rename(&temp, path)?;
+    // Make the rename durable as well; ignore platforms/filesystems that do
+    // not allow opening a directory.
+    #[cfg(unix)]
+    if let Some(parent) = path.parent() {
+        let _ = fs::File::open(parent).and_then(|dir| dir.sync_all());
+    }
+    Ok(())
+}
 
 pub const CONFIG_VERSION: u32 = 4;
 
@@ -105,7 +155,8 @@ impl Config {
     /// Read the UI language before gettext is initialised. Kept separate from
     /// `load` because `load` needs monitor names and runs later.
     pub fn language_override() -> Option<String> {
-        let text = fs::read_to_string(paths::config_path()).ok()?;
+        let path = paths::config_path();
+        let text = read_with_backup(&path)?;
         let value: Value = serde_json::from_str(&text).ok()?;
         let language = value.get("language")?.as_str()?.trim();
         if language.is_empty() || language == "system" {
@@ -117,15 +168,38 @@ impl Config {
 
     /// Load the config, creating or migrating it when needed.
     pub fn load(monitors: &[String]) -> Self {
-        let path = paths::config_path();
-        let Ok(text) = fs::read_to_string(&path) else {
-            let template = Self::template(monitors);
-            template.save();
-            return template;
+        Self::load_from(&paths::config_path(), monitors)
+    }
+
+    fn load_from(path: &Path, monitors: &[String]) -> Self {
+        let primary = fs::read_to_string(path).ok();
+        let (text, mut used_backup) = match primary {
+            Some(text) => (text, false),
+            None => match fs::read_to_string(backup_path(path)).ok() {
+                Some(backup) => (backup, true),
+                None => {
+                    let template = Self::template(monitors);
+                    template.save_to(path);
+                    return template;
+                }
+            },
         };
+
+        // A truncated or otherwise broken primary file must not wipe the
+        // settings: fall back to the previous good copy.
+        let text = if is_json_object(&text) {
+            text
+        } else if let Ok(backup) = fs::read_to_string(backup_path(path)) {
+            log::warn!("[Config] {} is invalid, using the backup", path.display());
+            used_backup = true;
+            backup
+        } else {
+            text
+        };
+
         let (config, changed) = Self::parse(&text, monitors);
-        if changed {
-            config.save();
+        if changed || used_backup {
+            config.save_to(path);
         }
         config
     }
@@ -203,20 +277,19 @@ impl Config {
     }
 
     pub fn save(&self) {
-        let path = paths::config_path();
-        if let Some(parent) = path.parent() {
-            if let Err(err) = fs::create_dir_all(parent) {
-                log::warn!("[Config] Could not create {}: {err}", parent.display());
+        self.save_to(&paths::config_path());
+    }
+
+    fn save_to(&self, path: &Path) {
+        let text = match serde_json::to_string_pretty(self) {
+            Ok(text) => format!("{text}\n"),
+            Err(err) => {
+                log::warn!("[Config] Could not serialize config: {err}");
                 return;
             }
-        }
-        match serde_json::to_string_pretty(self) {
-            Ok(text) => {
-                if let Err(err) = fs::write(&path, format!("{text}\n")) {
-                    log::warn!("[Config] Could not write {}: {err}", path.display());
-                }
-            }
-            Err(err) => log::warn!("[Config] Could not serialize config: {err}"),
+        };
+        if let Err(err) = write_atomic(path, text.as_bytes()) {
+            log::warn!("[Config] Could not write {}: {err}", path.display());
         }
     }
 
@@ -322,6 +395,68 @@ mod tests {
         assert_eq!(config.mode, Mode::Unknown);
         assert!(config.is_mute);
         assert_eq!(config.volume, 21);
+    }
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "ferramari-config-{name}-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn atomic_save_keeps_a_backup_and_recovers_from_it() {
+        let dir = temp_dir("backup");
+        let path = dir.join("config.json");
+        let mut first = Config::template(&monitors());
+        first.volume = 11;
+        let text = format!("{}\n", serde_json::to_string(&first).unwrap());
+        write_atomic(&path, text.as_bytes()).unwrap();
+
+        let mut second = first.clone();
+        second.volume = 77;
+        let text = format!("{}\n", serde_json::to_string(&second).unwrap());
+        write_atomic(&path, text.as_bytes()).unwrap();
+
+        let current: Config = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let backup: Config =
+            serde_json::from_str(&fs::read_to_string(backup_path(&path)).unwrap()).unwrap();
+        assert_eq!(current.volume, 77);
+        assert_eq!(backup.volume, 11);
+
+        // Simulate a crash during the direct write of a new config: the
+        // primary file is truncated, the backup still holds the last good one.
+        fs::write(&path, b"{\"version\": 4, \"audio_volume\"").unwrap();
+        let recovered = Config::load_from(&path, &monitors());
+        assert_eq!(recovered.volume, 11);
+        assert!(is_json_object(&fs::read_to_string(&path).unwrap()));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn missing_primary_is_restored_from_the_backup() {
+        let dir = temp_dir("missing");
+        let path = dir.join("config.json");
+        let mut saved = Config::template(&monitors());
+        saved.volume = 42;
+        fs::write(
+            backup_path(&path),
+            format!("{}\n", serde_json::to_string(&saved).unwrap()),
+        )
+        .unwrap();
+
+        let loaded = Config::load_from(&path, &monitors());
+        assert_eq!(loaded.volume, 42);
+        assert!(path.is_file());
+
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

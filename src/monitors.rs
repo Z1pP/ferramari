@@ -15,7 +15,7 @@ use gtk::prelude::*;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MonitorInfo {
     pub index: i32,
-    /// Model name, also used as the `data_source` key (upstream behaviour).
+    /// Model name, also used as the `data_source` key.
     pub name: String,
     pub x: i32,
     pub y: i32,
@@ -167,17 +167,21 @@ fn connector_for(
 ) -> Option<String> {
     let geometry = monitor.geometry();
     let scale = monitor.scale_factor().max(1);
+    let gdk = (
+        geometry.x(),
+        geometry.y(),
+        geometry.width(),
+        geometry.height(),
+    );
     connectors.iter().find_map(|(x, y, width, height, name)| {
-        let exact = *x == geometry.x()
-            && *y == geometry.y()
-            && *width == geometry.width()
-            && *height == geometry.height();
-        let scaled = *x == geometry.x() * scale
-            && *y == geometry.y() * scale
-            && *width == geometry.width() * scale
-            && *height == geometry.height() * scale;
-        (exact || scaled).then(|| name.clone())
+        rectangles_match(gdk, (*x, *y, *width, *height), scale).then(|| name.clone())
     })
+}
+
+/// GDK reports logical pixels while RandR reports device pixels. Accept both
+/// rectangles, which keeps connector matching working on scaled outputs.
+fn rectangles_match(gdk: (i32, i32, i32, i32), randr: (i32, i32, i32, i32), scale: i32) -> bool {
+    gdk == randr || (gdk.0 * scale, gdk.1 * scale, gdk.2 * scale, gdk.3 * scale) == randr
 }
 
 #[cfg(test)]
@@ -202,6 +206,16 @@ mod tests {
         assert_eq!(first, "DELL U2412M (HDMI-1)");
         assert_eq!(second, "DELL U2412M (DP-1)");
         assert_eq!(second, display_name("DELL U2412M", 2, Some("DP-1"), 0));
+    }
+
+    #[test]
+    fn geometry_matching_accepts_logical_and_device_pixels() {
+        let gdk = (0, 0, 1920, 1080);
+        assert!(rectangles_match(gdk, (0, 0, 1920, 1080), 1));
+        assert!(rectangles_match(gdk, (0, 0, 3840, 2160), 2));
+        assert!(!rectangles_match(gdk, (0, 0, 2560, 1440), 1));
+        // A different scale must not match another output by accident.
+        assert!(!rectangles_match(gdk, (0, 0, 3840, 2160), 1));
     }
 
     #[test]

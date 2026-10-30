@@ -1,7 +1,8 @@
 //! Wallpaper windows: one X11 toplevel per monitor.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use gtk::gdk;
@@ -11,6 +12,7 @@ use webkit2gtk::WebViewExt;
 use x11rb::connection::Connection as _;
 use x11rb::protocol::xproto::ConnectionExt as _;
 
+use crate::app::Command;
 use crate::fade::Fade;
 use crate::monitors::MonitorInfo;
 use crate::mpv::{Mpv, Options as MpvOptions};
@@ -27,7 +29,7 @@ pub struct WallpaperWindow {
     _menu: gtk::Menu,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WindowKind {
     Video,
     Stream,
@@ -37,7 +39,7 @@ pub enum WindowKind {
 /// What a wallpaper window shows: kind, monitor and source. Two windows are
 /// interchangeable only when all three match, which lets a change on one
 /// monitor keep the other players running.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WindowKey {
     pub kind: WindowKind,
     pub monitor: String,
@@ -142,12 +144,38 @@ impl WallpaperWindow {
         monitor: &MonitorInfo,
         uri: &str,
         muted: bool,
+        tx: Sender<Command>,
     ) -> anyhow::Result<Self> {
         let primary = monitor.is_primary;
         let (window, _) = base_window(app, monitor)?;
 
         let webview = webkit2gtk::WebView::new();
         webview.set_is_muted(muted || !primary);
+
+        // WebKit gives the page one automatic retry, then reports the failure
+        // to the command loop where it becomes a user-visible message. Without
+        // this a bad URL or a dropped network leaves a silent blank desktop.
+        {
+            let retried = Cell::new(false);
+            let reported = Cell::new(false);
+            let tx = tx.clone();
+            let monitor = monitor.name.clone();
+            webview.connect_load_failed(move |view, _event, uri, error| {
+                log::warn!("[Web] {monitor}: {uri}: {error}");
+                if !reported.replace(true) {
+                    let _ = tx.send(Command::WebError {
+                        monitor: monitor.clone(),
+                        message: format!("{uri}: {error}"),
+                    });
+                }
+                if !retried.replace(true) {
+                    let view = view.clone();
+                    glib::timeout_add_local_once(Duration::from_secs(2), move || view.reload());
+                }
+                false
+            });
+        }
+
         window.add(&webview);
         webview.show();
         webview.load_uri(uri);
@@ -181,6 +209,15 @@ impl WallpaperWindow {
 
     pub fn is_primary(&self) -> bool {
         self.primary
+    }
+
+    /// True while the embedded player is alive. Web views report alive here;
+    /// their load failures are surfaced separately by WebKit signals.
+    pub fn player_alive(&mut self) -> bool {
+        match &mut self.content {
+            Content::Video { mpv } => mpv.borrow_mut().is_running(),
+            Content::Web { .. } => true,
+        }
     }
 
     pub fn play_fade(&mut self, target: i64, duration: f64, interval: f64) {

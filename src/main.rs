@@ -11,6 +11,7 @@ mod handlers;
 mod monitors;
 mod mpv;
 mod paths;
+mod supervisor;
 mod thumbnails;
 mod tray;
 mod ui;

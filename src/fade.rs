@@ -1,6 +1,6 @@
 //! Volume fades on the GTK main loop.
 //!
-//! Upstream used a `threading.Timer` per step; this uses a single `glib`
+//! A single `glib` timer drives all steps instead of one timer per step,
 //! timeout per fade, so a window can only ever have one fade in flight.
 
 use std::cell::RefCell;

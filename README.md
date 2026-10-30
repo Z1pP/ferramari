@@ -17,6 +17,8 @@ iron (*ferrum*) and Rust's crab mascot.
 - GNOME static wallpaper with a blurred frame from the video
 - Pause or mute playback when a window is maximized or fullscreen (X11)
 - Pause while the screen is locked; clean shutdown on logout/reboot
+- Automatic recovery when mpv dies, with capped backoff and a visible error
+  after repeated failures
 - Volume control with fade in/out, mute toggle
 - Autostart after login
 - “I'm Feeling Lucky” random video
@@ -161,6 +163,11 @@ gdbus call --session --dest io.github.ferramari.Ferramari.server \
 keys are ignored, missing keys get defaults, and a schema-3 file is migrated on
 first start.
 
+The file is written atomically through a temporary file and rename, and the
+previous good copy is kept as `config.json.bak`. A truncated or invalid
+`config.json` is restored from that backup instead of silently resetting the
+settings.
+
 ### Language
 
 The interface follows the desktop locale (`LANG`/`LANGUAGE`). It can also be
@@ -253,9 +260,10 @@ typography, motion and accessibility rules) is documented in
 
 ## Testing notes
 
-`cargo test` covers config parsing/migration, yt-dlp format selection and
-process timeouts, EWMH decisions, mpv IPC framing, monitor naming, the fade
-maths, path handling and the catalogue parsers (cards, categories, search,
+`cargo test` covers config parsing/migration, atomic saves and backup recovery,
+the player restart policy, yt-dlp and ffmpeg timeouts, EWMH decisions, mpv IPC
+framing, monitor naming and scaling, the fade maths, path handling and the
+catalogue parsers (cards, categories, search,
 signed download links, archive extraction, video probing and frame sheets).
 The GUI, video embedding, streaming, webpage and catalogue modes were
 smoke-tested on Ubuntu 26.04 / GNOME Wayland (XWayland). To exercise the

@@ -130,7 +130,7 @@ path.
 
 **Paths**
 
-1. Debounce `save_config` by 300–500 ms (as upstream did), while applying
+1. Debounce `save_config` by 300–500 ms while applying
    volume to mpv immediately.
 2. Optionally coalesce volume commands: store the latest value and apply it on
    a timer instead of per pixel.

@@ -11,7 +11,7 @@
 use std::fs;
 use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use std::time::{Duration, SystemTime};
@@ -20,6 +20,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use regex::Regex;
 
 use crate::paths;
+use crate::util;
 
 pub const SITE: &str = "https://winzoro.net";
 pub const SOURCE_URL: &str = "https://winzoro.net/wallpapers_all/";
@@ -826,10 +827,13 @@ fn is_video_extension(extension: &str) -> bool {
     )
 }
 
+const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+const SHEET_TIMEOUT: Duration = Duration::from_secs(60);
+
 /// Read video metadata with `ffprobe`. Failures are not fatal: the download
 /// is still usable without the extra line of information.
 pub fn probe(video: &Path) -> Option<Probe> {
-    let output = Command::new(paths::tool("ffprobe"))
+    let mut child = Command::new(paths::tool("ffprobe"))
         .args([
             "-v",
             "error",
@@ -841,12 +845,17 @@ pub fn probe(video: &Path) -> Option<Probe> {
             "json",
         ])
         .arg(video)
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
         .ok()?;
-    if !output.status.success() {
+    let status = util::wait_with_timeout(&mut child, PROBE_TIMEOUT)?;
+    if !status.success() {
         return None;
     }
-    let json: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    let mut stdout = Vec::new();
+    child.stdout.take()?.read_to_end(&mut stdout).ok()?;
+    let json: serde_json::Value = serde_json::from_slice(&stdout).ok()?;
     let stream = json.get("streams")?.get(0)?;
     let width = stream.get("width")?.as_u64()? as u32;
     let height = stream.get("height")?.as_u64()? as u32;
@@ -914,14 +923,18 @@ pub fn ensure_sheet(video: &Path, id: &str) -> Option<PathBuf> {
 }
 
 fn run_ffmpeg(video: &Path, output: &Path, filter: &str) -> bool {
-    Command::new(paths::tool("ffmpeg"))
+    let Ok(mut child) = Command::new(paths::tool("ffmpeg"))
         .args(["-y", "-v", "error", "-i"])
         .arg(video)
         .args(["-vf", filter, "-frames:v", "1"])
         .arg(output)
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    util::wait_with_timeout(&mut child, SHEET_TIMEOUT).is_some_and(|status| status.success())
 }
 
 /// File name to use when copying a cached video into the local library.
@@ -1083,6 +1096,7 @@ pub fn cleanup_cache() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
 
     const LISTING: &str = r##"
         <a href="https://winzoro.net/wallpapers_all/" data-category-id="40">Живые обои</a>
@@ -1153,6 +1167,21 @@ mod tests {
             Some("Request has expired")
         );
         assert!(page_error_message("<html>ok</html>").is_none());
+    }
+
+    #[test]
+    fn external_commands_are_killed_at_the_deadline() {
+        let mut child = Command::new("sleep").arg("5").spawn().unwrap();
+        let started = Instant::now();
+        assert!(util::wait_with_timeout(&mut child, Duration::from_millis(100)).is_none());
+        assert!(started.elapsed() < Duration::from_secs(3));
+    }
+
+    #[test]
+    fn short_external_commands_finish_normally() {
+        let mut child = Command::new("sh").args(["-c", "exit 0"]).spawn().unwrap();
+        assert!(util::wait_with_timeout(&mut child, Duration::from_secs(2))
+            .is_some_and(|status| status.success()));
     }
 
     #[test]

@@ -2,13 +2,34 @@
 //! extension workarounds and a few string helpers.
 
 use std::path::{Path, PathBuf};
+use std::process::{Child, ExitStatus};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gtk::gio;
 use gtk::prelude::*;
 
 use crate::paths;
+
+/// Poll a child until it exits or the deadline passes. On timeout the child is
+/// killed and reaped so a wedged decoder cannot leak a process or block the
+/// caller forever.
+pub fn wait_with_timeout(child: &mut Child, timeout: Duration) -> Option<ExitStatus> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Some(status),
+            Ok(None) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+}
 
 /// Translate a user-visible string through the `ferramari` gettext domain.
 pub fn tr(text: &str) -> String {

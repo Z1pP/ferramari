@@ -75,7 +75,7 @@ impl Mpv {
             .arg("--really-quiet")
             .arg("--no-config")
             .arg("--no-input-default-bindings")
-            // Let the GTK window receive clicks, like upstream does with VLC's
+            // Let the GTK window receive clicks, disabling mpv's own
             // mouse/key input disabled, so the right-click menu works.
             .arg("--input-cursor=no")
             .arg("--input-vo-keyboard=no")
@@ -203,17 +203,48 @@ impl Mpv {
         self.paused = paused;
         self.set_property("pause", json!(paused))
     }
+
+    /// Reap the child without blocking. A missing status means mpv exited or
+    /// the handle is no longer usable; the caller restarts the window.
+    pub fn is_running(&mut self) -> bool {
+        match self.child.try_wait() {
+            Ok(None) => true,
+            Ok(Some(status)) => {
+                log::warn!("[mpv] exited unexpectedly ({status})");
+                false
+            }
+            Err(err) => {
+                log::warn!("[mpv] could not poll the child: {err}");
+                false
+            }
+        }
+    }
 }
 
 impl Drop for Mpv {
     fn drop(&mut self) {
-        let _ = self.command(json!(["quit"]));
-        if let Ok(Some(_)) = self.child.try_wait() {
-            // already gone
-        } else {
-            let _ = self.child.kill();
+        // Ask mpv to quit, then give it a short grace period. A wedged
+        // decoder must not keep the GTK process (or the session) alive. A
+        // child that already exited is not asked again: its IPC socket may
+        // still be open, and waiting for the reply would only delay shutdown.
+        let already_exited = matches!(self.child.try_wait(), Ok(Some(_)));
+        if !already_exited {
+            let _ = self.command(json!(["quit"]));
         }
-        let _ = self.child.wait();
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                _ => {
+                    let _ = self.child.kill();
+                    let _ = self.child.wait();
+                    break;
+                }
+            }
+        }
         let _ = std::fs::remove_file(&self.socket);
     }
 }

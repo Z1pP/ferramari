@@ -16,6 +16,16 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="0.5.0" date="2026-10-31" type="stable">
+      <description>
+        <p>Home screen and per-monitor wallpapers.</p>
+        <ul>
+          <li>Home page with the current wallpaper and playback state</li>
+          <li>Monitor cards with resolution, source and playback state</li>
+          <li>Assign a local video to a single monitor from the Home page</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.0" date="2026-10-30" type="stable">
       <description>
         <p>Reliability and recovery.</p>

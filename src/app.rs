@@ -486,26 +486,15 @@ impl App {
 
     fn apply_video(&mut self, path: Option<String>, monitor: Option<String>) {
         if let Some(path) = path {
-            self.config.mode = Mode::Video;
-            match monitor.as_deref() {
-                Some("all") | None => {
-                    for monitor in &self.monitors {
-                        self.config
-                            .data_source
-                            .insert(monitor.name.clone(), path.clone());
-                    }
-                    self.config.data_source.insert("Default".to_string(), path);
-                }
-                Some(monitor) => {
-                    if !self.monitors.iter().any(|info| info.name == monitor) {
-                        // A D-Bus caller can name anything. Writing an unknown
-                        // key would also rewrite Default and change every
-                        // monitor that has no source of its own.
-                        log::warn!("[Video] Unknown monitor {monitor:?}, ignoring");
-                        return;
-                    }
-                    self.config.data_source.insert(monitor.to_string(), path);
-                }
+            if !Path::new(&path).is_file() {
+                self.notify_user_error(UserError::new(
+                    ErrorKind::FileSystem,
+                    format!("File not found: {path}"),
+                ));
+                return;
+            }
+            if !assign_video(&mut self.config, &self.monitors, path, monitor.as_deref()) {
+                return;
             }
             self.save_config();
         }
@@ -977,7 +966,7 @@ impl App {
     }
 
     fn update_static_wallpaper(&mut self) {
-        let source = self.config.default_source().to_string();
+        let source = util::primary_source(&self.config, &self.monitors).to_string();
         let blur = self.config.blur_radius.max(0);
         let wanted = self.config.mode == Mode::Video
             && self.config.is_static_wallpaper
@@ -1165,6 +1154,43 @@ fn desired_windows_for(
     }
 }
 
+/// Apply a local video to one monitor or all of them. When switching away from
+/// web/stream mode, a Default URL must not be left for monitors without their
+/// own video: it would be handed to mpv and fail. Fill that gap with the new
+/// video instead.
+fn assign_video(
+    config: &mut Config,
+    monitors: &[MonitorInfo],
+    path: String,
+    monitor: Option<&str>,
+) -> bool {
+    if let Some(name) = monitor {
+        if name != "all" && !monitors.iter().any(|info| info.name == name) {
+            // A D-Bus caller can name anything. Writing an unknown key would
+            // also rewrite Default and change every monitor without a source.
+            log::warn!("[Video] Unknown monitor {name:?}, ignoring");
+            return false;
+        }
+    }
+    config.mode = Mode::Video;
+    match monitor {
+        Some("all") | None => {
+            for info in monitors {
+                config.data_source.insert(info.name.clone(), path.clone());
+            }
+            config.data_source.insert("Default".to_string(), path);
+        }
+        Some(name) => {
+            config.data_source.insert(name.to_string(), path.clone());
+            let default = config.default_source().to_string();
+            if !Path::new(&default).is_file() {
+                config.data_source.insert("Default".to_string(), path);
+            }
+        }
+    }
+    true
+}
+
 fn kind_label(kind: WindowKind) -> &'static str {
     match kind {
         WindowKind::Video => "video",
@@ -1238,6 +1264,44 @@ mod tests {
         assert!(keys
             .iter()
             .any(|key| key.monitor == "HDMI-1" && key.source == "/b.mp4"));
+    }
+
+    #[test]
+    fn assigning_one_monitor_from_web_mode_does_not_leave_a_url_for_mpv() {
+        let names = vec!["eDP-1".to_string(), "HDMI-1".to_string()];
+        let mut config = Config::template(&names);
+        config.mode = Mode::Webpage;
+        config
+            .data_source
+            .insert("Default".into(), "https://example.com/".into());
+        config.data_source.insert("HDMI-1".into(), "/b.mp4".into());
+        let monitors = vec![monitor("eDP-1", 0), monitor("HDMI-1", 1920)];
+
+        assert!(assign_video(
+            &mut config,
+            &monitors,
+            "/a.mp4".into(),
+            Some("eDP-1")
+        ));
+        assert_eq!(config.mode, Mode::Video);
+        assert_eq!(config.source_for("eDP-1"), "/a.mp4");
+        assert_eq!(config.source_for("HDMI-1"), "/b.mp4");
+        assert_eq!(config.default_source(), "/a.mp4");
+    }
+
+    #[test]
+    fn assigning_to_an_unknown_monitor_is_rejected() {
+        let names = vec!["eDP-1".to_string()];
+        let mut config = Config::template(&names);
+        config.mode = Mode::Null;
+        let monitors = vec![monitor("eDP-1", 0)];
+        assert!(!assign_video(
+            &mut config,
+            &monitors,
+            "/a.mp4".into(),
+            Some("HDMI-9")
+        ));
+        assert_eq!(config.mode, Mode::Null);
     }
 
     #[test]

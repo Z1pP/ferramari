@@ -111,6 +111,26 @@ struct WebPage {
     entry: gtk::Entry,
 }
 
+struct MonitorCard {
+    name: String,
+    source: gtk::Label,
+    meta: gtk::Label,
+    state: gtk::Label,
+    combo: gtk::ComboBoxText,
+}
+
+struct HomePage {
+    root: gtk::ScrolledWindow,
+    now_title: gtk::Label,
+    now_source: gtk::Label,
+    now_status: gtk::Label,
+    monitors_box: gtk::Box,
+    cards: RefCell<Vec<MonitorCard>>,
+    videos: RefCell<Vec<PathBuf>>,
+    syncing: Rc<Cell<bool>>,
+    tx: Sender<Command>,
+}
+
 /// The parts that switch between the sidebar and the compact top rail.
 struct Responsive {
     window: gtk::ApplicationWindow,
@@ -174,6 +194,7 @@ pub struct ControlWindow {
     now_source: gtk::Label,
     now_monitor: gtk::Label,
     stream_page: StreamPage,
+    home: HomePage,
 }
 
 impl ControlWindow {
@@ -204,6 +225,9 @@ impl ControlWindow {
         let volume = build_volume_popover(&tx, &syncing);
         let quick = build_quick_settings(&window, &tx, &syncing, version);
         let header_parts = build_header(&tx, &volume, &quick);
+
+        let home_page = build_home_page(&stack, &tx, &quick.popover);
+        stack.add_titled(&home_page.root, "home", &tr("Home"));
 
         let video_page = build_video_page();
         stack.add_titled(&video_page.root, "video", &tr("Local Video"));
@@ -273,7 +297,7 @@ impl ControlWindow {
 
         // The sidebar and top rail are both navigation views of the same
         // stack; the responsive handler only chooses which one is visible.
-        stack.set_visible_child_name("video");
+        stack.set_visible_child_name("home");
 
         {
             let tx = tx.clone();
@@ -333,6 +357,7 @@ impl ControlWindow {
             now_source: now.source,
             now_monitor: now.monitor,
             stream_page,
+            home: home_page,
         };
 
         control.responsive.apply(control.window.size().0);
@@ -355,6 +380,8 @@ impl ControlWindow {
         paused_by_user: bool,
         is_playing: bool,
     ) {
+        self.home
+            .update(config, monitors, paused_by_user, is_playing);
         self.syncing.set(true);
         *self.shared.monitors.borrow_mut() = monitors.to_vec();
 
@@ -396,7 +423,7 @@ impl ControlWindow {
             },
         );
 
-        let source = config.default_source();
+        let source = util::primary_source(config, monitors);
         let has_source = !matches!(config.mode, Mode::Null | Mode::Unknown) && !source.is_empty();
         let status = if !has_source {
             tr("Ready")
@@ -1594,6 +1621,7 @@ fn build_navigation(stack: &gtk::Stack) -> (gtk::Box, gtk::Box) {
     top_nav.pack_start(&top_nav_inner, true, true, 0);
 
     let specs = [
+        ("home", "go-home-symbolic", tr("Home"), tr("Overview")),
         (
             "video",
             "video-x-generic-symbolic",
@@ -1647,7 +1675,7 @@ fn build_navigation(stack: &gtk::Stack) -> (gtk::Box, gtk::Box) {
             }
         });
     }
-    sync_navigation(&buttons, "video");
+    sync_navigation(&buttons, "home");
 
     let spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
     spacer.set_vexpand(true);
@@ -1666,6 +1694,230 @@ fn sync_navigation(buttons: &[(String, gtk::Button)], active: &str) {
             button.style_context().add_class("active");
         } else {
             button.style_context().remove_class("active");
+        }
+    }
+}
+
+fn build_home_page(stack: &gtk::Stack, tx: &Sender<Command>, settings: &gtk::Popover) -> HomePage {
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 16);
+    content.set_margin_start(26);
+    content.set_margin_end(26);
+    content.set_margin_top(26);
+    content.set_margin_bottom(26);
+
+    content.pack_start(
+        &page_heading(&tr("Home"), &tr("Your wallpapers at a glance")),
+        false,
+        false,
+        0,
+    );
+
+    let (hero, hero_inner) = glass_card(6);
+    hero_inner.pack_start(&section_label(&tr("Now playing")), false, false, 0);
+    let now_title = label(&tr("No wallpaper set"), "setting-title");
+    let now_source = label("", "field-hint");
+    let now_status = label(&tr("No wallpaper set"), "status-text");
+    now_source.set_ellipsize(pango::EllipsizeMode::End);
+    now_source.set_max_width_chars(64);
+    hero_inner.pack_start(&now_title, false, false, 0);
+    hero_inner.pack_start(&now_source, false, false, 0);
+    hero_inner.pack_start(&now_status, false, false, 0);
+
+    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    actions.set_margin_top(6);
+    let library = gtk::Button::with_label(&tr("Open library"));
+    library.style_context().add_class("primary");
+    let catalogue = gtk::Button::with_label(&tr("Browse catalogue"));
+    catalogue.style_context().add_class("secondary");
+    let settings_button = gtk::Button::with_label(&tr("Settings"));
+    settings_button.style_context().add_class("secondary");
+    actions.pack_start(&library, false, false, 0);
+    actions.pack_start(&catalogue, false, false, 0);
+    actions.pack_start(&settings_button, false, false, 0);
+    hero_inner.pack_start(&actions, false, false, 0);
+    content.pack_start(&hero, false, false, 0);
+
+    {
+        let stack = stack.clone();
+        library.connect_clicked(move |_| stack.set_visible_child_name("video"));
+    }
+    {
+        let stack = stack.clone();
+        catalogue.connect_clicked(move |_| stack.set_visible_child_name("online"));
+    }
+    {
+        let settings = settings.clone();
+        settings_button.connect_clicked(move |_| settings.popup());
+    }
+
+    let monitors_label = section_label(&tr("Monitors"));
+    monitors_label.set_margin_top(6);
+    content.pack_start(&monitors_label, false, false, 0);
+    let monitors_box = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    content.pack_start(&monitors_box, false, false, 0);
+
+    HomePage {
+        root: page_scroller(&content),
+        now_title,
+        now_source,
+        now_status,
+        monitors_box,
+        cards: RefCell::new(Vec::new()),
+        videos: RefCell::new(Vec::new()),
+        syncing: Rc::new(Cell::new(false)),
+        tx: tx.clone(),
+    }
+}
+
+impl HomePage {
+    fn update(
+        &self,
+        config: &Config,
+        monitors: &[MonitorInfo],
+        paused_by_user: bool,
+        is_playing: bool,
+    ) {
+        let source = util::primary_source(config, monitors);
+        let has_source = !matches!(config.mode, Mode::Null | Mode::Unknown) && !source.is_empty();
+        if has_source {
+            self.now_title.set_text(&mode_text(config.mode));
+            self.now_source.set_text(&source_display(source));
+        } else {
+            self.now_title.set_text(&tr("No wallpaper set"));
+            self.now_source.set_text("");
+        }
+        let status = if !has_source {
+            tr("No wallpaper set")
+        } else if paused_by_user || !is_playing {
+            tr("Paused")
+        } else {
+            tr("Playing")
+        };
+        self.now_status.set_text(&status);
+
+        let videos = util::video_paths();
+        let videos_changed = *self.videos.borrow() != videos;
+        if videos_changed {
+            *self.videos.borrow_mut() = videos.clone();
+        }
+        let rebuild = {
+            let cards = self.cards.borrow();
+            cards.len() != monitors.len()
+                || cards
+                    .iter()
+                    .zip(monitors)
+                    .any(|(card, monitor)| card.name != monitor.name)
+        };
+        if rebuild || videos_changed {
+            self.rebuild_cards(monitors, &videos);
+        }
+
+        self.syncing.set(true);
+        {
+            let cards = self.cards.borrow();
+            for (card, monitor) in cards.iter().zip(monitors) {
+                let own = config.source_for(&monitor.name);
+                card.source.set_text(&source_display(own));
+                let primary = if monitor.is_primary {
+                    format!(" · {}", tr("Primary"))
+                } else {
+                    String::new()
+                };
+                card.meta
+                    .set_text(&format!("{} × {}{primary}", monitor.width, monitor.height));
+                let state = if matches!(config.mode, Mode::Null | Mode::Unknown) || own.is_empty() {
+                    tr("No wallpaper set")
+                } else if paused_by_user || !is_playing {
+                    tr("Paused")
+                } else {
+                    tr("Playing")
+                };
+                card.state.set_text(&state);
+                let active = if videos.iter().any(|path| path.to_string_lossy() == own) {
+                    own
+                } else {
+                    "none"
+                };
+                if !card.combo.set_active_id(Some(active)) {
+                    card.combo.set_active_id(Some("none"));
+                }
+            }
+        }
+        self.syncing.set(false);
+    }
+
+    fn rebuild_cards(&self, monitors: &[MonitorInfo], videos: &[PathBuf]) {
+        for child in self.monitors_box.children() {
+            self.monitors_box.remove(&child);
+        }
+        let mut cards = Vec::new();
+        for monitor in monitors {
+            cards.push(self.build_card(monitor, videos));
+        }
+        *self.cards.borrow_mut() = cards;
+        self.monitors_box.show_all();
+    }
+
+    fn build_card(&self, monitor: &MonitorInfo, videos: &[PathBuf]) -> MonitorCard {
+        let (card, inner) = glass_card(8);
+        card.set_hexpand(true);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        let text = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        let title = label(&monitor.name, "setting-title");
+        let source = label("", "setting-description");
+        source.set_ellipsize(pango::EllipsizeMode::End);
+        source.set_max_width_chars(48);
+        let meta = label("", "field-hint");
+        let state = label("", "status-text");
+        text.pack_start(&title, false, false, 0);
+        text.pack_start(&source, false, false, 0);
+        text.pack_start(&meta, false, false, 0);
+        text.pack_start(&state, false, false, 0);
+
+        let combo = gtk::ComboBoxText::new();
+        combo.append(Some("none"), &tr("Choose video…"));
+        for video in videos {
+            let name = video
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| tr("Untitled video"));
+            let id = video.to_string_lossy().into_owned();
+            combo.append(Some(&id), &name);
+        }
+        combo.set_size_request(230, -1);
+        combo.set_valign(gtk::Align::Center);
+        set_a11y_name(&combo, &format!("{} {}", monitor.name, tr("Wallpaper")));
+        {
+            let tx = self.tx.clone();
+            let syncing = Rc::clone(&self.syncing);
+            let name = monitor.name.clone();
+            combo.connect_changed(move |combo| {
+                if syncing.get() {
+                    return;
+                }
+                let Some(path) = combo.active_id().map(|id| id.to_string()) else {
+                    return;
+                };
+                if path == "none" {
+                    return;
+                }
+                let _ = tx.send(Command::Video {
+                    path: Some(path),
+                    monitor: Some(name.clone()),
+                });
+            });
+        }
+
+        row.pack_start(&text, true, true, 0);
+        row.pack_end(&combo, false, false, 0);
+        inner.pack_start(&row, false, false, 0);
+        self.monitors_box.pack_start(&card, false, false, 0);
+        MonitorCard {
+            name: monitor.name.clone(),
+            source,
+            meta,
+            state,
+            combo,
         }
     }
 }

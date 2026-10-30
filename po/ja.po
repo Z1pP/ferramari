@@ -310,3 +310,30 @@ msgstr[0] "結果"
 msgid "match"
 msgid_plural "matches"
 msgstr[0] "一致"
+
+msgid "Home"
+msgstr "ホーム"
+
+msgid "Overview"
+msgstr "概要"
+
+msgid "Your wallpapers at a glance"
+msgstr "壁紙とモニターの概要"
+
+msgid "Open library"
+msgstr "ライブラリを開く"
+
+msgid "Browse catalogue"
+msgstr "カタログを見る"
+
+msgid "Settings"
+msgstr "設定"
+
+msgid "Monitors"
+msgstr "モニター"
+
+msgid "Primary"
+msgstr "メイン"
+
+msgid "Choose video…"
+msgstr "ビデオを選択…"

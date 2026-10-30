@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 use gtk::gio;
 use gtk::prelude::*;
 
+use crate::config::{Config, Mode};
+use crate::monitors::MonitorInfo;
 use crate::paths;
 
 /// Poll a child until it exits or the deadline passes. On timeout the child is
@@ -67,6 +69,21 @@ pub fn tr(text: &str) -> String {
 /// Translate a counted noun. The catalog supplies the plural forms.
 pub fn tr_n(singular: &str, plural: &str, n: u32) -> String {
     gettextrs::ngettext(singular, plural, n)
+}
+
+/// The source shown as "now playing": the primary monitor's own video in video
+/// mode, otherwise the shared stream/web URL.
+pub fn primary_source<'a>(config: &'a Config, monitors: &[MonitorInfo]) -> &'a str {
+    if config.mode == Mode::Video {
+        monitors
+            .iter()
+            .find(|monitor| monitor.is_primary)
+            .or_else(|| monitors.first())
+            .map(|monitor| config.source_for(&monitor.name))
+            .unwrap_or("")
+    } else {
+        config.default_source()
+    }
 }
 
 /// All regular files in the wallpaper folder whose content type is `video/*`.
@@ -263,6 +280,42 @@ mod tests {
         assert_eq!(format_hms(61.0), "00:01:01");
         assert_eq!(format_hms(3661.0), "01:01:01");
         assert_eq!(format_hms(-5.0), "00:00:00");
+    }
+
+    #[test]
+    fn primary_source_uses_the_primary_monitor_only_in_video_mode() {
+        let names = vec!["eDP-1".to_string(), "HDMI-1".to_string()];
+        let mut config = Config::template(&names);
+        config.mode = Mode::Video;
+        config.data_source.insert("eDP-1".into(), "/a.mp4".into());
+        config.data_source.insert("HDMI-1".into(), "/b.mp4".into());
+        let monitors = vec![
+            MonitorInfo {
+                index: 0,
+                name: "eDP-1".into(),
+                x: 0,
+                y: 0,
+                width: 1920,
+                height: 1080,
+                is_primary: true,
+            },
+            MonitorInfo {
+                index: 1,
+                name: "HDMI-1".into(),
+                x: 1920,
+                y: 0,
+                width: 1920,
+                height: 1080,
+                is_primary: false,
+            },
+        ];
+        assert_eq!(primary_source(&config, &monitors), "/a.mp4");
+
+        config.mode = Mode::Webpage;
+        config
+            .data_source
+            .insert("Default".into(), "https://example.com/".into());
+        assert_eq!(primary_source(&config, &monitors), "https://example.com/");
     }
 
     #[test]

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0 — 2026-10-31
+
+Home screen and per-monitor wallpapers.
+
+- New Home page with the current wallpaper, playback state and quick links to
+  the library, catalogue and settings.
+- Monitor cards show name, resolution, current source and playback state.
+- Assign a local video to one monitor directly from its card; the rest of the
+  monitors keep playing.
+- Russian and Japanese strings for the new screen.
+
 ## 0.4.0 — 2026-10-30
 
 Reliability and recovery.

@@ -658,3 +658,30 @@ msgstr "Добро пожаловать в Ferramari 🤗"
 #: src/ui/control.rs:1547
 msgid "Your own files"
 msgstr "Ваши файлы"
+
+msgid "Home"
+msgstr "Главная"
+
+msgid "Overview"
+msgstr "Обзор"
+
+msgid "Your wallpapers at a glance"
+msgstr "Обои и мониторы"
+
+msgid "Open library"
+msgstr "Открыть библиотеку"
+
+msgid "Browse catalogue"
+msgstr "Открыть каталог"
+
+msgid "Settings"
+msgstr "Настройки"
+
+msgid "Monitors"
+msgstr "Мониторы"
+
+msgid "Primary"
+msgstr "Основной"
+
+msgid "Choose video…"
+msgstr "Выбрать видео…"

@@ -782,7 +782,11 @@ fn extract_video(
         if entry.is_dir() {
             continue;
         }
-        let extension = Path::new(entry.name())
+        let name = entry
+            .name()
+            .map_err(|err| anyhow!("invalid archive entry name: {err}"))?
+            .to_string();
+        let extension = Path::new(&name)
             .extension()
             .and_then(|extension| extension.to_str())
             .map(|extension| extension.to_ascii_lowercase())
@@ -815,7 +819,7 @@ fn extract_video(
             let _ = fs::remove_file(&temporary);
         }
         result?;
-        return Ok((destination, entry.name().to_string()));
+        return Ok((destination, name));
     }
     bail!("the archive does not contain a video")
 }

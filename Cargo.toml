@@ -2,7 +2,7 @@
 name = "ferramari"
 version = "0.4.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.88"
 license = "GPL-3.0-or-later"
 description = "Video wallpaper for Linux, written in Rust"
 readme = "README.md"
@@ -33,7 +33,7 @@ serde_json = "1"
 ureq = "2"
 x11rb = { version = "0.14", features = ["randr"] }
 zbus = "5"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 
 [profile.release]
 lto = "thin"

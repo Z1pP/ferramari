@@ -44,7 +44,7 @@ An X11 session is used directly; on Wayland the app runs through XWayland
 
 ### Build
 
-- Rust 1.75+ (a `rust-toolchain.toml` pins stable)
+- Rust 1.88+ (a `rust-toolchain.toml` pins stable)
 - `pkg-config`, a C compiler
 - GTK 3 development headers
 - WebKitGTK 4.1 development headers (>= 2.40)

@@ -17,6 +17,7 @@ Reliability and recovery.
 - Add monitor reattachment and scaling tests, structured user errors, locked
   CI builds, metadata and translation validation, a RustSec audit and a
   tag-driven release workflow.
+- Requires Rust 1.88 (security update of the ZIP parser).
 
 ## 0.3.0 — 2026-10-29
 

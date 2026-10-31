@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.2.0 — 2026-11-01
+
+Eco Engine core and Core Stability (Phase 0 audit + Phase 1/2 first slice).
+
+- Add a per-monitor Eco Engine (`src/eco.rs`): `Active`, `Idle`, `Occluded`,
+  `Suspended`; Quality, Balanced and Eco policies; idle pause only in Eco.
+- Pause and mute decisions are evaluated per monitor. A fullscreen game on one
+  screen no longer stops the wallpaper on the other screens.
+- X11 now reports visible window rectangles; a maximized window with a panel
+  inset still counts as covering its monitor. Window state is sorted to avoid
+  spurious updates on focus changes.
+- Account for GDK logical vs X11 device pixels (`MonitorInfo::scale_factor`),
+  so occlusion works on HiDPI/XWayland layouts.
+- Move mpv JSON IPC to a dedicated worker thread. `Mpv::spawn` returns without
+  waiting for the socket; volume, pause, mute and `loadfile` are queued. A
+  wedged mpv can no longer block the GTK main loop for the IPC timeout.
+- Move the system-bus/session-bus setup for suspend and end-session/Idle
+  watchers off the GTK thread.
+- Add idle detection through GNOME Mutter, the freedesktop screensaver, KDE or
+  XFCE idle counters (15 s poll on a worker, commands only on threshold
+  crossing).
+- Flush a pending debounced config write before a monitor hotplug reloads
+  `config.json`; a pending volume/blur edit is no longer lost.
+- Repair config fields individually: one wrongly typed field no longer resets
+  every other setting to its default.
+- Keep the previous X11 window sample on a transient query error instead of
+  assuming “nothing is maximized”.
+- Accept local `file://` web wallpapers (including percent escapes) and reject
+  remote `file://host/...` authorities.
+- Mute hidden web wallpapers (WebKitGTK has no public freeze API, so JS
+  timers/animations are only throttled).
+- Read battery state once per construction; power polling only sends a command
+  when the state changes.
+- Add `docs/AUDIT.md` with the Phase 0 findings and the remaining work.
+- Tests: 98 passing (up from 81).
+
 ## 1.1.0 — 2026-10-31
 
 - Light, dark and system colour schemes in Settings → System → Theme.

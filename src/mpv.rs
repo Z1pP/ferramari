@@ -9,8 +9,10 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
@@ -18,9 +20,14 @@ use serde_json::{json, Value};
 static SOCKET_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// How long a single command may wait for mpv to answer. Commands only set
-/// properties, so a healthy mpv replies immediately; the limit exists to bound
-/// a main-thread stall when the player has wedged.
-const IPC_TIMEOUT: Duration = Duration::from_secs(2);
+/// properties, so a healthy mpv replies immediately. The wait happens on the
+/// IPC worker thread, never on the GTK main thread.
+const IPC_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// How long to wait for the `--input-ipc-server` socket to appear. mpv usually
+/// creates it in ~120 ms; a missing socket points at a broken binary or a
+/// severely wedged process.
+const SOCKET_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone, Default)]
 pub struct Options {
@@ -57,10 +64,28 @@ fn profile_args(profile: &str) -> &'static [&'static str] {
 pub struct Mpv {
     child: Child,
     socket: PathBuf,
-    ipc: Mutex<Option<Ipc>>,
-    pub volume: i64,
-    pub muted: bool,
-    pub paused: bool,
+    requests: Sender<Request>,
+    shared: Arc<Shared>,
+    stop: Arc<AtomicBool>,
+    worker: Option<JoinHandle<()>>,
+}
+
+/// State readable from the GTK thread without touching the IPC socket.
+struct Shared {
+    volume: AtomicI64,
+    muted: AtomicBool,
+    paused: AtomicBool,
+    /// Set when the IPC worker loses the connection. The child may still be
+    /// alive but can no longer be controlled, so the caller restarts it.
+    ipc_dead: AtomicBool,
+}
+
+/// Commands for the dedicated IPC thread. Keeping them here means a wedged
+/// mpv can never stall the GTK main loop: the UI only enqueues work.
+enum Request {
+    Execute(Value),
+    LoadFile(String),
+    Quit,
 }
 
 /// One JSON IPC connection. mpv interleaves unsolicited events with command
@@ -152,111 +177,98 @@ impl Mpv {
             }
         })?;
 
-        let deadline = Instant::now() + Duration::from_secs(3);
-        let stream = loop {
-            match UnixStream::connect(&socket) {
-                Ok(stream) => break stream,
-                Err(err) if Instant::now() < deadline => {
-                    let _ = err;
-                    std::thread::sleep(Duration::from_millis(25));
-                }
+        // Connecting to the socket and every later command happen on this
+        // worker. `spawn` returns as soon as the child process exists, which
+        // keeps a broken or slow mpv away from the GTK thread.
+        let shared = Arc::new(Shared {
+            volume: AtomicI64::new(options.volume.clamp(0, 100)),
+            muted: AtomicBool::new(options.muted),
+            paused: AtomicBool::new(options.paused),
+            ipc_dead: AtomicBool::new(false),
+        });
+        let stop = Arc::new(AtomicBool::new(false));
+        let (requests, receiver) = mpsc::channel();
+        let worker = {
+            let socket = socket.clone();
+            let shared = Arc::clone(&shared);
+            let stop = Arc::clone(&stop);
+            match std::thread::Builder::new()
+                .name("ferramari-mpv-ipc".to_string())
+                .spawn(move || run_ipc_worker(&socket, receiver, &shared, &stop))
+            {
+                Ok(worker) => worker,
                 Err(err) => {
+                    // The child was already spawned; do not leak an mpv
+                    // process just because the IPC thread could not start.
                     let _ = child.kill();
                     let _ = child.wait();
-                    anyhow::bail!("mpv IPC socket {} never appeared: {err}", socket.display())
+                    return Err(err.into());
                 }
             }
         };
-        stream.set_read_timeout(Some(IPC_TIMEOUT))?;
-        stream.set_write_timeout(Some(IPC_TIMEOUT))?;
-        let reader = stream.try_clone()?;
 
         Ok(Self {
             child,
             socket,
-            ipc: Mutex::new(Some(Ipc {
-                reader: BufReader::new(reader),
-                writer: stream,
-                next_request: 0,
-            })),
-            volume: options.volume,
-            muted: options.muted,
-            paused: options.paused,
+            requests,
+            shared,
+            stop,
+            worker: Some(worker),
         })
     }
 
-    fn command(&self, args: Value) -> anyhow::Result<Value> {
-        let mut guard = self
-            .ipc
-            .lock()
-            .map_err(|_| anyhow::anyhow!("mpv IPC mutex poisoned"))?;
-        let mut ipc = guard
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("mpv IPC connection is closed"))?;
-
-        let result = exchange(&mut ipc, args);
-
-        // I/O failures (EOF, timeout) leave unread bytes behind: the stream
-        // cannot be reused. A rejected command, on the other hand, keeps it.
-        let fatal = result
-            .as_ref()
-            .err()
-            .is_some_and(|err| err.downcast_ref::<std::io::Error>().is_some());
-        if !fatal {
-            *guard = Some(ipc);
-        }
-        result
+    fn set_property(&self, name: &str, value: Value) -> anyhow::Result<()> {
+        self.enqueue(Request::Execute(json!(["set_property", name, value])))
     }
 
-    fn set_property(&self, name: &str, value: Value) -> anyhow::Result<()> {
-        self.command(json!(["set_property", name, value]))?;
-        Ok(())
+    fn enqueue(&self, request: Request) -> anyhow::Result<()> {
+        if self.shared.ipc_dead.load(Ordering::Relaxed) {
+            anyhow::bail!("mpv IPC connection is closed");
+        }
+        self.requests
+            .send(request)
+            .map_err(|_| anyhow::anyhow!("mpv IPC worker has stopped"))
     }
 
     pub fn set_volume(&mut self, volume: i64) -> anyhow::Result<()> {
-        self.volume = volume.clamp(0, 100);
-        self.set_property("volume", json!(self.volume))
+        let volume = volume.clamp(0, 100);
+        self.shared.volume.store(volume, Ordering::Relaxed);
+        self.set_property("volume", json!(volume))
     }
 
     pub fn set_mute(&mut self, muted: bool) -> anyhow::Result<()> {
-        self.muted = muted;
+        self.shared.muted.store(muted, Ordering::Relaxed);
         self.set_property("mute", json!(muted))
     }
 
     pub fn set_pause(&mut self, paused: bool) -> anyhow::Result<()> {
-        self.paused = paused;
+        self.shared.paused.store(paused, Ordering::Relaxed);
         self.set_property("pause", json!(paused))
+    }
+
+    /// The volume last applied to mpv. Reads an atomic, so fade steps never
+    /// wait for the IPC worker.
+    pub fn volume(&self) -> i64 {
+        self.shared.volume.load(Ordering::Relaxed)
     }
 
     /// Replace the current file without restarting mpv. Used when a monitor
     /// switches to another local video.
     ///
-    /// mpv may only answer `loadfile` after the new file is ready, so the
-    /// command is written without waiting for a reply; the GTK thread must not
-    /// block on a decoder. A later command skips the stale reply.
+    /// The request is queued; the worker waits for mpv's reply off the GTK
+    /// thread. This keeps the UI responsive even when the decoder needs a
+    /// moment to open the new file.
     pub fn load_file(&mut self, source: &str) -> anyhow::Result<()> {
-        self.send_command(json!(["loadfile", source, "replace"]))
-    }
-
-    fn send_command(&self, args: Value) -> anyhow::Result<()> {
-        let mut guard = self
-            .ipc
-            .lock()
-            .map_err(|_| anyhow::anyhow!("mpv IPC mutex poisoned"))?;
-        let ipc = guard
-            .as_mut()
-            .ok_or_else(|| anyhow::anyhow!("mpv IPC connection is closed"))?;
-        let request_id = ipc.next_request;
-        ipc.next_request += 1;
-        let request = json!({ "command": args, "request_id": request_id });
-        writeln!(ipc.writer, "{request}")?;
-        ipc.writer.flush()?;
-        Ok(())
+        self.enqueue(Request::LoadFile(source.to_string()))
     }
 
     /// Reap the child without blocking. A missing status means mpv exited or
-    /// the handle is no longer usable; the caller restarts the window.
+    /// the IPC worker lost the connection; the caller restarts the window.
     pub fn is_running(&mut self) -> bool {
+        if self.shared.ipc_dead.load(Ordering::Relaxed) {
+            log::warn!("[mpv] IPC connection lost unexpectedly");
+            return false;
+        }
         match self.child.try_wait() {
             Ok(None) => true,
             Ok(Some(status)) => {
@@ -273,13 +285,14 @@ impl Mpv {
 
 impl Drop for Mpv {
     fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
         // Ask mpv to quit, then give it a short grace period. A wedged
         // decoder must not keep the GTK process (or the session) alive. A
         // child that already exited is not asked again: its IPC socket may
         // still be open, and waiting for the reply would only delay shutdown.
         let already_exited = matches!(self.child.try_wait(), Ok(Some(_)));
         if !already_exited {
-            let _ = self.command(json!(["quit"]));
+            let _ = self.requests.send(Request::Quit);
         }
         let deadline = Instant::now() + Duration::from_secs(1);
         loop {
@@ -296,7 +309,91 @@ impl Drop for Mpv {
             }
         }
         let _ = std::fs::remove_file(&self.socket);
+        // The worker exits on `Quit`, on a closed request channel or after a
+        // failed connection; the stop flag only wakes its connect loop.
+        // Joining it reaps the IPC thread without a long wait.
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
     }
+}
+
+/// Wait for mpv's IPC socket, then serve requests until the channel closes or
+/// a fatal I/O error occurs. Runs off the GTK thread.
+fn run_ipc_worker(
+    socket: &std::path::Path,
+    receiver: Receiver<Request>,
+    shared: &Shared,
+    stop: &AtomicBool,
+) {
+    let Some(ipc) = connect_ipc(socket, stop) else {
+        shared.ipc_dead.store(true, Ordering::Relaxed);
+        return;
+    };
+    serve_ipc(ipc, receiver, shared, stop);
+}
+
+fn serve_ipc(mut ipc: Ipc, receiver: Receiver<Request>, shared: &Shared, _stop: &AtomicBool) {
+    while let Ok(request) = receiver.recv() {
+        let args = match request {
+            Request::Execute(args) => args,
+            Request::LoadFile(source) => json!(["loadfile", source, "replace"]),
+            Request::Quit => {
+                log::debug!("[mpv] IPC quit requested");
+                let _ = exchange(&mut ipc, json!(["quit"]));
+                break;
+            }
+        };
+        if let Err(err) = exchange(&mut ipc, args) {
+            if is_fatal(&err) {
+                log::warn!("[mpv] IPC connection failed: {err}");
+                shared.ipc_dead.store(true, Ordering::Relaxed);
+                break;
+            }
+            // A rejected property or a missing file is not a transport
+            // failure; keep the connection for the next command.
+            log::warn!("[mpv] command failed: {err}");
+        }
+    }
+}
+
+fn connect_ipc(socket: &std::path::Path, stop: &AtomicBool) -> Option<Ipc> {
+    let deadline = Instant::now() + SOCKET_TIMEOUT;
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            return None;
+        }
+        match UnixStream::connect(socket) {
+            Ok(stream) => {
+                stream.set_read_timeout(Some(IPC_TIMEOUT)).ok()?;
+                stream.set_write_timeout(Some(IPC_TIMEOUT)).ok()?;
+                let reader = stream.try_clone().ok()?;
+                log::debug!("[mpv] IPC connected: {}", socket.display());
+                return Some(Ipc {
+                    reader: BufReader::new(reader),
+                    writer: stream,
+                    next_request: 0,
+                });
+            }
+            Err(err) if Instant::now() < deadline => {
+                let _ = err;
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            Err(err) => {
+                log::warn!(
+                    "[mpv] IPC socket {} never appeared: {err}",
+                    socket.display()
+                );
+                return None;
+            }
+        }
+    }
+}
+
+/// An I/O failure leaves unread bytes behind, so the stream cannot be reused.
+/// A command-level rejection (`error` != `success`) is recoverable.
+fn is_fatal(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<std::io::Error>().is_some()
 }
 
 /// Send one command and return the matching reply, skipping events and replies
@@ -421,5 +518,84 @@ mod tests {
         let response = exchange(&mut ipc, json!(["set_property", "volume", 12])).unwrap();
         peer.join().unwrap();
         assert_eq!(response["error"], "success");
+    }
+
+    fn test_ipc(client: UnixStream) -> Ipc {
+        client
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        Ipc {
+            reader: BufReader::new(client.try_clone().unwrap()),
+            writer: client,
+            next_request: 0,
+        }
+    }
+
+    fn test_shared() -> Shared {
+        Shared {
+            volume: AtomicI64::new(50),
+            muted: AtomicBool::new(false),
+            paused: AtomicBool::new(true),
+            ipc_dead: AtomicBool::new(false),
+        }
+    }
+
+    #[test]
+    fn worker_executes_commands_in_order_and_survives_a_rejection() {
+        let (client, mut server) = UnixStream::pair().unwrap();
+        let ipc = test_ipc(client);
+        let shared = Arc::new(test_shared());
+        let stop = Arc::new(AtomicBool::new(false));
+        let (requests, receiver) = mpsc::channel();
+
+        let peer = std::thread::spawn(move || {
+            let mut reader = BufReader::new(server.try_clone().unwrap());
+            // First command is rejected by mpv; the worker must keep going.
+            for (expected, error) in [
+                ("set_property", "property unavailable"),
+                ("loadfile", "success"),
+                ("set_property", "success"),
+                ("quit", "success"),
+            ] {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                assert!(line.contains(expected), "{line}");
+                let request: Value = serde_json::from_str(&line).unwrap();
+                let request_id = request["request_id"].as_u64().unwrap();
+                let reply = json!({ "request_id": request_id, "error": error });
+                writeln!(server, "{reply}").unwrap();
+                server.flush().unwrap();
+            }
+        });
+
+        let worker = {
+            let shared = Arc::clone(&shared);
+            let stop = Arc::clone(&stop);
+            std::thread::spawn(move || serve_ipc(ipc, receiver, &shared, &stop))
+        };
+        requests
+            .send(Request::Execute(json!(["set_property", "volume", 10])))
+            .unwrap();
+        requests
+            .send(Request::LoadFile("/tmp/a.mp4".into()))
+            .unwrap();
+        requests
+            .send(Request::Execute(json!(["set_property", "mute", true])))
+            .unwrap();
+        requests.send(Request::Quit).unwrap();
+        drop(requests);
+
+        worker.join().unwrap();
+        peer.join().unwrap();
+        assert!(!shared.ipc_dead.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn only_io_errors_are_fatal() {
+        let rejected = anyhow::anyhow!("mpv rejected the command: property unavailable");
+        assert!(!is_fatal(&rejected));
+        let closed: anyhow::Error =
+            anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::UnexpectedEof));
+        assert!(is_fatal(&closed));
     }
 }

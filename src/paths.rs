@@ -132,7 +132,16 @@ pub fn mpv_socket_dir() -> PathBuf {
 
 /// `$XDG_VIDEOS_DIR/Ferramari`, falling back to `$HOME/Ferramari` when
 /// `xdg-user-dir` is unavailable.
+///
+/// The lookup starts a helper process, and the Home page asks for the folder
+/// on every refresh (including volume-slider ticks). XDG user directories do
+/// not change during a session, so resolve it once.
 pub fn video_wallpaper_dir() -> PathBuf {
+    static VIDEO_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    VIDEO_DIR.get_or_init(resolve_video_wallpaper_dir).clone()
+}
+
+fn resolve_video_wallpaper_dir() -> PathBuf {
     let mut command = Command::new("xdg-user-dir");
     command.arg("VIDEOS");
     let xdg = crate::util::output_with_timeout(&mut command, Duration::from_secs(2))

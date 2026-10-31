@@ -20,6 +20,7 @@ use rand::seq::SliceRandom;
 
 use crate::autostart;
 use crate::config::{Config, Mode};
+use crate::eco;
 use crate::error::{ErrorKind, UserError};
 use crate::handlers;
 use crate::library::Library;
@@ -76,6 +77,7 @@ pub enum Command {
     SetMuteWhenMaximized(bool),
     ScreenLockActive(bool),
     WindowState(WindowState),
+    Idle(bool),
     MonitorsChanged,
     SetAutostart(bool),
     SetLanguage(String),
@@ -173,8 +175,13 @@ pub struct App {
     paused_by_user: bool,
     screen_locked: bool,
     suspended: bool,
-    is_any_maximized: bool,
-    is_any_fullscreen: bool,
+    /// Set from desktop idle time; only the Eco profile stops for it.
+    idle: bool,
+    /// Latest per-window occlusion sample from the X11 watcher.
+    window_state: WindowState,
+    /// Last play/pause decision applied to each monitor, so a state change
+    /// only touches the windows whose decision actually changed.
+    last_play: HashMap<String, bool>,
     stream: Option<ytdlp::StreamInfo>,
     stream_resolving: bool,
     background_wallpaper: GnomeBackground,
@@ -214,6 +221,9 @@ impl App {
         let system_prefers_dark = theme::system_prefers_dark();
         theme::apply_mode(&config.theme, system_prefers_dark);
         let background_wallpaper = GnomeBackground::capture();
+        // Read the power supply once: two separate `status()` calls can
+        // observe different states while a charger is being plugged in.
+        let power_status = power::status();
 
         let mut app = Self {
             gtk_app: gtk_app.clone(),
@@ -229,15 +239,16 @@ impl App {
             paused_by_user: false,
             screen_locked: false,
             suspended: false,
-            is_any_maximized: false,
-            is_any_fullscreen: false,
+            idle: false,
+            window_state: WindowState::default(),
+            last_play: HashMap::new(),
             stream: None,
             stream_resolving: false,
             background_wallpaper,
             library: Rc::new(RefCell::new(Library::load())),
             last_rotation: HashMap::new(),
-            on_battery: power::status().on_battery,
-            battery_percent: power::status().percent,
+            on_battery: power_status.on_battery,
+            battery_percent: power_status.percent,
             static_job: None,
             static_generation: 0,
             system_prefers_dark,
@@ -318,15 +329,22 @@ impl App {
 
     fn start_power_watch(app: &Rc<RefCell<Self>>) {
         let weak = Rc::downgrade(app);
+        // Only emit a command when the state actually changes. Plugging and
+        // unplugging is rare; a 30 s heartbeat that refreshes the whole UI
+        // every time is exactly the kind of idle work the Eco Engine avoids.
+        let mut previous = power::status();
         glib::timeout_add_local(Duration::from_secs(30), move || {
             let Some(app) = weak.upgrade() else {
                 return glib::ControlFlow::Break;
             };
             let status = power::status();
-            let _ = app.borrow().tx.send(Command::PowerStatus {
-                on_battery: status.on_battery,
-                percent: status.percent,
-            });
+            if status != previous {
+                previous = status;
+                let _ = app.borrow().tx.send(Command::PowerStatus {
+                    on_battery: status.on_battery,
+                    percent: status.percent,
+                });
+            }
             glib::ControlFlow::Continue
         });
     }
@@ -355,6 +373,7 @@ impl App {
         handlers::start_screen_lock_watcher(tx.clone());
         handlers::start_end_session_watcher(tx.clone());
         handlers::start_sleep_watcher(tx.clone());
+        handlers::start_idle_watcher(tx.clone(), 300);
         if !is_wayland {
             if let Some(watcher) = x11::start(tx.clone()) {
                 app.borrow_mut().window_watcher = Some(watcher);
@@ -437,12 +456,12 @@ impl App {
             Command::PausePlayback => {
                 self.pause_all();
                 self.sync_snapshot();
+                self.refresh_ui();
             }
             Command::StartPlayback => {
-                if self.should_play() {
-                    self.play_all();
-                }
+                self.apply_playback_states();
                 self.sync_snapshot();
+                self.refresh_ui();
             }
             Command::Reload => {
                 if self.config.mode == Mode::Stream {
@@ -464,56 +483,46 @@ impl App {
             Command::SetPauseWhenMaximized(enabled) => {
                 self.config.is_pause_when_maximized = enabled;
                 self.save_config();
+                self.apply_playback_states();
+                self.apply_mute_states();
                 self.refresh_ui();
-                if self.config.is_pause_when_maximized {
-                    if self.should_play() {
-                        self.play_all();
-                    } else {
-                        self.pause_all();
-                    }
-                }
+                self.sync_snapshot();
             }
             Command::SetMuteWhenMaximized(enabled) => {
                 self.config.is_mute_when_maximized = enabled;
                 self.save_config();
                 self.refresh_ui();
-                self.apply_maximized_mute();
+                self.apply_mute_states();
             }
             Command::ScreenLockActive(active) => {
                 log::debug!("[ScreenLock] active={active}");
                 self.screen_locked = active;
-                if active {
-                    self.pause_all();
-                } else if self.should_play() {
-                    self.play_all();
-                } else {
-                    self.pause_all();
-                }
+                self.apply_playback_states();
                 self.sync_snapshot();
+                self.refresh_ui();
             }
             Command::WindowState(state) => {
-                let changed = state.is_any_maximized != self.is_any_maximized
-                    || state.is_any_fullscreen != self.is_any_fullscreen;
-                if !changed {
+                if state == self.window_state {
                     return;
                 }
-                self.is_any_maximized = state.is_any_maximized;
-                self.is_any_fullscreen = state.is_any_fullscreen;
-                log::info!(
-                    "[WindowState] maximized={} fullscreen={}",
-                    self.is_any_maximized,
-                    self.is_any_fullscreen
+                self.window_state = state;
+                log::debug!(
+                    "[WindowState] {} visible window(s)",
+                    self.window_state.windows.len()
                 );
-                if self.config.is_pause_when_maximized {
-                    if self.should_play() {
-                        self.play_all();
-                    } else {
-                        self.pause_all();
-                    }
-                } else if self.config.is_mute_when_maximized {
-                    self.apply_maximized_mute();
-                }
+                self.apply_playback_states();
+                self.apply_mute_states();
                 self.sync_snapshot();
+                self.refresh_ui();
+            }
+            Command::Idle(idle) => {
+                if self.idle != idle {
+                    log::debug!("[Eco] idle={idle}");
+                    self.idle = idle;
+                    self.apply_playback_states();
+                    self.sync_snapshot();
+                    self.refresh_ui();
+                }
             }
             Command::SetAutostart(enabled) => self.set_autostart(enabled),
             Command::SetLanguage(language) => {
@@ -554,8 +563,13 @@ impl App {
                 }
             }
             Command::SetPlaybackProfile(profile) => {
-                if self.config.playback_profile != profile {
-                    self.config.playback_profile = profile;
+                // Accept `quality`/`eco` from newer clients and keep the
+                // documented legacy identifiers on disk.
+                let canonical = eco::Profile::from_config(&profile)
+                    .config_value()
+                    .to_string();
+                if self.config.playback_profile != canonical {
+                    self.config.playback_profile = canonical;
                     self.save_config();
                     self.restart_windows();
                 }
@@ -563,21 +577,13 @@ impl App {
             Command::SetPauseOnBattery(enabled) => {
                 self.config.pause_on_battery = enabled;
                 self.save_config();
-                if enabled && self.on_battery {
-                    self.pause_all();
-                } else if self.should_play() {
-                    self.play_all();
-                }
+                self.apply_playback_states();
                 self.refresh_ui();
             }
             Command::Suspend(sleeping) => {
                 log::info!("[Power] Suspend={sleeping}");
                 self.suspended = sleeping;
-                if sleeping {
-                    self.pause_all();
-                } else if self.should_play() {
-                    self.play_all();
-                }
+                self.apply_playback_states();
                 self.refresh_ui();
             }
             Command::PowerStatus {
@@ -589,11 +595,7 @@ impl App {
                 self.battery_percent = percent;
                 if changed {
                     if self.config.pause_on_battery {
-                        if self.on_battery {
-                            self.pause_all();
-                        } else if self.should_play() {
-                            self.play_all();
-                        }
+                        self.apply_playback_states();
                     }
                     self.refresh_ui();
                 }
@@ -666,6 +668,10 @@ impl App {
             }
             Command::MonitorsChanged => {
                 log::info!("[Monitors] Layout changed");
+                // A hotplug must not throw away a debounced volume/blur edit:
+                // `Config::load` re-reads the file, which does not contain it
+                // yet. Flush first, then merge the new monitor names.
+                self.flush_config();
                 self.monitors = monitors::list();
                 let names: Vec<String> = self
                     .monitors
@@ -737,7 +743,7 @@ impl App {
         if url.is_empty() {
             return;
         }
-        if url.starts_with("http://") || url.starts_with("https://") || url.starts_with("file://") {
+        if url.starts_with("http://") || url.starts_with("https://") {
             let target = url.clone();
             let tx = self.tx.clone();
             std::thread::spawn(move || {
@@ -749,18 +755,27 @@ impl App {
             });
             return;
         }
-        let path = Path::new(&url);
-        if !path.is_file() {
+        // `file://` is a local document, not a network resource. Running it
+        // through `check_url` made D-Bus callers see a network error even
+        // though the requested HTML existed on disk.
+        let Some(path) = local_webpage_path(&url) else {
             self.notify_user_error(UserError::new(
                 ErrorKind::FileSystem,
                 format!("File not found: {url}"),
+            ));
+            return;
+        };
+        if !path.is_file() {
+            self.notify_user_error(UserError::new(
+                ErrorKind::FileSystem,
+                format!("File not found: {}", path.display()),
             ));
             return;
         }
         self.config.mode = Mode::Webpage;
         self.config
             .data_source
-            .insert("Default".to_string(), util::path_to_uri(path));
+            .insert("Default".to_string(), util::path_to_uri(&path));
         self.save_config();
         self.rebuild_windows();
     }
@@ -838,9 +853,16 @@ impl App {
                 || (pending_stream && window.key().kind == WindowKind::Stream)
         });
 
+        let live_monitors: Vec<String> = self
+            .windows
+            .iter()
+            .map(|window| window.key().monitor.clone())
+            .collect();
+        self.last_play
+            .retain(|monitor, _| live_monitors.contains(monitor));
+
         let volume = self.config.volume;
         let muted = self.config.is_mute;
-        let mut created = Vec::new();
         for key in desired {
             if self.windows.iter().any(|window| window.key() == &key) {
                 continue;
@@ -899,7 +921,10 @@ impl App {
             match self.create_window(&key, &monitor) {
                 Ok(window) => {
                     self.windows.push(window);
-                    created.push(self.windows.len() - 1);
+                    // A new window starts paused. Drop the cached decision so
+                    // `apply_playback_states` applies it even when the monitor
+                    // already had the same play/pause state.
+                    self.last_play.remove(&key.monitor);
                     let policy = self
                         .policies
                         .entry(key.clone())
@@ -910,19 +935,11 @@ impl App {
             }
         }
 
-        // Only new windows fade in; a player that is already running keeps its
-        // current volume instead of dipping to zero on every rebuild.
-        let duration = self.config.fade_duration_sec;
-        let interval = self.config.fade_interval;
-        let should_play = self.should_play();
-        for index in created {
-            let window = &mut self.windows[index];
-            if should_play {
-                window.play_fade(volume, duration, interval);
-            } else {
-                window.pause_fade(duration, interval);
-            }
-        }
+        // New windows have no entry in `last_play`, so this only fades them
+        // in/out. Existing players keep their current volume instead of
+        // dipping to zero on every rebuild.
+        self.apply_playback_states();
+        self.apply_mute_states();
     }
 
     fn desired_windows(&self) -> Vec<WindowKey> {
@@ -1022,6 +1039,7 @@ impl App {
     fn close_windows(&mut self) {
         self.windows.clear();
         self.policies.clear();
+        self.last_play.clear();
     }
 
     /// Poll every player once. A dead mpv is removed and recreated according to
@@ -1085,7 +1103,6 @@ impl App {
         let volume = self.config.volume;
         let duration = self.config.fade_duration_sec;
         let interval = self.config.fade_interval;
-        let should_play = self.should_play();
         for key in due {
             if self.windows.iter().any(|window| window.key() == &key) || !desired.contains(&key) {
                 continue;
@@ -1098,6 +1115,7 @@ impl App {
             else {
                 continue;
             };
+            let should_play = self.eco_plan_for(&key.monitor).play;
             match self.create_window(&key, &monitor) {
                 Ok(mut window) => {
                     if should_play {
@@ -1106,6 +1124,7 @@ impl App {
                         window.pause_fade(duration, interval);
                     }
                     self.windows.push(window);
+                    self.last_play.insert(key.monitor.clone(), should_play);
                     if let Some(policy) = self.policies.get_mut(&key) {
                         policy.on_started(now);
                     }
@@ -1134,33 +1153,93 @@ impl App {
         }
     }
 
-    fn should_play(&self) -> bool {
-        if self.screen_locked {
-            return false;
-        }
-        if self.suspended {
-            return false;
-        }
-        if self.config.pause_on_battery && self.on_battery {
-            return false;
-        }
-        if self.config.is_pause_when_maximized && (self.is_any_maximized || self.is_any_fullscreen)
-        {
-            return false;
-        }
-        !self.paused_by_user
+    fn monitor_visibility(&self, monitor: &str) -> x11::MonitorVisibility {
+        self.monitors
+            .iter()
+            .find(|info| info.name == monitor)
+            .map(|info| {
+                let (x, y, width, height) = monitor_rect(info);
+                self.window_state.visibility_at(x, y, width, height)
+            })
+            .unwrap_or_default()
     }
 
-    fn play_all(&mut self) {
-        if !self.should_play() {
-            return;
-        }
+    /// Evaluate the Eco Engine for one monitor. The same session-wide signals
+    /// (lock, suspend, battery, idle) are combined with that monitor's own
+    /// occlusion sample, so a game on HDMI-1 never pauses eDP-1.
+    fn eco_plan_for(&self, monitor: &str) -> eco::Plan {
+        let visibility = self.monitor_visibility(monitor);
+        eco::plan(
+            eco::Profile::from_config(&self.config.playback_profile),
+            self.config.is_pause_when_maximized,
+            eco::Signals {
+                user_paused: self.paused_by_user,
+                screen_locked: self.screen_locked,
+                suspended: self.suspended,
+                battery_paused: self.config.pause_on_battery && self.on_battery,
+                idle: self.idle,
+                covered: visibility.covered,
+                fullscreen: visibility.fullscreen,
+            },
+        )
+    }
+
+    fn apply_playback_states(&mut self) {
+        let plans: Vec<(String, eco::Plan)> = self
+            .windows
+            .iter()
+            .map(|window| {
+                let monitor = window.key().monitor.clone();
+                let plan = self.eco_plan_for(&monitor);
+                (monitor, plan)
+            })
+            .collect();
         let target = self.config.volume;
         let duration = self.config.fade_duration_sec;
         let interval = self.config.fade_interval;
-        for window in &mut self.windows {
-            window.play_fade(target, duration, interval);
+        for (window, (monitor, plan)) in self.windows.iter_mut().zip(plans) {
+            if self.last_play.get(&monitor) == Some(&plan.play) {
+                continue;
+            }
+            log::debug!("[Eco] {monitor}: {:?} (play={})", plan.state, plan.play);
+            if plan.play {
+                window.play_fade(target, duration, interval);
+            } else {
+                window.pause_fade(duration, interval);
+            }
+            self.last_play.insert(monitor, plan.play);
         }
+    }
+
+    /// Apply master mute and the per-monitor "mute when covered" rule. This
+    /// also reaches Web wallpapers, which have no mpv volume.
+    fn apply_mute_states(&mut self) {
+        let master = self.config.is_mute;
+        let mute_when_covered = self.config.is_mute_when_maximized;
+        let target = self.config.volume;
+        let duration = self.config.fade_duration_sec;
+        let interval = self.config.fade_interval;
+        let plans: Vec<(bool, bool)> = self
+            .windows
+            .iter()
+            .map(|window| {
+                let visibility = self.monitor_visibility(&window.key().monitor);
+                let hidden = visibility.covered || visibility.fullscreen;
+                (master || (mute_when_covered && hidden), window.is_primary())
+            })
+            .collect();
+        for (window, (muted, primary)) in self.windows.iter_mut().zip(plans) {
+            if primary {
+                window.volume_fade(if muted { 0 } else { target }, duration, interval);
+            }
+            window.set_mute(muted);
+        }
+    }
+
+    fn any_playing(&self) -> bool {
+        self.windows
+            .iter()
+            .any(|window| self.eco_plan_for(&window.key().monitor).play)
     }
 
     fn pause_all(&mut self) {
@@ -1169,32 +1248,27 @@ impl App {
         for window in &mut self.windows {
             window.pause_fade(duration, interval);
         }
-    }
-
-    fn apply_maximized_mute(&mut self) {
-        let target = if self.is_any_maximized || self.is_any_fullscreen {
-            0
-        } else {
-            self.config.volume
-        };
-        let duration = self.config.fade_duration_sec;
-        let interval = self.config.fade_interval;
-        for window in &mut self.windows {
-            if window.is_primary() {
-                window.volume_fade(target, duration, interval);
-            }
-        }
+        self.last_play.clear();
     }
 
     fn set_volume(&mut self, volume: i64) {
         self.config.volume = volume.clamp(0, 100);
         self.mark_config_dirty();
         let volume = self.config.volume;
-        for window in &mut self.windows {
-            if window.is_primary() {
+        let plans: Vec<bool> = self
+            .windows
+            .iter()
+            .map(|window| {
+                let visibility = self.monitor_visibility(&window.key().monitor);
+                !(visibility.covered || visibility.fullscreen)
+            })
+            .collect();
+        for (window, visible) in self.windows.iter_mut().zip(plans) {
+            if window.is_primary() && visible {
                 window.set_volume(volume);
             }
         }
+        self.apply_mute_states();
         self.sync_snapshot();
         self.refresh_ui();
     }
@@ -1202,22 +1276,14 @@ impl App {
     fn set_mute(&mut self, muted: bool) {
         self.config.is_mute = muted;
         self.save_config();
-        for window in &mut self.windows {
-            if window.is_primary() {
-                window.set_mute(muted);
-            }
-        }
+        self.apply_mute_states();
         self.sync_snapshot();
         self.refresh_ui();
     }
 
     fn set_paused_by_user(&mut self, paused: bool) {
         self.paused_by_user = paused;
-        if paused {
-            self.pause_all();
-        } else if self.should_play() {
-            self.play_all();
-        }
+        self.apply_playback_states();
         self.sync_snapshot();
         self.refresh_ui();
     }
@@ -1351,7 +1417,7 @@ impl App {
             ));
         }
         let first_time = self.config.is_first_time;
-        let is_playing = self.should_play() && !self.windows.is_empty();
+        let is_playing = self.any_playing();
         if let Some(control) = self.control.as_ref() {
             control.present();
             control.refresh(
@@ -1436,7 +1502,7 @@ impl App {
             volume: self.config.volume,
             blur_radius: self.config.blur_radius,
             is_mute: self.config.is_mute,
-            is_playing: self.should_play() && !self.windows.is_empty(),
+            is_playing: self.any_playing(),
             is_paused_by_user: self.paused_by_user,
             is_static_wallpaper: self.config.is_static_wallpaper,
             is_pause_when_maximized: self.config.is_pause_when_maximized,
@@ -1451,7 +1517,7 @@ impl App {
 
     fn refresh_ui(&self) {
         if let Some(control) = &self.control {
-            let is_playing = self.should_play() && !self.windows.is_empty();
+            let is_playing = self.any_playing();
             control.refresh(
                 &self.config,
                 &self.monitors,
@@ -1539,6 +1605,36 @@ fn desired_windows_for(
             }
         }
         Mode::Null | Mode::Unknown => Vec::new(),
+    }
+}
+
+/// X11 root coordinates are device pixels; GDK monitor geometry is logical
+/// pixels on HiDPI/XWayland layouts. Convert once so the visibility check and
+/// its tests use the same rectangle.
+fn monitor_rect(info: &MonitorInfo) -> (i32, i32, i32, i32) {
+    let scale = info.scale_factor.max(1);
+    (
+        info.x.saturating_mul(scale),
+        info.y.saturating_mul(scale),
+        info.width.saturating_mul(scale),
+        info.height.saturating_mul(scale),
+    )
+}
+
+/// A local page may arrive as a plain path or as a `file://` URI (for example
+/// from a D-Bus caller). GIO decodes percent escapes and refuses non-local
+/// hosts, so the result is always a path on this machine.
+fn local_webpage_path(url: &str) -> Option<PathBuf> {
+    if let Some(rest) = url.strip_prefix("file://") {
+        // `file://host/path` would otherwise be silently reduced to `/path`:
+        // reject a remote authority instead of reading a lookalike local file.
+        let host = rest.split('/').next().unwrap_or_default();
+        if !host.is_empty() && host != "localhost" {
+            return None;
+        }
+        gtk::gio::File::for_uri(url).path()
+    } else {
+        Some(PathBuf::from(url))
     }
 }
 
@@ -1645,6 +1741,7 @@ mod tests {
             y: 0,
             width: 1920,
             height: 1080,
+            scale_factor: 1,
             is_primary: x == 0,
         }
     }
@@ -1750,6 +1847,42 @@ mod tests {
             next_rotation_path("random", &one, "/a.mp4"),
             Some("/a.mp4".into())
         );
+    }
+
+    #[test]
+    fn hidpi_monitor_geometry_is_converted_to_device_pixels() {
+        let info = MonitorInfo {
+            index: 0,
+            name: "eDP-1".into(),
+            x: 1920,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            scale_factor: 2,
+            is_primary: false,
+        };
+        assert_eq!(monitor_rect(&info), (3840, 0, 3840, 2160));
+        let mut normal = info;
+        normal.scale_factor = 0; // defensive: never multiply by zero
+        assert_eq!(monitor_rect(&normal), (1920, 0, 1920, 1080));
+    }
+
+    #[test]
+    fn local_webpages_accept_paths_and_file_uris() {
+        assert_eq!(
+            local_webpage_path("/tmp/wallpaper.html"),
+            Some(PathBuf::from("/tmp/wallpaper.html"))
+        );
+        assert_eq!(
+            local_webpage_path("file:///tmp/wallpaper.html"),
+            Some(PathBuf::from("/tmp/wallpaper.html"))
+        );
+        assert_eq!(
+            local_webpage_path("file:///tmp/hello%20world.html"),
+            Some(PathBuf::from("/tmp/hello world.html"))
+        );
+        // A remote host is not a local document and must not be read as one.
+        assert_eq!(local_webpage_path("file://example.com/tmp/a.html"), None);
     }
 
     #[test]

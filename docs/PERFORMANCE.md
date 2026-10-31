@@ -93,6 +93,28 @@ property after the switch; the PID stays the same.
 `gnome_desktop_icon_workaround()` now runs only when at least one wallpaper
 window exists, so null mode no longer pays for an extension reload.
 
+## 1.2 Eco Engine and IPC changes (2026-11-01)
+
+These are correctness/latency observations from the single-display XWayland
+machine, not a full energy benchmark.
+
+| Scenario | Observation |
+| --- | --- |
+| mpv spawn → IPC connected, 1080p | 77 ms after the child was spawned; the GTK thread returned immediately after `spawn` and did not wait |
+| Fullscreen mpv covering the only monitor | X11 sample reported one fullscreen rectangle; Eco changed to `Occluded` on the next 300 ms sample and paused playback |
+| Closing the fullscreen window | Eco returned to `Active` on the next sample and resumed playback |
+| Quit during playback | mpv quit through the IPC worker; the tested instance left no child process |
+
+The per-monitor decision is now independent: the unit tests cover a fullscreen
+window on one monitor leaving another monitor active, a window spanning both,
+a small window, and a maximized window with a top-panel inset. Multi-monitor
+CPU/RAM/GPU measurements are still missing (see `docs/AUDIT.md`).
+
+The UI labels are now **Quality**, **Balanced** and **Eco**; the historical
+“power saving” rows above still describe the same `power` configuration value
+and mpv flags. Eco additionally stops playback after five minutes of desktop
+idle, which the old profile did not do.
+
 ## Resolved: static wallpaper no longer blocks the GTK loop
 
 Before 0.4.0, `apply_static` ran ffmpeg synchronously on the GTK thread

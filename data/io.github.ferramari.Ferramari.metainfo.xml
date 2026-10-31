@@ -16,6 +16,20 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="1.2.0" date="2026-11-01" type="stable">
+      <description>
+        <p>Eco Engine and core stability:</p>
+        <ul>
+          <li>Per-monitor Active/Idle/Occluded/Suspended policy; a fullscreen window on one monitor no longer pauses the others.</li>
+          <li>Quality, Balanced and Eco profiles, with idle pause in Eco.</li>
+          <li>mpv IPC moved to a dedicated worker; the GTK thread no longer waits for the socket or for IPC replies.</li>
+          <li>Screen lock, suspend and end-session watchers no longer block startup on D-Bus.</li>
+          <li>Config hotplug no longer discards pending volume/blur edits; one corrupt field no longer resets the whole config.</li>
+          <li>X11 samples now keep the last known state on a transient error, and HiDPI monitor scaling is accounted for.</li>
+          <li>Local file:// web wallpapers are accepted; hidden web wallpapers are muted.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.1.0" date="2026-10-31" type="stable">
       <description>
         <p>Theme selection.</p>

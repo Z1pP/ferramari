@@ -92,15 +92,20 @@ Run from a checkout with `cargo build --release`, or from an installed build.
 - [ ] Set rotation to Random; it does not immediately repeat the same item.
 - [ ] Restart the app; library.json survives and is valid.
 
-### Power profiles
-- [ ] Select Performance, Balanced and Power saving; each restarts playback.
-- [ ] Power saving adds frame dropping, single decoder thread and bilinear scaling.
+### Power profiles and Eco Engine
+- [ ] Select Quality, Balanced and Eco; each restarts playback to apply the mpv flags.
+- [ ] Eco adds frame dropping, single decoder thread and bilinear scaling.
 - [ ] With "Pause on battery" enabled on battery, playback pauses; connecting AC resumes it.
 - [ ] Battery percentage/AC state appears in Settings.
+- [ ] On two monitors, open a fullscreen app on monitor 1: monitor 1 pauses and monitor 2 keeps playing.
+- [ ] Close the fullscreen app: monitor 1 resumes without restarting monitor 2.
+- [ ] With Balanced, leave the desktop idle for five minutes: playback continues.
+- [ ] With Eco, leave the desktop idle for five minutes: playback pauses; moving the mouse resumes it.
+- [ ] In `-d` logs, check `[Eco] <monitor>: Active/Occluded/Idle/Suspended` transitions.
 
 ### System integration
 - [ ] Screen lock pauses and unlock resumes.
-- [ ] Maximized/fullscreen window pauses (X11).
+- [ ] Maximized/fullscreen window pauses only the covered monitor (X11).
 - [ ] Autostart toggle creates/removes the XDG autostart entry.
 - [ ] Tray menu (Show, mute, pause, reload, quit) works.
 - [ ] D-Bus `video`, `volume`, `reload_config` and `quit` work.

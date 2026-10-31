@@ -21,6 +21,9 @@ pub struct MonitorInfo {
     pub y: i32,
     pub width: i32,
     pub height: i32,
+    /// GDK's logical-to-device-pixel factor. X11 root coordinates (EWMH window
+    /// geometry) are in device pixels, so occlusion checks scale by this.
+    pub scale_factor: i32,
     pub is_primary: bool,
 }
 
@@ -74,6 +77,7 @@ pub fn list() -> Vec<MonitorInfo> {
             y: geometry.y(),
             width: geometry.width(),
             height: geometry.height(),
+            scale_factor: monitor.scale_factor().max(1),
             is_primary: monitor.is_primary(),
         });
     }

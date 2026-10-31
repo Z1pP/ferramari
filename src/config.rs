@@ -265,7 +265,10 @@ impl Config {
 
         // Keep only keys the current schema knows, then fill anything missing
         // from the template. This makes adding a setting a non-breaking change.
-        let merged = merge(template_value, &value);
+        let mut merged = merge(template_value.clone(), &value);
+        // A single mistyped value (a string in `audio_volume`, a number in
+        // `is_mute`, …) must not reset every unrelated setting to its default.
+        changed |= repair_field_types(&mut merged, &template_value);
         let mut config: Config = match serde_json::from_value(merged) {
             Ok(config) => config,
             Err(err) => {
@@ -281,8 +284,17 @@ impl Config {
             config.rotation_mode = "off".to_string();
         }
         config.rotation_interval_sec = config.rotation_interval_sec.clamp(10, 86_400);
-        if !matches!(config.playback_profile.as_str(), "performance" | "power") {
-            config.playback_profile = "balanced".to_string();
+        // Accept the newer profile names and keep the legacy identifiers on
+        // disk so old versions still understand the file.
+        let profile = match config.playback_profile.as_str() {
+            "quality" | "performance" => "performance",
+            "eco" | "power" => "power",
+            _ => "balanced",
+        }
+        .to_string();
+        if profile != config.playback_profile {
+            config.playback_profile = profile;
+            changed = true;
         }
         if !matches!(config.theme.as_str(), "light" | "dark") {
             config.theme = default_theme();
@@ -367,6 +379,58 @@ fn merge(mut template: Value, parsed: &Value) -> Value {
         }
     }
     Value::Object(template.clone())
+}
+
+/// Replace values whose JSON type cannot possibly deserialize into the field,
+/// and drop non-string monitor/collection entries. Returns whether anything
+/// was repaired, so the caller rewrites the file.
+fn repair_field_types(merged: &mut Value, template: &Value) -> bool {
+    let (Some(merged), Some(template)) = (merged.as_object_mut(), template.as_object()) else {
+        return false;
+    };
+    let mut changed = false;
+    for (key, default) in template {
+        let Some(value) = merged.get(key) else {
+            continue;
+        };
+        let valid = match default {
+            Value::String(_) => value.is_string(),
+            Value::Bool(_) => value.is_boolean(),
+            // Integer defaults (volume, interval, blur) must not accept a
+            // fractional number; float defaults (fade timings) may.
+            Value::Number(number) if number.is_i64() || number.is_u64() => {
+                value.as_i64().is_some() || value.as_u64().is_some()
+            }
+            Value::Number(_) => value.is_number(),
+            Value::Object(_) => value.is_object(),
+            Value::Array(_) => value.is_array(),
+            Value::Null => true,
+        };
+        if !valid {
+            log::warn!("[Config] Ignoring a value of the wrong type for {key}");
+            merged.insert(key.clone(), default.clone());
+            changed = true;
+        }
+    }
+
+    for key in ["data_source", "rotations"] {
+        let Some(Value::Object(map)) = merged.get_mut(key) else {
+            continue;
+        };
+        let before = map.len();
+        map.retain(|_, value| value.is_string());
+        if map.len() != before {
+            log::warn!("[Config] Dropped non-string entries from {key}");
+            changed = true;
+        }
+    }
+    if let Some(Value::Object(sources)) = merged.get_mut("data_source") {
+        if !sources.contains_key("Default") {
+            sources.insert("Default".to_string(), Value::String(String::new()));
+            changed = true;
+        }
+    }
+    changed
 }
 
 /// Schema 3 stored the source of *all* monitors in one string and called
@@ -542,6 +606,23 @@ mod tests {
     }
 
     #[test]
+    fn new_profile_names_are_normalised_to_legacy_ids() {
+        for (input, expected) in [
+            ("quality", "performance"),
+            ("performance", "performance"),
+            ("eco", "power"),
+            ("power", "power"),
+            ("unknown", "balanced"),
+        ] {
+            let text = format!(
+                r#"{{"version": 4, "mode": "MODE_NULL", "data_source": {{"Default": ""}}, "playback_profile": "{input}"}}"#
+            );
+            let (config, _) = Config::parse(&text, &monitors());
+            assert_eq!(config.playback_profile, expected, "input {input}");
+        }
+    }
+
+    #[test]
     fn theme_defaults_and_persists() {
         let template = Config::template(&monitors());
         assert_eq!(template.theme, "system");
@@ -599,6 +680,37 @@ mod tests {
         assert!(!config.is_mute_when_maximized);
         assert_eq!(config.volume, 70);
         assert!(config.data_source.contains_key("eDP-1"));
+    }
+
+    #[test]
+    fn one_badly_typed_field_does_not_reset_every_setting() {
+        let text = r#"{
+            "version": 4, "mode": "MODE_VIDEO",
+            "data_source": {"Default": "/videos/a.mp4", "HDMI-1": 42},
+            "audio_volume": "loud", "is_mute": true,
+            "rotations": {"eDP-1": 7}
+        }"#;
+        let (config, changed) = Config::parse(text, &monitors());
+        assert!(changed);
+        // The invalid number/string pairs fall back individually.
+        assert_eq!(config.volume, 50);
+        assert!(config.is_mute);
+        assert_eq!(config.default_source(), "/videos/a.mp4");
+        assert!(!config.rotations.contains_key("eDP-1"));
+        // The valid source survives; the non-string HDMI entry is dropped and
+        // later filled from Default.
+        assert_eq!(config.source_for("HDMI-1"), "/videos/a.mp4");
+    }
+
+    #[test]
+    fn fractional_values_are_rejected_for_integer_fields() {
+        let text = r#"{
+            "version": 4, "mode": "MODE_NULL", "audio_volume": 42.5,
+            "fade_duration_sec": 0.25, "data_source": {"Default": ""}
+        }"#;
+        let (config, _) = Config::parse(text, &monitors());
+        assert_eq!(config.volume, 50);
+        assert_eq!(config.fade_duration_sec, 0.25);
     }
 
     #[test]

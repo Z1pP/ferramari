@@ -846,14 +846,17 @@ msgstr "Производительность"
 msgid "Playback profile"
 msgstr "Профиль воспроизведения"
 
-msgid "Performance prioritises smoothness; Power saving reduces decoding and scaling"
-msgstr "Производительность важнее плавности; энергосбережение снижает декодирование и масштабирование"
+msgid "Quality prioritises smoothness; Eco reduces decoding and pauses idle wallpapers"
+msgstr "Качество важнее плавности; «Эко» снижает декодирование и приостанавливает обои при простое"
+
+msgid "Quality"
+msgstr "Качество"
 
 msgid "Balanced"
 msgstr "Сбалансированный"
 
-msgid "Power saving"
-msgstr "Энергосбережение"
+msgid "Eco"
+msgstr "Эко"
 
 msgid "Pause on battery"
 msgstr "Пауза от батареи"

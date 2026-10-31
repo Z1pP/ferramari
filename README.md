@@ -25,13 +25,16 @@ The interface has a hand-tuned dark palette as well as the light one:
 - Home page with the current wallpaper and per-monitor cards
 - Local library with favorites, recently used wallpapers and collections
 - Automatic wallpaper rotation from a per-monitor collection (order or random)
-- Playback profiles (Performance, Balanced, Power saving), optional pause on battery
+- Eco Engine: per-monitor `Active`/`Idle`/`Occluded`/`Suspended` state,
+  automatic pause when a monitor is covered or fullscreen, idle handling and
+  the Quality/Balanced/Eco profiles; optional pause on battery
 - Browse a catalogue of live wallpapers with categories, search, sorting,
   resolution filters and a six-frame preview before installing
 - Streaming URLs through `yt-dlp` (YouTube and many other sites)
 - Any web page as the wallpaper (WebKitGTK, so WebGL/Unity/Godot work)
 - GNOME static wallpaper with a blurred frame from the video
-- Pause or mute playback when a window is maximized or fullscreen (X11)
+- Pause or mute playback per monitor when that monitor is covered by a
+  maximized or fullscreen window (X11); the other monitors keep playing
 - Pause while the screen is locked; clean shutdown on logout/reboot
 - Automatic recovery when mpv dies, with capped backoff and a visible error
   after repeated failures
@@ -196,6 +199,25 @@ previous good copy is kept as `.json.bak`. A truncated or invalid
 `config.json` is restored from that backup instead of silently resetting the
 settings.
 
+### Eco Engine
+
+Every monitor is evaluated independently. The engine combines the session
+state (user pause, screen lock, suspend, battery rule) with that monitor's own
+occlusion sample (a maximized/fullscreen window covering it) and desktop idle
+time:
+
+| State | Playback |
+| --- | --- |
+| `Active` | normal |
+| `Idle` | Balanced keeps playing; Eco pauses after five minutes of desktop inactivity |
+| `Occluded` | paused when **Pause when maximized window** is on |
+| `Suspended` | paused on lock, suspend, battery rule or explicit pause |
+
+The profiles are **Quality** (smoothness first), **Balanced** (pause hidden
+monitors, keep playing when idle) and **Eco** (also stop when idle). The
+on-disk identifiers stay `performance`, `balanced` and `power` so older
+configs keep working.
+
 ### Theme
 
 Ferramari follows the desktop colour scheme by default and also ships a
@@ -233,14 +255,15 @@ WallpaperWindow   Config/D-Bus    GNOME background
 | --- | --- |
 | `src/app.rs` | application state, command handling, mode switching |
 | `src/config.rs` | schema-v4 config, validation, 3.x migration |
-| `src/mpv.rs` | mpv process + JSON IPC (volume, mute, pause, power profiles) |
+| `src/mpv.rs` | mpv process + a dedicated JSON IPC worker (volume, mute, pause, profiles) |
+| `src/eco.rs` | pure per-monitor Eco Engine policy and profiles |
 | `src/power.rs` | battery/AC state from `/sys/class/power_supply` |
 | `src/ui/control.rs` | control window (videos, streaming, web page, toggles) |
 | `src/util.rs` | gettext helpers, video discovery, string utilities |
 | `src/ui/online.rs` | wallpaper catalogue and preview/install dialog |
 | `src/catalogue.rs` | catalogue client: listing/search parsing, cache, download, frames |
 | `src/ui/wallpaper.rs` | one desktop-type window per monitor |
-| `src/x11.rs` | EWMH polling for maximized/fullscreen windows (replaces libwnck) |
+| `src/x11.rs` | EWMH polling for per-monitor window coverage (replaces libwnck) |
 | `src/dbus.rs` | zbus server/player interfaces, single-instance logic |
 | `src/tray.rs` | StatusNotifierItem tray (`ksni`) |
 | `src/wallpaper.rs` | blurred static wallpaper, original-background restore |
@@ -305,6 +328,12 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
   autostart inside the sandbox are not verified.
 - Two- and three-monitor performance scenarios are not measured on the current
   single-display test machine.
+- Streaming and web wallpapers use one shared source for all monitors; only
+  local video sources are assigned independently.
+- WebKitGTK has no public freeze API, so a hidden web wallpaper is muted but
+  its JavaScript timers and animations are only throttled, not stopped.
+- There is no live resource monitor or dedicated Performance page yet; profile
+  energy claims still need a measured before/after table.
 
 ## Implementation notes
 
@@ -333,11 +362,12 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 
 ## Testing notes
 
-`cargo test` covers config parsing/migration, atomic saves and backup recovery,
-the player restart policy, yt-dlp and ffmpeg timeouts, EWMH decisions, mpv IPC
-framing, monitor naming and scaling, the fade maths, path handling and the
-catalogue parsers (cards, categories, search,
-signed download links, archive extraction, video probing and frame sheets).
+`cargo test` covers config parsing/migration (including per-field corruption),
+atomic saves and backup recovery, the player restart policy, yt-dlp and ffmpeg
+timeouts, per-monitor EWMH coverage, Eco Engine decisions, mpv IPC framing and
+the worker command order, monitor naming/scaling, the fade maths, path handling
+and the catalogue parsers (cards, categories, search, signed download links,
+archive extraction, video probing and frame sheets).
 The GUI, video embedding, streaming, webpage, catalogue and library modes were
 smoke-tested on Ubuntu 26.04 / GNOME Wayland (XWayland). The full environment
 matrix and smoke checklist live in [`docs/TESTING.md`](docs/TESTING.md). To exercise the
@@ -350,7 +380,8 @@ GSETTINGS_BACKEND=memory ferramari -b -d
 ## Contributing
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md), [`ROADMAP.md`](ROADMAP.md) and the
-[`docs/TESTING.md`](docs/TESTING.md) matrix.
+[`docs/TESTING.md`](docs/TESTING.md) matrix. The 2026-11-01 architecture audit
+and its open findings live in [`docs/AUDIT.md`](docs/AUDIT.md).
 
 ## License
 

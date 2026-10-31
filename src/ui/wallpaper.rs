@@ -23,6 +23,9 @@ pub struct WallpaperWindow {
     content: Content,
     fade: Fade,
     primary: bool,
+    /// Master/user mute state. `pause_fade` temporarily mutes a WebView while
+    /// it is hidden; `play_fade` restores this value on resume.
+    muted: bool,
     key: WindowKey,
     // Kept alive for the lifetime of the window.
     _menu: gtk::Menu,
@@ -87,6 +90,7 @@ impl WallpaperWindow {
             content: Content::Video { mpv },
             fade: Fade::default(),
             primary,
+            muted,
             key: WindowKey {
                 kind: WindowKind::Video,
                 monitor: monitor.name.clone(),
@@ -133,6 +137,7 @@ impl WallpaperWindow {
             content: Content::Video { mpv },
             fade: Fade::default(),
             primary,
+            muted,
             key: WindowKey {
                 kind: WindowKind::Stream,
                 monitor: monitor.name.clone(),
@@ -197,6 +202,7 @@ impl WallpaperWindow {
             content: Content::Web { webview },
             fade: Fade::default(),
             primary,
+            muted,
             key: WindowKey {
                 kind: WindowKind::Web,
                 monitor: monitor.name.clone(),
@@ -256,7 +262,12 @@ impl WallpaperWindow {
                     );
                 }
             }
-            Content::Web { .. } => {}
+            Content::Web { webview } => {
+                // WebKitGTK has no public freeze API; muting is the part of
+                // "pause" we can guarantee. WebKit already throttles rendering
+                // for an unmapped/background surface.
+                webview.set_is_muted(self.muted || !self.primary);
+            }
         }
     }
 
@@ -264,7 +275,7 @@ impl WallpaperWindow {
         match &self.content {
             Content::Video { mpv } => {
                 if self.primary {
-                    let from = mpv.borrow().volume as f64;
+                    let from = mpv.borrow().volume() as f64;
                     let mpv_for_volume = Rc::clone(mpv);
                     let mpv_for_pause = Rc::clone(mpv);
                     self.fade.start(
@@ -283,13 +294,13 @@ impl WallpaperWindow {
                     let _ = mpv.borrow_mut().set_pause(true);
                 }
             }
-            Content::Web { .. } => {}
+            Content::Web { webview } => webview.set_is_muted(true),
         }
     }
 
     pub fn volume_fade(&mut self, target: i64, duration: f64, interval: f64) {
         if let Content::Video { mpv } = &self.content {
-            let from = mpv.borrow().volume as f64;
+            let from = mpv.borrow().volume() as f64;
             let mpv = Rc::clone(mpv);
             self.fade.start(
                 from,
@@ -311,11 +322,12 @@ impl WallpaperWindow {
     }
 
     pub fn set_mute(&mut self, muted: bool) {
+        self.muted = muted;
         match &self.content {
             Content::Video { mpv } => {
                 let _ = mpv.borrow_mut().set_mute(muted);
             }
-            Content::Web { webview } => webview.set_is_muted(muted),
+            Content::Web { webview } => webview.set_is_muted(muted || !self.primary),
         }
     }
 }

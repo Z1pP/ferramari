@@ -998,7 +998,7 @@ fn build_settings_page(
     );
     profile_text.pack_start(
         &label(
-            &tr("Performance prioritises smoothness; Power saving reduces decoding and scaling"),
+            &tr("Quality prioritises smoothness; Eco reduces decoding and pauses idle wallpapers"),
             "setting-description",
         ),
         false,
@@ -1006,9 +1006,9 @@ fn build_settings_page(
         0,
     );
     let profile = gtk::ComboBoxText::new();
-    profile.append(Some("performance"), &tr("Performance"));
+    profile.append(Some("performance"), &tr("Quality"));
     profile.append(Some("balanced"), &tr("Balanced"));
-    profile.append(Some("power"), &tr("Power saving"));
+    profile.append(Some("power"), &tr("Eco"));
     profile.set_active_id(Some("balanced"));
     profile.set_valign(gtk::Align::Center);
     profile.set_size_request(150, -1);

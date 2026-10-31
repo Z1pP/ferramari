@@ -24,6 +24,19 @@ bundle uses host media tools.
 
 ## After 1.0
 
+### 1.2 — Eco Engine foundation (current)
+
+- [x] Per-monitor Active/Idle/Occluded/Suspended policy
+- [x] Quality/Balanced/Eco profiles and idle detection
+- [x] Asynchronous mpv IPC worker (no GTK-thread waits)
+- [x] Non-blocking session/suspend watchers
+- [x] Config hotplug and per-field corruption safety
+- [x] HiDPI-aware per-monitor occlusion
+- [ ] Dynamic FPS reduction while idle
+- [ ] Decoder resource release after a long pause
+- [ ] Per-monitor stream/web sources
+- [ ] Automated performance/energy benchmark harness
+
 ### 1.1 — distribution and desktop coverage
 
 - Flathub submission with bundled `mpv`/`ffmpeg`/`yt-dlp` and vendored Cargo

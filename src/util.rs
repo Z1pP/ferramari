@@ -297,6 +297,7 @@ mod tests {
                 y: 0,
                 width: 1920,
                 height: 1080,
+                scale_factor: 1,
                 is_primary: true,
             },
             MonitorInfo {
@@ -306,6 +307,7 @@ mod tests {
                 y: 0,
                 width: 1920,
                 height: 1080,
+                scale_factor: 1,
                 is_primary: false,
             },
         ];

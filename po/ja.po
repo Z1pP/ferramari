@@ -494,14 +494,17 @@ msgstr "パフォーマンス"
 msgid "Playback profile"
 msgstr "再生プロファイル"
 
-msgid "Performance prioritises smoothness; Power saving reduces decoding and scaling"
-msgstr "パフォーマンスは滑らかさを優先し、省電力はデコードとスケーリングを軽減します"
+msgid "Quality prioritises smoothness; Eco reduces decoding and pauses idle wallpapers"
+msgstr "品質は滑らかさを優先し、エコはデコードを減らしてアイドル時に壁紙を一時停止します"
+
+msgid "Quality"
+msgstr "品質"
 
 msgid "Balanced"
 msgstr "バランス"
 
-msgid "Power saving"
-msgstr "省電力"
+msgid "Eco"
+msgstr "エコ"
 
 msgid "Pause on battery"
 msgstr "バッテリー時に一時停止"

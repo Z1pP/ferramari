@@ -16,10 +16,75 @@ use x11rb::protocol::xproto::{AtomEnum, ConnectionExt};
 
 use crate::app::Command;
 
+/// One visible top-level window, in root coordinates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct WindowRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub maximized: bool,
+    pub fullscreen: bool,
+}
+
+/// All visible windows that can occlude a wallpaper. The list is global; the
+/// Eco Engine evaluates it separately for every monitor.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct WindowState {
-    pub is_any_maximized: bool,
-    pub is_any_fullscreen: bool,
+    pub windows: Vec<WindowRect>,
+}
+
+/// What a window list says about one monitor rectangle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct MonitorVisibility {
+    pub covered: bool,
+    pub fullscreen: bool,
+}
+
+impl WindowState {
+    /// Whether a monitor is completely covered by a normal window, and
+    /// whether a fullscreen window is present. A maximised window counts as
+    /// covered even when decorations/panels leave a few pixels around its
+    /// client area: the user cannot see the wallpaper there either.
+    pub fn visibility_at(&self, x: i32, y: i32, width: i32, height: i32) -> MonitorVisibility {
+        if width <= 0 || height <= 0 {
+            return MonitorVisibility::default();
+        }
+        let mut visibility = MonitorVisibility::default();
+        for window in &self.windows {
+            let center_inside = center_inside(window, x, y, width, height);
+            let covers = rect_covers(window, x, y, width, height);
+            if covers || (window.maximized && center_inside) {
+                visibility.covered = true;
+            }
+            if window.fullscreen && (covers || center_inside) {
+                visibility.covered = true;
+                visibility.fullscreen = true;
+            }
+        }
+        visibility
+    }
+}
+
+fn rect_covers(window: &WindowRect, x: i32, y: i32, width: i32, height: i32) -> bool {
+    window.width > 0
+        && window.height > 0
+        && window.x <= x
+        && window.y <= y
+        && window.x.saturating_add(window.width) >= x.saturating_add(width)
+        && window.y.saturating_add(window.height) >= y.saturating_add(height)
+}
+
+fn center_inside(window: &WindowRect, x: i32, y: i32, width: i32, height: i32) -> bool {
+    if window.width <= 0 || window.height <= 0 {
+        return false;
+    }
+    let center_x = window.x.saturating_add(window.width / 2);
+    let center_y = window.y.saturating_add(window.height / 2);
+    center_x >= x
+        && center_x < x.saturating_add(width)
+        && center_y >= y
+        && center_y < y.saturating_add(height)
 }
 
 pub struct Watcher {
@@ -65,13 +130,20 @@ fn run(tx: CommandSender, stop: Arc<AtomicBool>) -> anyhow::Result<()> {
 
     let mut previous = None;
     while !stop.load(Ordering::Relaxed) {
-        let state = query(&connection, root, &atoms).unwrap_or_default();
-        if previous != Some(state) {
-            log::debug!("[WindowHandler] {state:?}");
-            if tx.send(Command::WindowState(state)).is_err() {
-                break;
+        match query(&connection, root, &atoms) {
+            Ok(state) => {
+                if previous.as_ref() != Some(&state) {
+                    log::debug!("[WindowHandler] {state:?}");
+                    previous = Some(state.clone());
+                    if tx.send(Command::WindowState(state)).is_err() {
+                        break;
+                    }
+                }
             }
-            previous = Some(state);
+            // A transient X error (a client vanishing mid-query, a slow
+            // compositor) must not be mistaken for "nothing is maximised":
+            // that would resume the wallpaper behind a fullscreen game.
+            Err(err) => log::debug!("[WindowHandler] query failed ({err}); keeping {previous:?}"),
         }
         std::thread::sleep(Duration::from_millis(300));
     }
@@ -122,19 +194,26 @@ fn query(connection: &impl Connection, root: u32, atoms: &Atoms) -> anyhow::Resu
         .first()
         .copied();
 
-    let mut state = WindowState::default();
+    let mut windows = Vec::new();
     for window in clients.into_iter().filter(|window| *window != 0) {
-        let types = property32(connection, window, atoms.wm_window_type, AtomEnum::ATOM)?;
+        // A client can disappear between the list and this query. Skipping
+        // one bad window keeps the rest of the state usable instead of
+        // failing the whole sample.
+        let Ok(types) = property32(connection, window, atoms.wm_window_type, AtomEnum::ATOM) else {
+            continue;
+        };
         if types.contains(&atoms.type_desktop) || types.contains(&atoms.type_dock) {
             continue;
         }
-        let flags = property32(connection, window, atoms.wm_state, AtomEnum::ATOM)?;
+        let Ok(flags) = property32(connection, window, atoms.wm_state, AtomEnum::ATOM) else {
+            continue;
+        };
         if flags.contains(&atoms.hidden) {
             continue;
         }
-        let desktop = property32(connection, window, atoms.wm_desktop, AtomEnum::CARDINAL)?
-            .first()
-            .copied();
+        let desktop = property32(connection, window, atoms.wm_desktop, AtomEnum::CARDINAL)
+            .ok()
+            .and_then(|values| values.first().copied());
         let on_active_workspace = match (desktop, current_desktop) {
             (Some(desktop), Some(current)) => desktop == current || desktop == u32::MAX,
             _ => true,
@@ -142,14 +221,50 @@ fn query(connection: &impl Connection, root: u32, atoms: &Atoms) -> anyhow::Resu
         if !on_active_workspace {
             continue;
         }
-        if flags.contains(&atoms.maximized_vert) && flags.contains(&atoms.maximized_horz) {
-            state.is_any_maximized = true;
+        let Ok(geometry_cookie) = connection.get_geometry(window) else {
+            continue;
+        };
+        let Ok(geometry) = geometry_cookie.reply() else {
+            continue;
+        };
+        // `get_geometry` is relative to the WM frame after reparenting. The
+        // root coordinates are what monitor rectangles are expressed in.
+        let origin = connection
+            .translate_coordinates(window, root, 0, 0)
+            .ok()
+            .and_then(|cookie| cookie.reply().ok());
+        let (x, y) = origin
+            .map(|origin| (i32::from(origin.dst_x), i32::from(origin.dst_y)))
+            .unwrap_or((i32::from(geometry.x), i32::from(geometry.y)));
+        let width = i32::from(geometry.width);
+        let height = i32::from(geometry.height);
+        if width <= 0 || height <= 0 {
+            continue;
         }
-        if flags.contains(&atoms.fullscreen) {
-            state.is_any_fullscreen = true;
-        }
+        windows.push(WindowRect {
+            x,
+            y,
+            width,
+            height,
+            maximized: flags.contains(&atoms.maximized_vert)
+                && flags.contains(&atoms.maximized_horz),
+            fullscreen: flags.contains(&atoms.fullscreen),
+        });
     }
-    Ok(state)
+    // Stacking order is not semantically relevant for coverage. Sorting keeps
+    // a focus change from looking like a new window state and triggering an
+    // Eco evaluation every 300 ms.
+    windows.sort_by_key(|window| {
+        (
+            window.x,
+            window.y,
+            window.width,
+            window.height,
+            window.maximized,
+            window.fullscreen,
+        )
+    });
+    Ok(WindowState { windows })
 }
 
 fn property32(
@@ -171,11 +286,84 @@ fn property32(
 mod tests {
     use super::*;
 
+    fn rect(x: i32, y: i32, width: i32, height: i32) -> WindowRect {
+        WindowRect {
+            x,
+            y,
+            width,
+            height,
+            maximized: false,
+            fullscreen: false,
+        }
+    }
+
     #[test]
-    fn window_state_defaults_to_idle() {
+    fn an_empty_window_list_covers_nothing() {
         let state = WindowState::default();
-        assert!(!state.is_any_maximized);
-        assert!(!state.is_any_fullscreen);
+        assert_eq!(
+            state.visibility_at(0, 0, 1920, 1080),
+            MonitorVisibility::default()
+        );
+    }
+
+    #[test]
+    fn a_fullscreen_window_covers_only_its_own_monitor() {
+        let state = WindowState {
+            windows: vec![WindowRect {
+                fullscreen: true,
+                ..rect(1920, 0, 1920, 1080)
+            }],
+        };
+        assert_eq!(
+            state.visibility_at(0, 0, 1920, 1080),
+            MonitorVisibility::default()
+        );
+        assert_eq!(
+            state.visibility_at(1920, 0, 1920, 1080),
+            MonitorVisibility {
+                covered: true,
+                fullscreen: true
+            }
+        );
+    }
+
+    #[test]
+    fn a_window_spanning_both_monitors_covers_both() {
+        let state = WindowState {
+            windows: vec![WindowRect {
+                fullscreen: true,
+                ..rect(0, 0, 3840, 1080)
+            }],
+        };
+        for x in [0, 1920] {
+            let visibility = state.visibility_at(x, 0, 1920, 1080);
+            assert!(visibility.covered, "monitor at {x} should be covered");
+            assert!(visibility.fullscreen);
+        }
+    }
+
+    #[test]
+    fn a_small_window_does_not_pause_the_wallpaper() {
+        let state = WindowState {
+            windows: vec![rect(100, 100, 800, 600)],
+        };
+        assert!(!state.visibility_at(0, 0, 1920, 1080).covered);
+    }
+
+    #[test]
+    fn a_maximized_window_with_a_panel_inset_still_counts() {
+        // GNOME leaves the top bar outside a maximised window's client area,
+        // so the rectangle is a few pixels short. The state flag and the
+        // monitor centre are the reliable signal.
+        let state = WindowState {
+            windows: vec![WindowRect {
+                maximized: true,
+                ..rect(0, 32, 1920, 1048)
+            }],
+        };
+        let visibility = state.visibility_at(0, 0, 1920, 1080);
+        assert!(visibility.covered);
+        assert!(!visibility.fullscreen);
     }
 
     #[test]

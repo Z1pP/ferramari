@@ -523,3 +523,15 @@ msgstr "AC電源"
 
 msgid "No battery detected"
 msgstr "バッテリーが見つかりません"
+
+msgid "Eco idle delay"
+msgstr "エコのアイドル待機時間"
+
+msgid "Minutes of desktop inactivity before Eco pauses playback"
+msgstr "エコが再生を一時停止するまでのデスクトップ無操作時間（分）"
+
+msgid "Idle"
+msgstr "アイドル"
+
+msgid "Paused (covered)"
+msgstr "一時停止（ウィンドウに覆われています）"

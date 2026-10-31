@@ -26,6 +26,8 @@ pub struct WallpaperWindow {
     /// Master/user mute state. `pause_fade` temporarily mutes a WebView while
     /// it is hidden; `play_fade` restores this value on resume.
     muted: bool,
+    /// The profile's default `vf` chain, restored when an idle FPS cap ends.
+    base_filter: String,
     key: WindowKey,
     // Kept alive for the lifetime of the window.
     _menu: gtk::Menu,
@@ -91,6 +93,7 @@ impl WallpaperWindow {
             fade: Fade::default(),
             primary,
             muted,
+            base_filter: crate::mpv::profile_video_filter(profile).to_string(),
             key: WindowKey {
                 kind: WindowKind::Video,
                 monitor: monitor.name.clone(),
@@ -138,6 +141,7 @@ impl WallpaperWindow {
             fade: Fade::default(),
             primary,
             muted,
+            base_filter: crate::mpv::profile_video_filter(profile).to_string(),
             key: WindowKey {
                 kind: WindowKind::Stream,
                 monitor: monitor.name.clone(),
@@ -203,6 +207,7 @@ impl WallpaperWindow {
             fade: Fade::default(),
             primary,
             muted,
+            base_filter: String::new(),
             key: WindowKey {
                 kind: WindowKind::Web,
                 monitor: monitor.name.clone(),
@@ -233,6 +238,15 @@ impl WallpaperWindow {
         drop(mpv);
         self.key.source = source.to_string();
         Ok(())
+    }
+
+    /// Last command-level mpv error (for example a corrupt file passed to
+    /// `loadfile`). The command loop polls this and shows it to the user.
+    pub fn take_error(&self) -> Option<String> {
+        match &self.content {
+            Content::Video { mpv } => mpv.borrow().take_error(),
+            Content::Web { .. } => None,
+        }
     }
 
     /// True while the embedded player is alive. Web views report alive here;
@@ -318,6 +332,18 @@ impl WallpaperWindow {
     pub fn set_volume(&mut self, volume: i64) {
         if let Content::Video { mpv } = &self.content {
             let _ = mpv.borrow_mut().set_volume(volume);
+        }
+    }
+
+    /// Apply (or clear) the Eco Engine's idle frame-rate cap. `None` restores the
+    /// profile's own filter chain, so Eco's 30 fps cap is not lost after a resume.
+    pub fn set_fps_cap(&mut self, fps: Option<u32>) {
+        if let Content::Video { mpv } = &self.content {
+            let filter = match fps {
+                Some(fps) => format!("fps={fps}"),
+                None => self.base_filter.clone(),
+            };
+            let _ = mpv.borrow_mut().set_video_filter(&filter);
         }
     }
 

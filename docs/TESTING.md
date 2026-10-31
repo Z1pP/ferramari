@@ -99,9 +99,11 @@ Run from a checkout with `cargo build --release`, or from an installed build.
 - [ ] Battery percentage/AC state appears in Settings.
 - [ ] On two monitors, open a fullscreen app on monitor 1: monitor 1 pauses and monitor 2 keeps playing.
 - [ ] Close the fullscreen app: monitor 1 resumes without restarting monitor 2.
-- [ ] With Balanced, leave the desktop idle for five minutes: playback continues.
-- [ ] With Eco, leave the desktop idle for five minutes: playback pauses; moving the mouse resumes it.
-- [ ] In `-d` logs, check `[Eco] <monitor>: Active/Occluded/Idle/Suspended` transitions.
+- [ ] Set the Eco idle delay to 1 minute; leave Balanced idle: playback continues at the 30 fps cap.
+- [ ] With Eco and a 1-minute delay, leave the desktop idle: playback pauses; moving the mouse resumes it.
+- [ ] Home monitor cards show Playing / Idle / Paused (covered) / Paused for the matching state.
+- [ ] In `-d` logs, check `[Eco] <monitor>: Active/Occluded/Idle/Suspended` transitions and the fps value.
+- [ ] `gdbus ... Properties.Get ... monitor_states` returns one entry per monitor.
 
 ### System integration
 - [ ] Screen lock pauses and unlock resumes.

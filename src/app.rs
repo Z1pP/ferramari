@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender as StdSender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -29,7 +30,7 @@ use crate::paths;
 use crate::power;
 use crate::supervisor::{RestartPolicy, Retry, MAX_RETRIES};
 use crate::tray;
-use crate::ui::control::ControlWindow;
+use crate::ui::control::{ControlWindow, RefreshState};
 use crate::ui::theme;
 use crate::ui::wallpaper::{WallpaperWindow, WindowKey, WindowKind};
 use crate::util;
@@ -79,6 +80,7 @@ pub enum Command {
     WindowState(WindowState),
     Idle(bool),
     MonitorsChanged,
+    MonitorsChangedNow,
     SetAutostart(bool),
     SetLanguage(String),
     SetTheme(String),
@@ -90,6 +92,7 @@ pub enum Command {
     },
     SetPlaybackProfile(String),
     SetPauseOnBattery(bool),
+    SetIdleTimeout(i64),
     PowerStatus {
         on_battery: bool,
         percent: Option<u8>,
@@ -122,6 +125,9 @@ pub struct Snapshot {
     pub is_mute_when_maximized: bool,
     pub theme: String,
     pub data_source: std::collections::HashMap<String, String>,
+    /// Monitor name → Eco state label (`active`, `idle`, `occluded`,
+    /// `suspended`). Useful to scripts and the Home cards.
+    pub monitor_states: std::collections::HashMap<String, String>,
 }
 
 impl Default for Snapshot {
@@ -138,6 +144,7 @@ impl Default for Snapshot {
             is_mute_when_maximized: false,
             theme: "system".to_string(),
             data_source: std::collections::HashMap::new(),
+            monitor_states: std::collections::HashMap::new(),
         }
     }
 }
@@ -179,9 +186,9 @@ pub struct App {
     idle: bool,
     /// Latest per-window occlusion sample from the X11 watcher.
     window_state: WindowState,
-    /// Last play/pause decision applied to each monitor, so a state change
-    /// only touches the windows whose decision actually changed.
-    last_play: HashMap<String, bool>,
+    /// Last Eco decision applied to each monitor, so a state change only touches
+    /// the windows whose state or FPS cap actually changed.
+    last_plans: HashMap<String, eco::Plan>,
     stream: Option<ytdlp::StreamInfo>,
     stream_resolving: bool,
     background_wallpaper: GnomeBackground,
@@ -189,6 +196,9 @@ pub struct App {
     last_rotation: HashMap<String, Instant>,
     on_battery: bool,
     battery_percent: Option<u8>,
+    /// Shared with the idle watcher; a settings change takes effect on the
+    /// next 15 s poll without restarting the thread.
+    idle_threshold: Arc<AtomicU64>,
     static_job: Option<(String, i64)>,
     static_generation: u64,
     /// Desktop dark preference captured before the in-app override.
@@ -197,6 +207,7 @@ pub struct App {
     config_dirty_at: Option<Instant>,
     policies: HashMap<WindowKey, RestartPolicy>,
     window_watcher: Option<x11::Watcher>,
+    monitor_debounce: Option<glib::SourceId>,
     tray_handle: Option<ksni::blocking::Handle<tray::Tray>>,
     quit_requested: bool,
     gui_shown: bool,
@@ -224,6 +235,9 @@ impl App {
         // Read the power supply once: two separate `status()` calls can
         // observe different states while a charger is being plugged in.
         let power_status = power::status();
+        let idle_threshold = Arc::new(AtomicU64::new(
+            config.idle_timeout_sec.clamp(30, 86_400) as u64
+        ));
 
         let mut app = Self {
             gtk_app: gtk_app.clone(),
@@ -241,7 +255,7 @@ impl App {
             suspended: false,
             idle: false,
             window_state: WindowState::default(),
-            last_play: HashMap::new(),
+            last_plans: HashMap::new(),
             stream: None,
             stream_resolving: false,
             background_wallpaper,
@@ -249,12 +263,14 @@ impl App {
             last_rotation: HashMap::new(),
             on_battery: power_status.on_battery,
             battery_percent: power_status.percent,
+            idle_threshold,
             static_job: None,
             static_generation: 0,
             system_prefers_dark,
             config_dirty_at: None,
             policies: HashMap::new(),
             window_watcher: None,
+            monitor_debounce: None,
             tray_handle: None,
             quit_requested: false,
             gui_shown: false,
@@ -365,15 +381,19 @@ impl App {
     }
 
     fn start_external_watchers(app: &Rc<RefCell<Self>>) {
-        let (tx, is_wayland) = {
+        let (tx, is_wayland, idle_threshold) = {
             let app = app.borrow();
-            (app.tx.clone(), paths::is_wayland())
+            (
+                app.tx.clone(),
+                paths::is_wayland(),
+                Arc::clone(&app.idle_threshold),
+            )
         };
 
         handlers::start_screen_lock_watcher(tx.clone());
         handlers::start_end_session_watcher(tx.clone());
         handlers::start_sleep_watcher(tx.clone());
-        handlers::start_idle_watcher(tx.clone(), 300);
+        handlers::start_idle_watcher(tx.clone(), idle_threshold);
         if !is_wayland {
             if let Some(watcher) = x11::start(tx.clone()) {
                 app.borrow_mut().window_watcher = Some(watcher);
@@ -580,6 +600,15 @@ impl App {
                 self.apply_playback_states();
                 self.refresh_ui();
             }
+            Command::SetIdleTimeout(seconds) => {
+                let seconds = seconds.clamp(30, 86_400);
+                if self.config.idle_timeout_sec != seconds {
+                    self.config.idle_timeout_sec = seconds;
+                    self.idle_threshold.store(seconds as u64, Ordering::Relaxed);
+                    self.save_config();
+                    self.refresh_ui();
+                }
+            }
             Command::Suspend(sleeping) => {
                 log::info!("[Power] Suspend={sleeping}");
                 self.suspended = sleeping;
@@ -667,6 +696,21 @@ impl App {
                 }
             }
             Command::MonitorsChanged => {
+                // A single hotplug often arrives as added + removed + size
+                // events. Coalesce them so the players are rebuilt once.
+                if self.monitor_debounce.is_some() {
+                    return;
+                }
+                let tx = self.tx.clone();
+                self.monitor_debounce = Some(glib::timeout_add_local_once(
+                    Duration::from_millis(250),
+                    move || {
+                        let _ = tx.send(Command::MonitorsChangedNow);
+                    },
+                ));
+            }
+            Command::MonitorsChangedNow => {
+                self.monitor_debounce = None;
                 log::info!("[Monitors] Layout changed");
                 // A hotplug must not throw away a debounced volume/blur edit:
                 // `Config::load` re-reads the file, which does not contain it
@@ -679,6 +723,10 @@ impl App {
                     .map(|monitor| monitor.name.clone())
                     .collect();
                 self.config = Config::load(&names);
+                self.idle_threshold.store(
+                    self.config.idle_timeout_sec.clamp(30, 86_400) as u64,
+                    Ordering::Relaxed,
+                );
                 theme::apply_mode(&self.config.theme, self.system_prefers_dark);
                 self.rebuild_windows();
             }
@@ -858,7 +906,7 @@ impl App {
             .iter()
             .map(|window| window.key().monitor.clone())
             .collect();
-        self.last_play
+        self.last_plans
             .retain(|monitor, _| live_monitors.contains(monitor));
 
         let volume = self.config.volume;
@@ -924,7 +972,7 @@ impl App {
                     // A new window starts paused. Drop the cached decision so
                     // `apply_playback_states` applies it even when the monitor
                     // already had the same play/pause state.
-                    self.last_play.remove(&key.monitor);
+                    self.last_plans.remove(&key.monitor);
                     let policy = self
                         .policies
                         .entry(key.clone())
@@ -935,7 +983,7 @@ impl App {
             }
         }
 
-        // New windows have no entry in `last_play`, so this only fades them
+        // New windows have no entry in `last_plans`, so this only fades them
         // in/out. Existing players keep their current volume instead of
         // dipping to zero on every rebuild.
         self.apply_playback_states();
@@ -1016,6 +1064,10 @@ impl App {
             .map(|monitor| monitor.name.clone())
             .collect();
         self.config = Config::load(&names);
+        self.idle_threshold.store(
+            self.config.idle_timeout_sec.clamp(30, 86_400) as u64,
+            Ordering::Relaxed,
+        );
         theme::apply_mode(&self.config.theme, self.system_prefers_dark);
         // Volume, mute, mode and sources all come from the file now, so the
         // players are recreated rather than patched. Streaming sources are
@@ -1039,7 +1091,7 @@ impl App {
     fn close_windows(&mut self) {
         self.windows.clear();
         self.policies.clear();
-        self.last_play.clear();
+        self.last_plans.clear();
     }
 
     /// Poll every player once. A dead mpv is removed and recreated according to
@@ -1047,6 +1099,18 @@ impl App {
     /// a tight loop.
     fn watch_players(&mut self) {
         let now = Instant::now();
+        // Command-level errors arrive asynchronously from the IPC worker.
+        // Reporting them here keeps the GTK thread free of IPC waits.
+        let mut reported_errors = Vec::new();
+        for window in &mut self.windows {
+            if let Some(message) = window.take_error() {
+                reported_errors.push((window.key().clone(), message));
+            }
+        }
+        for (key, message) in reported_errors {
+            self.notify_window_error(&key, anyhow::anyhow!(message));
+        }
+
         let mut crashed = Vec::new();
         for window in &mut self.windows {
             if !window.player_alive() {
@@ -1115,16 +1179,17 @@ impl App {
             else {
                 continue;
             };
-            let should_play = self.eco_plan_for(&key.monitor).play;
+            let plan = self.eco_plan_for(&key.monitor);
             match self.create_window(&key, &monitor) {
                 Ok(mut window) => {
-                    if should_play {
+                    if plan.play {
                         window.play_fade(volume, duration, interval);
                     } else {
                         window.pause_fade(duration, interval);
                     }
+                    window.set_fps_cap(plan.fps);
                     self.windows.push(window);
-                    self.last_play.insert(key.monitor.clone(), should_play);
+                    self.last_plans.insert(key.monitor.clone(), plan);
                     if let Some(policy) = self.policies.get_mut(&key) {
                         policy.on_started(now);
                     }
@@ -1198,16 +1263,22 @@ impl App {
         let duration = self.config.fade_duration_sec;
         let interval = self.config.fade_interval;
         for (window, (monitor, plan)) in self.windows.iter_mut().zip(plans) {
-            if self.last_play.get(&monitor) == Some(&plan.play) {
+            if self.last_plans.get(&monitor) == Some(&plan) {
                 continue;
             }
-            log::debug!("[Eco] {monitor}: {:?} (play={})", plan.state, plan.play);
+            log::debug!(
+                "[Eco] {monitor}: {:?} (play={}, fps={:?})",
+                plan.state,
+                plan.play,
+                plan.fps
+            );
             if plan.play {
                 window.play_fade(target, duration, interval);
             } else {
                 window.pause_fade(duration, interval);
             }
-            self.last_play.insert(monitor, plan.play);
+            window.set_fps_cap(plan.fps);
+            self.last_plans.insert(monitor, plan);
         }
     }
 
@@ -1242,13 +1313,24 @@ impl App {
             .any(|window| self.eco_plan_for(&window.key().monitor).play)
     }
 
+    fn eco_state_for(&self, monitor: &str) -> eco::State {
+        self.eco_plan_for(monitor).state
+    }
+
+    fn monitor_states(&self) -> HashMap<String, eco::State> {
+        self.monitors
+            .iter()
+            .map(|monitor| (monitor.name.clone(), self.eco_state_for(&monitor.name)))
+            .collect()
+    }
+
     fn pause_all(&mut self) {
         let duration = self.config.fade_duration_sec;
         let interval = self.config.fade_interval;
         for window in &mut self.windows {
             window.pause_fade(duration, interval);
         }
-        self.last_play.clear();
+        self.last_plans.clear();
     }
 
     fn set_volume(&mut self, volume: i64) {
@@ -1418,19 +1500,21 @@ impl App {
         }
         let first_time = self.config.is_first_time;
         let is_playing = self.any_playing();
+        let eco_states = self.monitor_states();
         if let Some(control) = self.control.as_ref() {
             control.present();
-            control.refresh(
-                &self.config,
-                &self.monitors,
-                autostart::is_enabled(),
-                self.paused_by_user,
+            control.refresh(RefreshState {
+                config: &self.config,
+                monitors: &self.monitors,
+                eco_states: &eco_states,
+                autostart_enabled: autostart::is_enabled(),
+                paused_by_user: self.paused_by_user,
                 is_playing,
-                power::PowerStatus {
+                battery: power::PowerStatus {
                     on_battery: self.on_battery,
                     percent: self.battery_percent,
                 },
-            );
+            });
             if !self.gui_shown && first_time {
                 control.show_welcome();
             }
@@ -1460,6 +1544,9 @@ impl App {
         self.close_windows();
         self.background_wallpaper.restore();
         self.window_watcher = None;
+        if let Some(source) = self.monitor_debounce.take() {
+            source.remove();
+        }
         self.tray_handle = None;
         self.hold_guard = None;
         self.gtk_app.quit();
@@ -1509,6 +1596,11 @@ impl App {
             is_mute_when_maximized: self.config.is_mute_when_maximized,
             theme: self.config.theme.clone(),
             data_source: self.config.data_source.clone(),
+            monitor_states: self
+                .monitor_states()
+                .into_iter()
+                .map(|(monitor, state)| (monitor, state.as_str().to_string()))
+                .collect(),
         };
         if let Ok(mut shared) = self.snapshot.lock() {
             *shared = snapshot;
@@ -1518,17 +1610,19 @@ impl App {
     fn refresh_ui(&self) {
         if let Some(control) = &self.control {
             let is_playing = self.any_playing();
-            control.refresh(
-                &self.config,
-                &self.monitors,
-                autostart::is_enabled(),
-                self.paused_by_user,
+            let eco_states = self.monitor_states();
+            control.refresh(RefreshState {
+                config: &self.config,
+                monitors: &self.monitors,
+                eco_states: &eco_states,
+                autostart_enabled: autostart::is_enabled(),
+                paused_by_user: self.paused_by_user,
                 is_playing,
-                power::PowerStatus {
+                battery: power::PowerStatus {
                     on_battery: self.on_battery,
                     percent: self.battery_percent,
                 },
-            );
+            });
         }
     }
 

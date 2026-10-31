@@ -138,6 +138,10 @@ pub struct Config {
     pub playback_profile: String,
     #[serde(default)]
     pub pause_on_battery: bool,
+    /// Seconds of desktop inactivity before the Eco profile pauses. 30 s –
+    /// 24 h; the UI exposes it in minutes.
+    #[serde(default = "default_idle_timeout")]
+    pub idle_timeout_sec: i64,
     /// `system`, `light` or `dark`.
     #[serde(default = "default_theme")]
     pub theme: String,
@@ -156,6 +160,10 @@ fn default_rotation_mode() -> String {
 }
 
 fn default_rotation_interval() -> i64 {
+    300
+}
+
+fn default_idle_timeout() -> i64 {
     300
 }
 
@@ -186,6 +194,7 @@ impl Config {
             rotations: HashMap::new(),
             playback_profile: default_profile(),
             pause_on_battery: false,
+            idle_timeout_sec: default_idle_timeout(),
             theme: default_theme(),
         }
     }
@@ -284,6 +293,7 @@ impl Config {
             config.rotation_mode = "off".to_string();
         }
         config.rotation_interval_sec = config.rotation_interval_sec.clamp(10, 86_400);
+        config.idle_timeout_sec = config.idle_timeout_sec.clamp(30, 86_400);
         // Accept the newer profile names and keep the legacy identifiers on
         // disk so old versions still understand the file.
         let profile = match config.playback_profile.as_str() {
@@ -587,6 +597,21 @@ mod tests {
             config.rotations.get("eDP-1").map(String::as_str),
             Some("collection-1")
         );
+    }
+
+    #[test]
+    fn idle_timeout_defaults_clamps_and_persists() {
+        assert_eq!(Config::template(&monitors()).idle_timeout_sec, 300);
+        let text = r#"{
+            "version": 4, "mode": "MODE_NULL",
+            "data_source": {"Default": ""}, "idle_timeout_sec": 60
+        }"#;
+        assert_eq!(Config::parse(text, &monitors()).0.idle_timeout_sec, 60);
+        let text = r#"{
+            "version": 4, "mode": "MODE_NULL",
+            "data_source": {"Default": ""}, "idle_timeout_sec": 1
+        }"#;
+        assert_eq!(Config::parse(text, &monitors()).0.idle_timeout_sec, 30);
     }
 
     #[test]

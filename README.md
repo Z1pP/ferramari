@@ -26,8 +26,10 @@ The interface has a hand-tuned dark palette as well as the light one:
 - Local library with favorites, recently used wallpapers and collections
 - Automatic wallpaper rotation from a per-monitor collection (order or random)
 - Eco Engine: per-monitor `Active`/`Idle`/`Occluded`/`Suspended` state,
-  automatic pause when a monitor is covered or fullscreen, idle handling and
-  the Quality/Balanced/Eco profiles; optional pause on battery
+  automatic pause when a monitor is covered or fullscreen, configurable idle
+  handling and the Quality/Balanced/Eco profiles; optional pause on battery
+- Per-monitor Eco state on Home cards and in the D-Bus `monitor_states`
+  property
 - Browse a catalogue of live wallpapers with categories, search, sorting,
   resolution filters and a six-frame preview before installing
 - Streaming URLs through `yt-dlp` (YouTube and many other sites)
@@ -209,14 +211,14 @@ time:
 | State | Playback |
 | --- | --- |
 | `Active` | normal |
-| `Idle` | Balanced keeps playing; Eco pauses after five minutes of desktop inactivity |
+| `Idle` | Balanced caps the frame rate at 30 fps; Eco pauses after the configured idle delay (5 min default) |
 | `Occluded` | paused when **Pause when maximized window** is on |
 | `Suspended` | paused on lock, suspend, battery rule or explicit pause |
 
 The profiles are **Quality** (smoothness first), **Balanced** (pause hidden
-monitors, keep playing when idle) and **Eco** (also stop when idle). The
-on-disk identifiers stay `performance`, `balanced` and `power` so older
-configs keep working.
+monitors, lower the frame rate when idle) and **Eco** (also stop when idle).
+The idle delay is configurable in Settings. The on-disk identifiers stay
+`performance`, `balanced` and `power` so older configs keep working.
 
 ### Theme
 

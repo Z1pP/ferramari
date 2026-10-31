@@ -104,6 +104,7 @@ machine, not a full energy benchmark.
 | Fullscreen mpv covering the only monitor | X11 sample reported one fullscreen rectangle; Eco changed to `Occluded` on the next 300 ms sample and paused playback |
 | Closing the fullscreen window | Eco returned to `Active` on the next sample and resumed playback |
 | Quit during playback | mpv quit through the IPC worker; the tested instance left no child process |
+| Runtime frame cap | mpv 0.41 accepted `set_property vf "fps=5"`; reading `vf` back returned `{"name":"fps","params":{"@0":"5"}}` and `set_property vf ""` cleared it |
 
 The per-monitor decision is now independent: the unit tests cover a fullscreen
 window on one monitor leaving another monitor active, a window spanning both,
@@ -112,8 +113,9 @@ CPU/RAM/GPU measurements are still missing (see `docs/AUDIT.md`).
 
 The UI labels are now **Quality**, **Balanced** and **Eco**; the historical
 “power saving” rows above still describe the same `power` configuration value
-and mpv flags. Eco additionally stops playback after five minutes of desktop
-idle, which the old profile did not do.
+and mpv flags. Eco additionally stops playback after the configured idle delay
+(five minutes by default), while Balanced keeps playing with a 30 fps cap.
+Setting the cap changes the `vf` filter at runtime; it does not restart mpv.
 
 ## Resolved: static wallpaper no longer blocks the GTK loop
 

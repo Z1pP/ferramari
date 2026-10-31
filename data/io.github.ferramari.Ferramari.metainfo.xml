@@ -16,6 +16,19 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="1.3.0" date="2026-11-01" type="stable">
+      <description>
+        <p>Eco Engine completion:</p>
+        <ul>
+          <li>Configurable Eco idle delay (1–1440 minutes) in Settings.</li>
+          <li>Balanced lowers the mpv frame rate to 30 fps while idle; Eco pauses.</li>
+          <li>Per-monitor Eco state is shown on Home cards and exposed as the D-Bus monitor_states property.</li>
+          <li>Monitor hotplug events are coalesced into one rebuild.</li>
+          <li>mpv loadfile errors are reported to the user instead of only being logged.</li>
+          <li>Home no longer rescans the video folder on every volume-slider tick.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.2.0" date="2026-11-01" type="stable">
       <description>
         <p>Eco Engine and core stability:</p>

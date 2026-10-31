@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -43,6 +43,15 @@ pub struct Options {
     pub loop_file: bool,
     /// `performance`, `balanced` or `power`.
     pub profile: String,
+}
+
+/// The base `vf` chain for a profile. Eco starts with a 30 fps cap; the idle
+/// policy may replace it with a lower cap and must restore this value later.
+pub fn profile_video_filter(profile: &str) -> &'static str {
+    match profile {
+        "power" => "fps=30",
+        _ => "",
+    }
 }
 
 /// Extra mpv flags for the selected power profile.
@@ -78,6 +87,10 @@ struct Shared {
     /// Set when the IPC worker loses the connection. The child may still be
     /// alive but can no longer be controlled, so the caller restarts it.
     ipc_dead: AtomicBool,
+    /// Last command-level error worth showing to the user (for example a
+    /// `loadfile` of a corrupt file). The UI polls this on the supervision
+    /// tick instead of blocking on the reply.
+    last_error: Mutex<Option<String>>,
 }
 
 /// Commands for the dedicated IPC thread. Keeping them here means a wedged
@@ -185,6 +198,7 @@ impl Mpv {
             muted: AtomicBool::new(options.muted),
             paused: AtomicBool::new(options.paused),
             ipc_dead: AtomicBool::new(false),
+            last_error: Mutex::new(None),
         });
         let stop = Arc::new(AtomicBool::new(false));
         let (requests, receiver) = mpsc::channel();
@@ -246,10 +260,27 @@ impl Mpv {
         self.set_property("pause", json!(paused))
     }
 
+    /// Replace the video filter chain. mpv accepts `vf` as a runtime property
+    /// (verified with `set_property vf "fps=N"`); an empty string clears it.
+    /// This is used by the Eco Engine to lower the frame rate while idle.
+    pub fn set_video_filter(&mut self, filter: &str) -> anyhow::Result<()> {
+        self.set_property("vf", json!(filter))
+    }
+
     /// The volume last applied to mpv. Reads an atomic, so fade steps never
     /// wait for the IPC worker.
     pub fn volume(&self) -> i64 {
         self.shared.volume.load(Ordering::Relaxed)
+    }
+
+    /// Take the last command error for the UI. Called on the supervision tick,
+    /// never from the IPC worker.
+    pub fn take_error(&self) -> Option<String> {
+        self.shared
+            .last_error
+            .lock()
+            .ok()
+            .and_then(|mut error| error.take())
     }
 
     /// Replace the current file without restarting mpv. Used when a monitor
@@ -335,9 +366,9 @@ fn run_ipc_worker(
 
 fn serve_ipc(mut ipc: Ipc, receiver: Receiver<Request>, shared: &Shared, _stop: &AtomicBool) {
     while let Ok(request) = receiver.recv() {
-        let args = match request {
-            Request::Execute(args) => args,
-            Request::LoadFile(source) => json!(["loadfile", source, "replace"]),
+        let (args, report_error) = match request {
+            Request::Execute(args) => (args, false),
+            Request::LoadFile(source) => (json!(["loadfile", source, "replace"]), true),
             Request::Quit => {
                 log::debug!("[mpv] IPC quit requested");
                 let _ = exchange(&mut ipc, json!(["quit"]));
@@ -353,6 +384,11 @@ fn serve_ipc(mut ipc: Ipc, receiver: Receiver<Request>, shared: &Shared, _stop: 
             // A rejected property or a missing file is not a transport
             // failure; keep the connection for the next command.
             log::warn!("[mpv] command failed: {err}");
+            if report_error {
+                if let Ok(mut slot) = shared.last_error.lock() {
+                    *slot = Some(err.to_string());
+                }
+            }
         }
     }
 }
@@ -455,6 +491,10 @@ mod tests {
         assert!(profile_args("performance").contains(&"--interpolation=yes"));
         assert!(profile_args("power").contains(&"--vd-lavc-threads=1"));
         assert!(profile_args("power").contains(&"--scale=bilinear"));
+        assert_eq!(profile_video_filter("power"), "fps=30");
+        assert_eq!(profile_video_filter("balanced"), "");
+        // The runtime cap must replace the same filter the profile starts with.
+        assert!(profile_args("power").contains(&"--vf=fps=30"));
     }
 
     #[test]
@@ -537,6 +577,7 @@ mod tests {
             muted: AtomicBool::new(false),
             paused: AtomicBool::new(true),
             ipc_dead: AtomicBool::new(false),
+            last_error: Mutex::new(None),
         }
     }
 
@@ -553,6 +594,7 @@ mod tests {
             // First command is rejected by mpv; the worker must keep going.
             for (expected, error) in [
                 ("set_property", "property unavailable"),
+                ("loadfile", "loading failed"),
                 ("loadfile", "success"),
                 ("set_property", "success"),
                 ("quit", "success"),
@@ -577,6 +619,9 @@ mod tests {
             .send(Request::Execute(json!(["set_property", "volume", 10])))
             .unwrap();
         requests
+            .send(Request::LoadFile("/tmp/corrupt.mp4".into()))
+            .unwrap();
+        requests
             .send(Request::LoadFile("/tmp/a.mp4".into()))
             .unwrap();
         requests
@@ -588,6 +633,8 @@ mod tests {
         worker.join().unwrap();
         peer.join().unwrap();
         assert!(!shared.ipc_dead.load(Ordering::Relaxed));
+        let error = shared.last_error.lock().unwrap().take().unwrap();
+        assert!(error.contains("loading failed"), "{error}");
     }
 
     #[test]

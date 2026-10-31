@@ -32,7 +32,8 @@ bundle uses host media tools.
 - [x] Non-blocking session/suspend watchers
 - [x] Config hotplug and per-field corruption safety
 - [x] HiDPI-aware per-monitor occlusion
-- [ ] Dynamic FPS reduction while idle
+- [x] Configurable idle delay and per-monitor state display
+- [x] Dynamic 30 fps cap while Balanced is idle
 - [ ] Decoder resource release after a long pause
 - [ ] Per-monitor stream/web sources
 - [ ] Automated performance/energy benchmark harness

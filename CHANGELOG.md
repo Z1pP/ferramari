@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.3.0 — 2026-11-01
+
+Eco Engine completion.
+
+- Configurable `idle_timeout_sec` (1–1440 minutes in Settings, 30 s–24 h
+  accepted from config) shared with the idle worker through an atomic; changing
+  it takes effect on the next 15 s poll.
+- Balanced applies a 30 fps `vf` cap through mpv IPC while idle and restores the
+  profile filter on activity. Eco pauses on idle. The runtime `vf` property was
+  verified against mpv 0.41.
+- Per-monitor Eco state (`active`, `idle`, `occluded`, `suspended`) is shown on
+  Home monitor cards and exported as the D-Bus `monitor_states` property.
+- Fix Mutter idle method name (`GetIdletime`), which made idle detection dead on
+  GNOME. Add a probe test that is a no-op on headless CI.
+- Coalesce added/removed/size monitor events into one 250 ms rebuild.
+- Surface a `loadfile` failure from the mpv worker as a user-visible playback
+  error instead of a log-only message.
+- Cache the Home video-folder scan for one second so volume-slider commands do
+  not re-read the whole directory.
+- Tests: 100 passing.
+
 ## 1.2.0 — 2026-11-01
 
 Eco Engine core and Core Stability (Phase 0 audit + Phase 1/2 first slice).

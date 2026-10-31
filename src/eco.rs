@@ -49,6 +49,17 @@ pub enum State {
     Suspended,
 }
 
+impl State {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Idle => "idle",
+            Self::Occluded => "occluded",
+            Self::Suspended => "suspended",
+        }
+    }
+}
+
 /// The result for one monitor. `play` is deliberately explicit: `Idle` may
 /// still play (Balanced) or stand still (Eco), and callers must not infer it
 /// from the state alone.
@@ -56,11 +67,27 @@ pub enum State {
 pub struct Plan {
     pub state: State,
     pub play: bool,
+    /// Frame-rate cap to apply while still playing. `None` keeps the profile's
+    /// default filter. Balanced uses a gentle cap when idle; Eco stops
+    /// entirely instead.
+    pub fps: Option<u32>,
 }
 
 impl Plan {
     fn new(state: State, play: bool) -> Self {
-        Self { state, play }
+        Self {
+            state,
+            play,
+            fps: None,
+        }
+    }
+
+    fn idle(play: bool, fps: Option<u32>) -> Self {
+        Self {
+            state: State::Idle,
+            play,
+            fps,
+        }
     }
 }
 
@@ -98,7 +125,7 @@ pub fn plan(profile: Profile, smart_pause: bool, signals: Signals) -> Plan {
         // decoder as soon as the monitor is actually invisible.
         Profile::Balanced => {
             if signals.idle {
-                Plan::new(State::Idle, true)
+                Plan::idle(true, Some(30))
             } else {
                 Plan::new(State::Active, true)
             }
@@ -106,7 +133,7 @@ pub fn plan(profile: Profile, smart_pause: bool, signals: Signals) -> Plan {
         // Eco is aggressive: an idle desktop does not need a decoder either.
         Profile::Eco => {
             if signals.idle {
-                Plan::new(State::Idle, false)
+                Plan::idle(false, None)
             } else {
                 Plan::new(State::Active, true)
             }
@@ -158,6 +185,9 @@ mod tests {
         assert!(plan(Profile::Balanced, true, idle).play);
         assert!(!plan(Profile::Eco, true, idle).play);
         assert_eq!(plan(Profile::Eco, true, idle).state, State::Idle);
+        // Balanced keeps playing but asks mpv for a lower frame rate.
+        assert_eq!(plan(Profile::Balanced, true, idle).fps, Some(30));
+        assert_eq!(plan(Profile::Quality, true, idle).fps, None);
     }
 
     #[test]

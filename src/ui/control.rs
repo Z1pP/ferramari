@@ -12,7 +12,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gdk_pixbuf::Pixbuf;
 use gtk::atk::prelude::AtkObjectExt as _;
@@ -24,6 +24,7 @@ use gtk::prelude::*;
 
 use crate::app::Command;
 use crate::config::{Config, Mode};
+use crate::eco;
 use crate::library::Library;
 use crate::monitors::MonitorInfo;
 use crate::paths;
@@ -92,6 +93,7 @@ struct SettingsPage {
     rotation_mode: gtk::ComboBoxText,
     rotation_interval: gtk::SpinButton,
     profile: gtk::ComboBoxText,
+    idle_timeout: gtk::SpinButton,
     switch_pause_battery: gtk::Switch,
     battery_status: gtk::Label,
     switch_autostart: gtk::Switch,
@@ -154,6 +156,9 @@ struct HomePage {
     monitors_box: gtk::Box,
     cards: RefCell<Vec<MonitorCard>>,
     videos: RefCell<Vec<PathBuf>>,
+    /// The folder listing is reused for a second so dragging the volume
+    /// slider does not re-scan the video directory on every command.
+    videos_at: Cell<Option<Instant>>,
     collections: RefCell<Vec<(String, String)>>,
     syncing: Rc<Cell<bool>>,
     tx: crate::app::CommandSender,
@@ -194,6 +199,16 @@ impl Responsive {
     }
 }
 
+pub struct RefreshState<'a> {
+    pub config: &'a Config,
+    pub monitors: &'a [MonitorInfo],
+    pub eco_states: &'a std::collections::HashMap<String, eco::State>,
+    pub autostart_enabled: bool,
+    pub paused_by_user: bool,
+    pub is_playing: bool,
+    pub battery: crate::power::PowerStatus,
+}
+
 pub struct ControlWindow {
     pub window: gtk::ApplicationWindow,
     shared: Rc<Shared>,
@@ -212,6 +227,7 @@ pub struct ControlWindow {
     rotation_mode: gtk::ComboBoxText,
     rotation_interval: gtk::SpinButton,
     profile: gtk::ComboBoxText,
+    idle_timeout: gtk::SpinButton,
     switch_pause_battery: gtk::Switch,
     battery_status: gtk::Label,
     settings_monitors: gtk::Label,
@@ -395,6 +411,7 @@ impl ControlWindow {
             rotation_mode: settings_page.rotation_mode,
             rotation_interval: settings_page.rotation_interval,
             profile: settings_page.profile,
+            idle_timeout: settings_page.idle_timeout,
             switch_pause_battery: settings_page.switch_pause_battery,
             battery_status: settings_page.battery_status,
             settings_monitors: settings_page.monitors_summary,
@@ -436,18 +453,20 @@ impl ControlWindow {
         fill_grid(&self.shared, &self.video_page, &self.library, &view);
     }
 
-    pub fn refresh(
-        &self,
-        config: &Config,
-        monitors: &[MonitorInfo],
-        autostart_enabled: bool,
-        paused_by_user: bool,
-        is_playing: bool,
-        battery: crate::power::PowerStatus,
-    ) {
+    pub fn refresh(&self, state: RefreshState<'_>) {
+        let RefreshState {
+            config,
+            monitors,
+            eco_states,
+            autostart_enabled,
+            paused_by_user,
+            is_playing,
+            battery,
+        } = state;
         self.home.update(
             config,
             monitors,
+            eco_states,
             paused_by_user,
             is_playing,
             &self.library.borrow(),
@@ -474,6 +493,8 @@ impl ControlWindow {
         if !self.profile.set_active_id(Some(profile)) {
             self.profile.set_active_id(Some("balanced"));
         }
+        self.idle_timeout
+            .set_value((config.idle_timeout_sec as f64 / 60.0).clamp(1.0, 1440.0));
         self.switch_pause_battery
             .set_active(config.pause_on_battery);
         let battery_text = match battery.percent {
@@ -1017,6 +1038,33 @@ fn build_settings_page(
     profile_row.pack_end(&profile, false, false, 0);
     content.pack_start(&profile_row, false, false, 0);
 
+    let idle_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    idle_row.style_context().add_class("setting-row");
+    let idle_text = gtk::Box::new(gtk::Orientation::Vertical, 1);
+    idle_text.pack_start(
+        &label(&tr("Eco idle delay"), "setting-title"),
+        false,
+        false,
+        0,
+    );
+    idle_text.pack_start(
+        &label(
+            &tr("Minutes of desktop inactivity before Eco pauses playback"),
+            "setting-description",
+        ),
+        false,
+        false,
+        0,
+    );
+    let idle_timeout = gtk::SpinButton::with_range(1.0, 1440.0, 1.0);
+    idle_timeout.set_numeric(true);
+    idle_timeout.set_value(5.0);
+    idle_timeout.set_valign(gtk::Align::Center);
+    set_a11y_name(&idle_timeout, &tr("Eco idle delay"));
+    idle_row.pack_start(&idle_text, true, true, 0);
+    idle_row.pack_end(&idle_timeout, false, false, 0);
+    content.pack_start(&idle_row, false, false, 0);
+
     let switch_pause_battery = gtk::Switch::new();
     switch_pause_battery.set_valign(gtk::Align::Center);
     let row_pause_battery = switch_row(
@@ -1188,6 +1236,15 @@ fn build_settings_page(
     {
         let tx = tx.clone();
         let syncing = Rc::clone(syncing);
+        idle_timeout.connect_value_changed(move |spin| {
+            if !syncing.get() {
+                let _ = tx.send(Command::SetIdleTimeout((spin.value() * 60.0) as i64));
+            }
+        });
+    }
+    {
+        let tx = tx.clone();
+        let syncing = Rc::clone(syncing);
         switch_pause_battery.connect_active_notify(move |switch| {
             if !syncing.get() {
                 let _ = tx.send(Command::SetPauseOnBattery(switch.is_active()));
@@ -1285,6 +1342,7 @@ fn build_settings_page(
         rotation_mode,
         rotation_interval,
         profile,
+        idle_timeout,
         switch_pause_battery,
         battery_status,
         switch_autostart,
@@ -2493,6 +2551,7 @@ fn build_home_page(stack: &gtk::Stack, tx: &crate::app::CommandSender) -> HomePa
         monitors_box,
         cards: RefCell::new(Vec::new()),
         videos: RefCell::new(Vec::new()),
+        videos_at: Cell::new(None),
         collections: RefCell::new(Vec::new()),
         syncing: Rc::new(Cell::new(false)),
         tx: tx.clone(),
@@ -2504,6 +2563,7 @@ impl HomePage {
         &self,
         config: &Config,
         monitors: &[MonitorInfo],
+        eco_states: &std::collections::HashMap<String, eco::State>,
         paused_by_user: bool,
         is_playing: bool,
         library: &Library,
@@ -2526,7 +2586,16 @@ impl HomePage {
         };
         self.now_status.set_text(&status);
 
-        let videos = util::video_paths();
+        let videos = if self
+            .videos_at
+            .get()
+            .is_none_or(|at| at.elapsed() >= Duration::from_secs(1))
+        {
+            self.videos_at.set(Some(Instant::now()));
+            util::video_paths()
+        } else {
+            self.videos.borrow().clone()
+        };
         let videos_changed = *self.videos.borrow() != videos;
         if videos_changed {
             *self.videos.borrow_mut() = videos.clone();
@@ -2567,10 +2636,18 @@ impl HomePage {
                     .set_text(&format!("{} × {}{primary}", monitor.width, monitor.height));
                 let state = if matches!(config.mode, Mode::Null | Mode::Unknown) || own.is_empty() {
                     tr("No wallpaper set")
-                } else if paused_by_user || !is_playing {
-                    tr("Paused")
                 } else {
-                    tr("Playing")
+                    match eco_states
+                        .get(&monitor.name)
+                        .copied()
+                        .unwrap_or(eco::State::Active)
+                    {
+                        eco::State::Active if paused_by_user || !is_playing => tr("Paused"),
+                        eco::State::Active => tr("Playing"),
+                        eco::State::Idle => tr("Idle"),
+                        eco::State::Occluded => tr("Paused (covered)"),
+                        eco::State::Suspended => tr("Paused"),
+                    }
                 };
                 card.state.set_text(&state);
                 let active = if videos.iter().any(|path| path.to_string_lossy() == own) {

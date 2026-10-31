@@ -324,6 +324,11 @@ impl PlayerInterface {
     fn is_playing(&self) -> bool {
         self.snapshot().is_playing
     }
+
+    #[zbus(property, name = "monitor_states")]
+    fn monitor_states(&self) -> HashMap<String, String> {
+        self.snapshot().monitor_states
+    }
 }
 
 #[cfg(test)]

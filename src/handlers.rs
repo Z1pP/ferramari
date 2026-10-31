@@ -1,6 +1,8 @@
 //! Session integrations that only produce events: screen lock, logout, sleep
 //! and desktop idle time.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use zbus::blocking::{Connection, Proxy};
@@ -12,15 +14,15 @@ use crate::paths;
 /// been idle for N seconds", so this polls the desktop's idle counter. The
 /// poll runs on its own thread and only turns into a command when the
 /// threshold is crossed, keeping the GTK loop untouched.
-pub fn start_idle_watcher(tx: CommandSender, threshold_secs: u64) {
+pub fn start_idle_watcher(tx: CommandSender, threshold_secs: Arc<AtomicU64>) {
     std::thread::Builder::new()
         .name("ferramari-idle".to_string())
         .spawn(move || {
-            let threshold_ms = threshold_secs.saturating_mul(1000);
             let mut idle = false;
             let mut misses = 0u8;
             loop {
                 std::thread::sleep(Duration::from_secs(15));
+                let threshold_ms = threshold_secs.load(Ordering::Relaxed).saturating_mul(1000);
                 match session_idle_ms() {
                     Some(milliseconds) => {
                         misses = 0;
@@ -56,7 +58,8 @@ fn session_idle_ms() -> Option<u64> {
             "org.gnome.Mutter.IdleMonitor",
             "/org/gnome/Mutter/IdleMonitor/Core",
             "org.gnome.Mutter.IdleMonitor",
-            "GetIdleTime",
+            // Mutter spells it with a lower-case "t".
+            "GetIdletime",
         ),
         (
             "org.freedesktop.ScreenSaver",
@@ -253,6 +256,20 @@ fn start_logind_watcher(tx: CommandSender) {
     for message in signals {
         if message.body().deserialize::<bool>().unwrap_or(false) {
             let _ = tx.send(Command::Quit);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn idle_probe_does_not_panic_on_any_desktop() {
+        // A real session returns milliseconds; a headless CI session returns
+        // None. Either way the probe must not panic or hang.
+        if let Some(milliseconds) = session_idle_ms() {
+            assert!(milliseconds < 86_400_000, "{milliseconds}");
         }
     }
 }

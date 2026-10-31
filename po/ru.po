@@ -875,3 +875,15 @@ msgstr "от сети"
 
 msgid "No battery detected"
 msgstr "Батарея не обнаружена"
+
+msgid "Eco idle delay"
+msgstr "Задержка простоя Eco"
+
+msgid "Minutes of desktop inactivity before Eco pauses playback"
+msgstr "Минуты бездействия рабочего стола до паузы в режиме «Эко»"
+
+msgid "Idle"
+msgstr "Простой"
+
+msgid "Paused (covered)"
+msgstr "Пауза (перекрыто)"

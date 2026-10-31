@@ -90,8 +90,8 @@ monitor (pause/mute).
 | B7 | A single badly typed JSON field (e.g. `"audio_volume": "loud"`) failed the whole `Config` deserialisation and reset every setting. | **fixed** — per-field type repair |
 | B8 | `power::status()` was read twice during construction. | **fixed** — one sample |
 | B9 | Web wallpapers ignored lock/suspend/occlusion in `pause_fade`; their audio kept playing. | **partially fixed** — muted on pause; WebKitGTK has no public freeze API, JS still runs |
-| B10 | `Mpv::Drop` can still block the GTK thread for up to the IPC timeout while joining the worker. `loadfile` errors are only logged; a bad file can show a blank/old frame without a user error. | open |
-| B11 | Monitor add/remove/size events are not debounced; a layout change can rebuild all windows several times. | open |
+| B10 | `Mpv::Drop` can still block the GTK thread for up to the IPC timeout while joining the worker. `loadfile` errors are now surfaced as a user-visible playback error. | partly fixed |
+| B11 | Monitor add/remove/size events are not debounced; a layout change can rebuild all windows several times. | **fixed** — 250 ms coalescing |
 | B12 | HiDPI: X11 window rectangles are device pixels while GDK monitor geometry is logical pixels. Occlusion needs the scale factor. | **fixed** — `MonitorInfo::scale_factor` |
 | B13 | Native Wayland has no wallpaper surface in the current implementation; the X11 watcher is disabled on Wayland sessions, so occlusion/smart pause is unavailable there. | open, documented |
 | B14 | WebKit can crash independently; `player_alive` always returns true for a WebView, and only load failures are reported. | open |
@@ -103,7 +103,7 @@ monitor (pause/mute).
 | --- | --- | --- |
 | P1 | The command loop is event-driven, but the player supervision (1 s), rotation (5 s), power (30 s) and X11 watcher (300 ms) timers remain. | partly open |
 | P2 | The X11 watcher now performs `get_property` (types/state/desktop), `get_geometry` and `translate_coordinates` per window every 300 ms. Correctness improved; cost scales with window count. An event-driven `PropertyNotify` watcher is the next step. | open |
-| P3 | `HomePage::update` runs `util::video_paths()` on every `refresh_ui`, including every volume-slider tick. That spawns `xdg-user-dir`, reads the video directory and runs a GIO content-type query per file. | open |
+| P3 | `HomePage::update` runs `util::video_paths()` on every `refresh_ui`, including every volume-slider tick. That spawns `xdg-user-dir`, reads the video directory and runs a GIO content-type query per file. | partly fixed — `xdg-user-dir` cached, folder scan reused for 1 s |
 | P4 | All library cards are created for the whole folder; thumbnails are lazy and pooled, but there is no virtualisation for very large libraries. | open |
 | P5 | Static/thumbnail `.part` files can survive a process crash. Catalogue partials are cleaned after one hour; static/thumbnail partials are not. | open, low impact |
 | P6 | `reload_config` deliberately re-reads from disk and closes/recreates windows; a D-Bus reload during a pending edit discards the edit. | open by design |

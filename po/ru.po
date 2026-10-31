@@ -691,3 +691,102 @@ msgstr "Воспроизведение, обои и поведение сист�
 
 msgid "App behaviour"
 msgstr "Поведение приложения"
+
+msgid "New collection"
+msgstr "Новая коллекция"
+
+msgid "Create a collection"
+msgstr "Создать коллекцию"
+
+msgid "All videos"
+msgstr "Все видео"
+
+msgid "Favorites"
+msgstr "Избранное"
+
+msgid "Recent"
+msgstr "Недавние"
+
+msgid "Library view"
+msgstr "Вид библиотеки"
+
+msgid "Rename"
+msgstr "Переименовать"
+
+msgid "Delete"
+msgstr "Удалить"
+
+msgid "Add to collection"
+msgstr "Добавить в коллекцию"
+
+msgid "Remove from collection"
+msgstr "Убрать из коллекции"
+
+msgid "Add to favorites"
+msgstr "Добавить в избранное"
+
+msgid "Remove from favorites"
+msgstr "Убрать из избранного"
+
+msgid "Collection name"
+msgstr "Название коллекции"
+
+msgid "Delete collection"
+msgstr "Удалить коллекцию"
+
+msgid "New collection…"
+msgstr "Новая коллекция…"
+
+msgid "No favorite videos"
+msgstr "Нет избранных видео"
+
+msgid "Mark a video with the star to see it here."
+msgstr "Отметьте видео звёздочкой, чтобы оно появилось здесь."
+
+msgid "No recently used videos"
+msgstr "Нет недавних видео"
+
+msgid "Apply a video and it will appear here."
+msgstr "Примените видео, и оно появится здесь."
+
+msgid "Collection is empty"
+msgstr "Коллекция пуста"
+
+msgid "Add videos to this collection."
+msgstr "Добавьте видео в эту коллекцию."
+
+msgid "Save"
+msgstr "Сохранить"
+
+msgid "Default"
+msgstr "По умолчанию"
+
+msgid "Title"
+msgstr "Название"
+
+msgid "Category"
+msgstr "Категория"
+
+msgid "Size"
+msgstr "Размер"
+
+msgid "Duration"
+msgstr "Длительность"
+
+msgid "Any resolution"
+msgstr "Любое разрешение"
+
+msgid "Sort wallpapers"
+msgstr "Сортировка обоев"
+
+msgid "Resolution"
+msgstr "Разрешение"
+
+msgid "Resolution filters use metadata from downloaded previews"
+msgstr "Фильтры разрешения используют данные из скачанных превью"
+
+msgid "No wallpapers match these filters"
+msgstr "Нет обоев, подходящих под фильтры"
+
+msgid "Try another resolution or reload the catalogue."
+msgstr "Выберите другое разрешение или обновите каталог."

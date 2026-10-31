@@ -59,7 +59,9 @@ struct Ipc {
 impl Mpv {
     pub fn spawn(options: &Options) -> anyhow::Result<Self> {
         let unique = SOCKET_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let socket = std::env::temp_dir().join(format!(
+        let socket_dir = crate::paths::mpv_socket_dir();
+        let _ = std::fs::create_dir_all(&socket_dir);
+        let socket = socket_dir.join(format!(
             "ferramari-mpv-{}-{unique}.sock",
             std::process::id()
         ));

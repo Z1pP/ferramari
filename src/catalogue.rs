@@ -18,6 +18,7 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{anyhow, bail, Context, Result};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
 use crate::paths;
 use crate::util;
@@ -66,6 +67,15 @@ pub struct DownloadInfo {
     pub size: Option<u64>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CachedMetadata {
+    pub width: u32,
+    pub height: u32,
+    pub fps: Option<f64>,
+    pub duration: Option<f64>,
+    pub size: Option<u64>,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Probe {
     pub width: u32,
@@ -98,6 +108,36 @@ pub fn download_page_url(id: &str) -> String {
 
 pub fn cache_dir() -> PathBuf {
     paths::catalogue_cache_dir()
+}
+
+fn metadata_dir() -> PathBuf {
+    cache_dir().join("metadata")
+}
+
+pub fn cached_metadata(id: &str) -> Option<CachedMetadata> {
+    let text = fs::read_to_string(metadata_dir().join(format!("{id}.json"))).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+/// Remember metadata learned from a preview or download so catalogue cards can
+/// show size and duration without another network request.
+pub fn store_metadata(id: &str, probe: Option<&Probe>, size: Option<u64>) {
+    if probe.is_none() && size.is_none() {
+        return;
+    }
+    let metadata = CachedMetadata {
+        width: probe.map(|probe| probe.width).unwrap_or(0),
+        height: probe.map(|probe| probe.height).unwrap_or(0),
+        fps: probe.and_then(|probe| probe.fps),
+        duration: probe.and_then(|probe| probe.duration),
+        size,
+    };
+    if fs::create_dir_all(metadata_dir()).is_err() {
+        return;
+    }
+    if let Ok(text) = serde_json::to_string(&metadata) {
+        let _ = fs::write(metadata_dir().join(format!("{id}.json")), text);
+    }
 }
 
 fn video_cache_dir() -> PathBuf {

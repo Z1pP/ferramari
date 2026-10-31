@@ -1,2 +1,8 @@
 /target
 *.mo
+# Flatpak build artifacts
+.flatpak-builder/
+flatpak/.flatpak-builder/
+build-dir/
+repo/
+*.flatpak

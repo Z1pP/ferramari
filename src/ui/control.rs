@@ -22,6 +22,7 @@ use gtk::prelude::*;
 
 use crate::app::Command;
 use crate::config::{Config, Mode};
+use crate::library::Library;
 use crate::monitors::MonitorInfo;
 use crate::paths;
 use crate::thumbnails;
@@ -31,6 +32,14 @@ use crate::util::{self, tr, tr_n};
 
 pub(crate) type ThumbSlot = Rc<RefCell<Option<Pixbuf>>>;
 type ThumbStates = Rc<RefCell<Vec<Option<(ThumbSlot, gtk::DrawingArea)>>>>;
+
+#[derive(Clone, PartialEq, Eq)]
+enum LibraryView {
+    All,
+    Favorites,
+    Recent,
+    Collection(String),
+}
 
 /// A GLib source that may already have removed itself after returning
 /// `ControlFlow::Break`. `SourceId::remove` panics for such sources, so the
@@ -97,6 +106,13 @@ struct VideoPage {
     empty_folder: gtk::Button,
     empty_clear: gtk::Button,
     search: gtk::Entry,
+    view: gtk::ComboBoxText,
+    view_syncing: Rc<Cell<bool>>,
+    new_collection: gtk::Button,
+    rename_collection: gtk::Button,
+    delete_collection: gtk::Button,
+    add_to_collection: gtk::Button,
+    remove_from_collection: gtk::Button,
 }
 
 struct StreamPage {
@@ -197,10 +213,17 @@ pub struct ControlWindow {
     now_monitor: gtk::Label,
     stream_page: StreamPage,
     home: HomePage,
+    library: Rc<RefCell<Library>>,
+    video_page: VideoPage,
 }
 
 impl ControlWindow {
-    pub fn new(app: &gtk::Application, tx: Sender<Command>, version: &str) -> Self {
+    pub fn new(
+        app: &gtk::Application,
+        tx: Sender<Command>,
+        version: &str,
+        library: Rc<RefCell<Library>>,
+    ) -> Self {
         let window = gtk::ApplicationWindow::new(app);
         window.set_title("Ferramari");
         window.set_default_size(1100, 680);
@@ -240,6 +263,7 @@ impl ControlWindow {
             let apply_shared = Rc::downgrade(&shared);
             let refresh_shared = Rc::downgrade(&shared);
             let refresh_page = video_page.clone();
+            let refresh_library = Rc::clone(&library);
             online::Context {
                 apply: Rc::new(move |button, path| {
                     if let Some(shared) = apply_shared.upgrade() {
@@ -248,7 +272,8 @@ impl ControlWindow {
                 }),
                 refresh_library: Rc::new(move || {
                     if let Some(shared) = refresh_shared.upgrade() {
-                        fill_grid(&shared, &refresh_page);
+                        let view = view_from_page(&refresh_page);
+                        fill_grid(&shared, &refresh_page, &refresh_library, &view);
                     }
                 }),
             }
@@ -310,8 +335,9 @@ impl ControlWindow {
             });
         }
 
-        wire_video_page(&video_page, &shared);
-        fill_grid(&shared, &video_page);
+        wire_video_page(&video_page, &shared, &library);
+        refresh_collection_choices(&video_page, &library.borrow());
+        fill_grid(&shared, &video_page, &library, &LibraryView::All);
 
         window.connect_delete_event(|window, _| {
             window.hide();
@@ -363,6 +389,8 @@ impl ControlWindow {
             now_monitor: now.monitor,
             stream_page,
             home: home_page,
+            library: Rc::clone(&library),
+            video_page: video_page.clone(),
         };
 
         control.responsive.apply(control.window.size().0);
@@ -375,6 +403,13 @@ impl ControlWindow {
         self.responsive.apply(self.window.size().0);
         self.window.present();
         self.focus_active_page();
+    }
+
+    /// Rebuild the local library grid after favourites, history or collections
+    /// changed outside this window (for example when the app applied a video).
+    pub fn reload_library(&self) {
+        let view = view_from_page(&self.video_page);
+        fill_grid(&self.shared, &self.video_page, &self.library, &view);
     }
 
     pub fn refresh(
@@ -1032,6 +1067,12 @@ fn build_video_page() -> VideoPage {
     );
     let refresh_button =
         labeled_icon_button("view-refresh-symbolic", &tr("Refresh"), &tr("Refresh"));
+    let new_collection = labeled_icon_button(
+        "list-add-symbolic",
+        &tr("New collection"),
+        &tr("Create a collection"),
+    );
+    actions.pack_start(&new_collection, false, false, 0);
     actions.pack_start(&folder_button, false, false, 0);
     actions.pack_start(&refresh_button, false, false, 0);
     header.pack_start(&titles, true, true, 0);
@@ -1053,6 +1094,27 @@ fn build_video_page() -> VideoPage {
     search.set_icon_tooltip_text(gtk::EntryIconPosition::Primary, Some(&tr("Search videos")));
     set_a11y_name(&search, &tr("Search videos"));
     toolbar.pack_start(&search, true, true, 0);
+
+    let view = gtk::ComboBoxText::new();
+    view.append(Some("all"), &tr("All videos"));
+    view.append(Some("favorites"), &tr("Favorites"));
+    view.append(Some("recent"), &tr("Recent"));
+    view.set_active_id(Some("all"));
+    view.set_size_request(160, -1);
+    view.set_tooltip_text(Some(&tr("Library view")));
+    set_a11y_name(&view, &tr("Library view"));
+    toolbar.pack_start(&view, false, false, 0);
+
+    let rename_collection = gtk::Button::with_label(&tr("Rename"));
+    rename_collection.style_context().add_class("secondary");
+    rename_collection.hide();
+    rename_collection.set_no_show_all(true);
+    let delete_collection = gtk::Button::with_label(&tr("Delete"));
+    delete_collection.style_context().add_class("secondary");
+    delete_collection.hide();
+    delete_collection.set_no_show_all(true);
+    toolbar.pack_start(&rename_collection, false, false, 0);
+    toolbar.pack_start(&delete_collection, false, false, 0);
     root.pack_start(&toolbar, false, false, 0);
 
     let flow = gtk::FlowBox::new();
@@ -1135,8 +1197,20 @@ fn build_video_page() -> VideoPage {
     let apply_button = primary_button(&tr("Apply"));
     apply_button.set_sensitive(false);
     apply_button.set_tooltip_text(Some(&tr("Apply to wallpaper")));
+    let add_to_collection = gtk::Button::with_label(&tr("Add to collection"));
+    add_to_collection.style_context().add_class("secondary");
+    add_to_collection.set_sensitive(false);
+    let remove_from_collection = gtk::Button::with_label(&tr("Remove from collection"));
+    remove_from_collection
+        .style_context()
+        .add_class("secondary");
+    remove_from_collection.set_sensitive(false);
+    remove_from_collection.hide();
+    remove_from_collection.set_no_show_all(true);
     selection_bar.pack_start(&selection_label, true, true, 0);
     selection_bar.pack_end(&apply_button, false, false, 0);
+    selection_bar.pack_end(&remove_from_collection, false, false, 0);
+    selection_bar.pack_end(&add_to_collection, false, false, 0);
     root.pack_start(&selection_bar, false, false, 0);
 
     folder_button.connect_clicked(|_| xdg_open(&paths::video_wallpaper_dir()));
@@ -1154,33 +1228,192 @@ fn build_video_page() -> VideoPage {
         empty_folder,
         empty_clear,
         search,
+        view,
+        view_syncing: Rc::new(Cell::new(false)),
+        new_collection,
+        rename_collection,
+        delete_collection,
+        add_to_collection,
+        remove_from_collection,
     }
 }
 
-fn wire_video_page(page: &VideoPage, shared: &Rc<Shared>) {
+fn view_from_page(page: &VideoPage) -> LibraryView {
+    match page.view.active_id().as_deref() {
+        Some("favorites") => LibraryView::Favorites,
+        Some("recent") => LibraryView::Recent,
+        Some(id) if id.starts_with("collection:") => {
+            LibraryView::Collection(id.trim_start_matches("collection:").to_string())
+        }
+        _ => LibraryView::All,
+    }
+}
+
+fn videos_for_view(view: &LibraryView, library: &Library) -> Vec<PathBuf> {
+    let all = || util::video_paths();
+    match view {
+        LibraryView::All => all(),
+        LibraryView::Favorites => all()
+            .into_iter()
+            .filter(|path| library.is_favorite(&path.to_string_lossy()))
+            .collect(),
+        LibraryView::Recent => library
+            .history()
+            .iter()
+            .filter_map(|entry| {
+                let path = PathBuf::from(&entry.path);
+                (path.is_file() && util::is_video(&path)).then_some(path)
+            })
+            .collect(),
+        LibraryView::Collection(id) => library
+            .collection(id)
+            .map(|collection| {
+                collection
+                    .items
+                    .iter()
+                    .filter_map(|item| {
+                        let path = PathBuf::from(item);
+                        (path.is_file() && util::is_video(&path)).then_some(path)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+    }
+}
+
+fn refresh_collection_choices(page: &VideoPage, library: &Library) {
+    let active = page
+        .view
+        .active_id()
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "all".to_string());
+    page.view_syncing.set(true);
+    page.view.remove_all();
+    page.view.append(Some("all"), &tr("All videos"));
+    page.view.append(Some("favorites"), &tr("Favorites"));
+    page.view.append(Some("recent"), &tr("Recent"));
+    for collection in library.collections() {
+        let id = format!("collection:{}", collection.id);
+        page.view.append(Some(&id), &collection.name);
+    }
+    if !page.view.set_active_id(Some(&active)) {
+        page.view.set_active_id(Some("all"));
+    }
+    page.view_syncing.set(false);
+}
+
+fn update_view_actions(page: &VideoPage, view: &LibraryView) {
+    let collection = matches!(view, LibraryView::Collection(_));
+    page.rename_collection.set_visible(collection);
+    page.delete_collection.set_visible(collection);
+    page.remove_from_collection.set_visible(collection);
+}
+
+fn set_star(button: &gtk::ToggleButton, active: bool) {
+    button.set_active(active);
+    button.set_image(Some(&icon_image(
+        if active {
+            "starred-symbolic"
+        } else {
+            "non-starred-symbolic"
+        },
+        16,
+    )));
+    button.set_tooltip_text(Some(&tr(if active {
+        "Remove from favorites"
+    } else {
+        "Add to favorites"
+    })));
+}
+
+fn prompt_text(
+    parent: Option<&gtk::Window>,
+    title: &str,
+    label_text: &str,
+    initial: &str,
+) -> Option<String> {
+    let dialog = gtk::Dialog::with_buttons(
+        Some(title),
+        parent,
+        gtk::DialogFlags::MODAL | gtk::DialogFlags::DESTROY_WITH_PARENT,
+        &[
+            (&tr("Cancel"), gtk::ResponseType::Cancel),
+            (&tr("Save"), gtk::ResponseType::Ok),
+        ],
+    );
+    let entry = gtk::Entry::new();
+    entry.set_text(initial);
+    entry.set_activates_default(true);
+    entry.set_margin_start(16);
+    entry.set_margin_end(16);
+    entry.set_margin_top(8);
+    entry.set_margin_bottom(8);
+    dialog.content_area().pack_start(&entry, false, false, 0);
+    let hint = label(label_text, "field-hint");
+    hint.set_margin_start(16);
+    hint.set_margin_end(16);
+    hint.set_margin_bottom(8);
+    dialog.content_area().pack_start(&hint, false, false, 0);
+    if let Some(button) = dialog.widget_for_response(gtk::ResponseType::Ok) {
+        button.style_context().add_class("primary");
+        dialog.set_default_response(gtk::ResponseType::Ok);
+    }
+    dialog.show_all();
+    let response = dialog.run();
+    let text = entry.text().trim().to_string();
+    dialog.close();
+    (response == gtk::ResponseType::Ok && !text.is_empty()).then_some(text)
+}
+
+fn confirm_dialog(parent: Option<&gtk::Window>, title: &str, text: &str) -> bool {
+    let dialog = gtk::MessageDialog::new(
+        parent,
+        gtk::DialogFlags::MODAL,
+        gtk::MessageType::Question,
+        gtk::ButtonsType::YesNo,
+        title,
+    );
+    dialog.set_secondary_text(Some(text));
+    let response = dialog.run();
+    dialog.close();
+    response == gtk::ResponseType::Yes
+}
+
+fn wire_video_page(page: &VideoPage, shared: &Rc<Shared>, library: &Rc<RefCell<Library>>) {
     let query = Rc::new(RefCell::new(String::new()));
 
     {
         let query_for_filter = Rc::clone(&query);
         let shared = Rc::clone(shared);
+        let library = Rc::clone(library);
+        let page_for_filter = page.clone();
         page.flow.set_filter_func(Some(Box::new(move |child| {
-            let query = query_for_filter.borrow();
-            if query.is_empty() {
-                return true;
-            }
             let index = child.index();
             if index < 0 {
                 return false;
             }
             let videos = shared.videos.borrow();
-            videos
-                .get(index as usize)
-                .map(|path| {
-                    path.file_name()
-                        .map(|name| name.to_string_lossy().to_lowercase().contains(&*query))
-                        .unwrap_or(false)
-                })
-                .unwrap_or(false)
+            let Some(path) = videos.get(index as usize) else {
+                return false;
+            };
+            let path_string = path.to_string_lossy();
+            let allowed = match view_from_page(&page_for_filter) {
+                LibraryView::All | LibraryView::Recent => true,
+                LibraryView::Favorites => library.borrow().is_favorite(&path_string),
+                LibraryView::Collection(id) => {
+                    library.borrow().collection_contains(&id, &path_string)
+                }
+            };
+            allowed
+                && (query_for_filter.borrow().is_empty()
+                    || path
+                        .file_name()
+                        .map(|name| {
+                            name.to_string_lossy()
+                                .to_lowercase()
+                                .contains(&*query_for_filter.borrow())
+                        })
+                        .unwrap_or(false))
         })));
     }
 
@@ -1192,13 +1425,8 @@ fn wire_video_page(page: &VideoPage, shared: &Rc<Shared>) {
             let text = entry.text().trim().to_lowercase();
             *query.borrow_mut() = text.clone();
             page_view.flow.invalidate_filter();
-            update_library_state(&shared, &page_view, &text);
-            update_selection(
-                &page_view.flow,
-                &shared,
-                &page_view.selection_label,
-                &page_view.apply_button,
-            );
+            update_library_state(&shared, &page_view, &text, &view_from_page(&page_view));
+            update_selection(&page_view.flow, &shared, &page_view);
 
             if entry.text().is_empty() {
                 entry.set_icon_from_icon_name(gtk::EntryIconPosition::Secondary, None);
@@ -1230,12 +1458,14 @@ fn wire_video_page(page: &VideoPage, shared: &Rc<Shared>) {
     }
 
     {
-        let shared = Rc::clone(shared);
-        let flow = page.flow.clone();
-        let selection_label = page.selection_label.clone();
-        let apply = page.apply_button.clone();
+        let page_for_selection = page.clone();
+        let shared_for_selection = Rc::clone(shared);
         page.flow.connect_selected_children_changed(move |_| {
-            update_selection(&flow, &shared, &selection_label, &apply);
+            update_selection(
+                &page_for_selection.flow,
+                &shared_for_selection,
+                &page_for_selection,
+            );
         });
     }
 
@@ -1251,9 +1481,209 @@ fn wire_video_page(page: &VideoPage, shared: &Rc<Shared>) {
 
     {
         let shared = Rc::clone(shared);
+        let library = Rc::clone(library);
         let page = page.clone();
         let refresh = page.refresh.clone();
-        refresh.connect_clicked(move |_| fill_grid(&shared, &page));
+        refresh.connect_clicked(move |_| {
+            let view = view_from_page(&page);
+            fill_grid(&shared, &page, &library, &view);
+        });
+    }
+
+    {
+        let shared = Rc::clone(shared);
+        let library = Rc::clone(library);
+        let page = page.clone();
+        let view_widget = page.view.clone();
+        view_widget.connect_changed(move |_| {
+            if page.view_syncing.get() {
+                return;
+            }
+            let view = view_from_page(&page);
+            update_view_actions(&page, &view);
+            fill_grid(&shared, &page, &library, &view);
+        });
+    }
+
+    {
+        let library = Rc::clone(library);
+        let page = page.clone();
+        let button_widget = page.new_collection.clone();
+        button_widget.connect_clicked(move |button| {
+            let parent = button
+                .toplevel()
+                .and_then(|top| top.downcast::<gtk::Window>().ok());
+            let Some(name) = prompt_text(
+                parent.as_ref(),
+                &tr("New collection"),
+                &tr("Collection name"),
+                "",
+            ) else {
+                return;
+            };
+            let Some(id) = library.borrow_mut().create_collection(&name) else {
+                return;
+            };
+            let _ = library.borrow().save();
+            refresh_collection_choices(&page, &library.borrow());
+            page.view.set_active_id(Some(&format!("collection:{id}")));
+        });
+    }
+
+    {
+        let shared = Rc::clone(shared);
+        let library = Rc::clone(library);
+        let page = page.clone();
+        let button_widget = page.rename_collection.clone();
+        button_widget.connect_clicked(move |button| {
+            let LibraryView::Collection(id) = view_from_page(&page) else {
+                return;
+            };
+            let current = library
+                .borrow()
+                .collection(&id)
+                .map(|collection| collection.name.clone())
+                .unwrap_or_default();
+            let parent = button
+                .toplevel()
+                .and_then(|top| top.downcast::<gtk::Window>().ok());
+            let Some(name) = prompt_text(
+                parent.as_ref(),
+                &tr("Rename collection"),
+                &tr("Collection name"),
+                &current,
+            ) else {
+                return;
+            };
+            if library.borrow_mut().rename_collection(&id, &name) {
+                let _ = library.borrow().save();
+                refresh_collection_choices(&page, &library.borrow());
+                let view = view_from_page(&page);
+                fill_grid(&shared, &page, &library, &view);
+            }
+        });
+    }
+
+    {
+        let shared = Rc::clone(shared);
+        let library = Rc::clone(library);
+        let page = page.clone();
+        let button_widget = page.delete_collection.clone();
+        button_widget.connect_clicked(move |button| {
+            let LibraryView::Collection(id) = view_from_page(&page) else {
+                return;
+            };
+            let name = library
+                .borrow()
+                .collection(&id)
+                .map(|collection| collection.name.clone())
+                .unwrap_or_default();
+            let parent = button
+                .toplevel()
+                .and_then(|top| top.downcast::<gtk::Window>().ok());
+            if !confirm_dialog(
+                parent.as_ref(),
+                &tr("Delete collection"),
+                &format!("{} «{}»?", tr("Delete collection"), name),
+            ) {
+                return;
+            }
+            if library.borrow_mut().delete_collection(&id) {
+                let _ = library.borrow().save();
+                refresh_collection_choices(&page, &library.borrow());
+                page.view.set_active_id(Some("all"));
+                let view = view_from_page(&page);
+                fill_grid(&shared, &page, &library, &view);
+            }
+        });
+    }
+
+    {
+        let shared = Rc::clone(shared);
+        let library = Rc::clone(library);
+        let page = page.clone();
+        let button_widget = page.add_to_collection.clone();
+        button_widget.connect_clicked(move |button| {
+            let Some(path) = selected_video(&page.flow, &shared) else {
+                return;
+            };
+            let menu = gtk::Menu::new();
+            for collection in library.borrow().collections() {
+                let item = gtk::MenuItem::with_label(&collection.name);
+                let library = Rc::clone(&library);
+                let page = page.clone();
+                let shared = Rc::clone(&shared);
+                let id = collection.id.clone();
+                let path = path.clone();
+                item.connect_activate(move |_| {
+                    if library.borrow_mut().add_to_collection(&id, &path) {
+                        let _ = library.borrow().save();
+                        if view_from_page(&page) == LibraryView::Collection(id.clone()) {
+                            fill_grid(
+                                &shared,
+                                &page,
+                                &library,
+                                &LibraryView::Collection(id.clone()),
+                            );
+                        }
+                    }
+                });
+                menu.append(&item);
+            }
+            if !library.borrow().collections().is_empty() {
+                menu.append(&gtk::SeparatorMenuItem::new());
+            }
+            let new_item = gtk::MenuItem::with_label(&tr("New collection…"));
+            {
+                let library = Rc::clone(&library);
+                let page = page.clone();
+                let path = path.clone();
+                let button = button.clone();
+                new_item.connect_activate(move |_| {
+                    let parent = button
+                        .toplevel()
+                        .and_then(|top| top.downcast::<gtk::Window>().ok());
+                    let Some(name) = prompt_text(
+                        parent.as_ref(),
+                        &tr("New collection"),
+                        &tr("Collection name"),
+                        "",
+                    ) else {
+                        return;
+                    };
+                    let Some(id) = library.borrow_mut().create_collection(&name) else {
+                        return;
+                    };
+                    let _ = library.borrow_mut().add_to_collection(&id, &path);
+                    let _ = library.borrow().save();
+                    refresh_collection_choices(&page, &library.borrow());
+                });
+            }
+            menu.append(&new_item);
+            menu.show_all();
+            *shared.menu.borrow_mut() = Some(menu.clone());
+            menu.popup_at_widget(button, gdk::Gravity::South, gdk::Gravity::North, None);
+        });
+    }
+
+    {
+        let shared = Rc::clone(shared);
+        let library = Rc::clone(library);
+        let page = page.clone();
+        let button_widget = page.remove_from_collection.clone();
+        button_widget.connect_clicked(move |_| {
+            let LibraryView::Collection(id) = view_from_page(&page) else {
+                return;
+            };
+            let Some(path) = selected_video(&page.flow, &shared) else {
+                return;
+            };
+            if library.borrow_mut().remove_from_collection(&id, &path) {
+                let _ = library.borrow().save();
+                let view = LibraryView::Collection(id);
+                fill_grid(&shared, &page, &library, &view);
+            }
+        });
     }
 
     {
@@ -2157,18 +2587,22 @@ fn nav_button_base(icon: &str, title: &str) -> gtk::Button {
     button
 }
 
-fn fill_grid(shared: &Rc<Shared>, page: &VideoPage) {
+fn fill_grid(
+    shared: &Rc<Shared>,
+    page: &VideoPage,
+    library: &Rc<RefCell<Library>>,
+    view: &LibraryView,
+) {
     if let Some(timer) = shared.thumb_timer.borrow_mut().take() {
         timer.cancel();
     }
-
     let previous: Vec<gtk::Widget> = page.flow.children();
     for child in previous {
         page.flow.remove(&child);
     }
     page.flow.unselect_all();
 
-    let videos = util::video_paths();
+    let videos = videos_for_view(view, &library.borrow());
     *shared.videos.borrow_mut() = videos.clone();
 
     let (sender, receiver) = mpsc::channel::<(usize, PathBuf)>();
@@ -2196,13 +2630,46 @@ fn fill_grid(shared: &Rc<Shared>, page: &VideoPage) {
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| tr("Untitled video"));
-        let card = video_card(&name, &area);
+        let (card, star) = video_card(&name, &area);
+        let path_string = path.to_string_lossy().into_owned();
+        set_star(&star, library.borrow().is_favorite(&path_string));
+        {
+            let library = Rc::clone(library);
+            let flow = page.flow.clone();
+            let path = path_string.clone();
+            let star_for_update = star.clone();
+            let page_for_star = page.clone();
+            let shared_for_star = Rc::clone(shared);
+            let view_for_star = view.clone();
+            star.connect_toggled(move |button| {
+                let active = button.is_active();
+                let mut state = library.borrow_mut();
+                if state.is_favorite(&path) != active {
+                    state.toggle_favorite(&path);
+                    let _ = state.save();
+                }
+                drop(state);
+                update_star_icon(&star_for_update, active);
+                if view_for_star == LibraryView::Favorites && !active {
+                    let library = Rc::clone(&library);
+                    let page = page_for_star.clone();
+                    let shared = Rc::clone(&shared_for_star);
+                    glib::idle_add_local_once(move || {
+                        fill_grid(&shared, &page, &library, &LibraryView::Favorites);
+                    });
+                } else {
+                    flow.invalidate_filter();
+                }
+            });
+        }
         let child = gtk::FlowBoxChild::new();
         child.set_size_request(210, -1);
         child.add(&card);
         child.set_tooltip_text(Some(&name));
         set_a11y_name(&child, &name);
         page.flow.insert(&child, -1);
+        child.show_all();
+        update_star_icon(&star, library.borrow().is_favorite(&path_string));
 
         let sender = sender.clone();
         let path = path.clone();
@@ -2238,16 +2705,12 @@ fn fill_grid(shared: &Rc<Shared>, page: &VideoPage) {
 
     let query = page.search.text().trim().to_lowercase();
     page.flow.invalidate_filter();
-    update_library_state(shared, page, &query);
-    update_selection(
-        &page.flow,
-        shared,
-        &page.selection_label,
-        &page.apply_button,
-    );
+    update_library_state(shared, page, &query, view);
+    update_selection(&page.flow, shared, page);
+    update_view_actions(page, view);
 }
 
-fn video_card(name: &str, image: &gtk::DrawingArea) -> gtk::Box {
+fn video_card(name: &str, image: &gtk::DrawingArea) -> (gtk::Box, gtk::ToggleButton) {
     let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
     card.style_context().add_class("video-card");
 
@@ -2258,16 +2721,42 @@ fn video_card(name: &str, image: &gtk::DrawingArea) -> gtk::Box {
     frame.add(image);
     card.pack_start(&frame, false, false, 0);
 
-    let info = gtk::Box::new(gtk::Orientation::Vertical, 3);
+    let info = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     info.style_context().add_class("video-info");
+    let text = gtk::Box::new(gtk::Orientation::Vertical, 3);
     let name_label = label(name, "video-name");
     name_label.set_ellipsize(pango::EllipsizeMode::End);
     name_label.set_max_width_chars(24);
     let meta = label(&tr("Video"), "video-meta");
-    info.pack_start(&name_label, false, false, 0);
-    info.pack_start(&meta, false, false, 0);
+    text.pack_start(&name_label, false, false, 0);
+    text.pack_start(&meta, false, false, 0);
+    let star = gtk::ToggleButton::new();
+    star.style_context().add_class("icon-button");
+    star.set_valign(gtk::Align::Start);
+    star.set_relief(gtk::ReliefStyle::None);
+    update_star_icon(&star, false);
+    info.pack_start(&text, true, true, 0);
+    info.pack_end(&star, false, false, 0);
     card.pack_start(&info, true, true, 0);
-    card
+    (card, star)
+}
+
+fn update_star_icon(button: &gtk::ToggleButton, active: bool) {
+    let action = tr(if active {
+        "Remove from favorites"
+    } else {
+        "Add to favorites"
+    });
+    button.set_image(Some(&icon_image(
+        if active {
+            "starred-symbolic"
+        } else {
+            "non-starred-symbolic"
+        },
+        16,
+    )));
+    button.set_tooltip_text(Some(&action));
+    set_a11y_name(button, &action);
 }
 
 pub(crate) fn draw_video_frame(
@@ -2353,7 +2842,7 @@ fn rounded_rect_top(
     cr.close_path();
 }
 
-fn update_library_state(shared: &Rc<Shared>, page: &VideoPage, query: &str) {
+fn update_library_state(shared: &Rc<Shared>, page: &VideoPage, query: &str, view: &LibraryView) {
     let videos = shared.videos.borrow();
     let total = videos.len();
     let matches = if query.is_empty() {
@@ -2371,16 +2860,35 @@ fn update_library_state(shared: &Rc<Shared>, page: &VideoPage, query: &str) {
     drop(videos);
 
     if total == 0 {
-        page.empty_title.set_text(&tr("No videos yet"));
-        page.empty_body.set_text(&tr(
-            "Add videos to your Ferramari folder, then refresh the list.",
-        ));
+        let (title, body, show_folder) = match view {
+            LibraryView::All => (
+                tr("No videos yet"),
+                tr("Add videos to your Ferramari folder, then refresh the list."),
+                true,
+            ),
+            LibraryView::Favorites => (
+                tr("No favorite videos"),
+                tr("Mark a video with the star to see it here."),
+                false,
+            ),
+            LibraryView::Recent => (
+                tr("No recently used videos"),
+                tr("Apply a video and it will appear here."),
+                false,
+            ),
+            LibraryView::Collection(_) => (
+                tr("Collection is empty"),
+                tr("Add videos to this collection."),
+                false,
+            ),
+        };
+        page.empty_title.set_text(&title);
+        page.empty_body.set_text(&body);
         page.library_stack.set_visible_child_name("empty");
-        page.empty_folder.set_visible(true);
+        page.empty_folder.set_visible(show_folder);
         page.empty_clear.set_visible(false);
         page.count.set_text(&tr("No videos"));
-        page.count
-            .set_tooltip_text(Some(&tr("No videos in the Ferramari folder")));
+        page.count.set_tooltip_text(Some(&body));
     } else if matches == 0 {
         page.empty_title
             .set_text(&tr("No videos match your search"));
@@ -2410,6 +2918,7 @@ fn update_library_state(shared: &Rc<Shared>, page: &VideoPage, query: &str) {
         }
     }
 
+    update_view_actions(page, view);
     if page
         .flow
         .selected_children()
@@ -2420,26 +2929,28 @@ fn update_library_state(shared: &Rc<Shared>, page: &VideoPage, query: &str) {
     }
 }
 
-fn update_selection(
-    flow: &gtk::FlowBox,
-    shared: &Shared,
-    selection_label: &gtk::Label,
-    apply: &gtk::Button,
-) {
-    match selected_video(flow, shared) {
+fn update_selection(flow: &gtk::FlowBox, shared: &Shared, page: &VideoPage) {
+    let selected = selected_video(flow, shared);
+    let collection = matches!(view_from_page(page), LibraryView::Collection(_));
+    match selected {
         Some(path) => {
             let name = Path::new(&path)
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
                 .unwrap_or(path);
-            selection_label.set_text(&name);
-            selection_label.set_tooltip_text(Some(&name));
-            apply.set_sensitive(true);
+            page.selection_label.set_text(&name);
+            page.selection_label.set_tooltip_text(Some(&name));
+            page.apply_button.set_sensitive(true);
+            page.add_to_collection.set_sensitive(true);
+            page.remove_from_collection.set_sensitive(collection);
         }
         None => {
-            selection_label.set_text(&tr("Select a video to apply"));
-            selection_label.set_tooltip_text(None);
-            apply.set_sensitive(false);
+            page.selection_label
+                .set_text(&tr("Select a video to apply"));
+            page.selection_label.set_tooltip_text(None);
+            page.apply_button.set_sensitive(false);
+            page.add_to_collection.set_sensitive(false);
+            page.remove_from_collection.set_sensitive(false);
         }
     }
 }

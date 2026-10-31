@@ -97,6 +97,11 @@ pub fn config_path() -> PathBuf {
     config_dir().join("config.json")
 }
 
+/// Favourites, history and collections. Kept separate from `config.json`.
+pub fn library_path() -> PathBuf {
+    config_dir().join("library.json")
+}
+
 pub fn autostart_dir() -> PathBuf {
     xdg_config_home().join("autostart")
 }
@@ -112,6 +117,12 @@ pub fn thumbnail_cache_dir() -> PathBuf {
 /// Cache for the online wallpaper catalogue (pages, previews, downloads).
 pub fn catalogue_cache_dir() -> PathBuf {
     xdg_cache_home().join("ferramari").join("catalogue")
+}
+
+/// mpv IPC sockets. Kept in the cache rather than `/tmp` so a host mpv
+/// started through `flatpak-spawn` can reach the same path.
+pub fn mpv_socket_dir() -> PathBuf {
+    xdg_cache_home().join("ferramari").join("mpv")
 }
 
 /// `$XDG_VIDEOS_DIR/Ferramari`, falling back to `$HOME/Ferramari` when
@@ -176,6 +187,7 @@ pub fn ensure_dirs() {
         video_wallpaper_dir(),
         thumbnail_cache_dir(),
         catalogue_cache_dir(),
+        mpv_socket_dir(),
         autostart_dir(),
     ] {
         if let Err(err) = fs::create_dir_all(&dir) {

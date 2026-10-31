@@ -21,6 +21,7 @@ use crate::autostart;
 use crate::config::{Config, Mode};
 use crate::error::{ErrorKind, UserError};
 use crate::handlers;
+use crate::library::Library;
 use crate::monitors::{self, MonitorInfo};
 use crate::paths;
 use crate::supervisor::{RestartPolicy, Retry, MAX_RETRIES};
@@ -137,6 +138,7 @@ pub struct App {
     stream: Option<ytdlp::StreamInfo>,
     stream_resolving: bool,
     background_wallpaper: GnomeBackground,
+    library: Rc<RefCell<Library>>,
     static_job: Option<(String, i64)>,
     static_generation: u64,
     policies: HashMap<WindowKey, RestartPolicy>,
@@ -182,6 +184,7 @@ impl App {
             stream: None,
             stream_resolving: false,
             background_wallpaper,
+            library: Rc::new(RefCell::new(Library::load())),
             static_job: None,
             static_generation: 0,
             policies: HashMap::new(),
@@ -493,12 +496,24 @@ impl App {
                 ));
                 return;
             }
+            let used_path = path.clone();
             if !assign_video(&mut self.config, &self.monitors, path, monitor.as_deref()) {
                 return;
             }
             self.save_config();
+            self.library.borrow_mut().record_use(&used_path);
+            if let Err(err) = self.library.borrow().save() {
+                log::warn!("[Library] {err}");
+            }
         }
         self.rebuild_windows();
+        self.reload_library_ui();
+    }
+
+    fn reload_library_ui(&self) {
+        if let Some(control) = &self.control {
+            control.reload_library();
+        }
     }
 
     /// Resolve a stream URL in the background. The mode only changes once a
@@ -576,9 +591,14 @@ impl App {
                 .data_source
                 .insert(monitor.name.clone(), video.clone());
         }
+        self.library.borrow_mut().record_use(&video);
+        if let Err(err) = self.library.borrow().save() {
+            log::warn!("[Library] {err}");
+        }
         self.config.data_source.insert("Default".to_string(), video);
         self.save_config();
         self.rebuild_windows();
+        self.reload_library_ui();
     }
 
     fn rebuild_windows(&mut self) {
@@ -1009,6 +1029,7 @@ impl App {
                 &self.gtk_app,
                 self.tx.clone(),
                 &self.version,
+                Rc::clone(&self.library),
             ));
         }
         let first_time = self.config.is_first_time;

@@ -21,7 +21,9 @@ use gtk::glib;
 use gtk::pango;
 use gtk::prelude::*;
 
-use crate::catalogue::{self, Category, DownloadInfo, Downloaded, Listing, Probe, Wallpaper};
+use crate::catalogue::{
+    self, CachedMetadata, Category, DownloadInfo, Downloaded, Listing, Probe, Wallpaper,
+};
 use crate::ui::control::{
     draw_video_frame, icon_image, label, labeled_icon_button, page_heading, primary_button,
     set_a11y_name, PendingTimer, ThumbSlot,
@@ -55,6 +57,8 @@ pub struct OnlinePage {
     count: gtk::Label,
     search: gtk::Entry,
     category: gtk::ComboBoxText,
+    sort: gtk::ComboBoxText,
+    resolution: gtk::ComboBoxText,
     refresh: gtk::Button,
     footer: gtk::Label,
     syncing: Rc<Cell<bool>>,
@@ -63,6 +67,7 @@ pub struct OnlinePage {
 }
 
 struct CatalogState {
+    all_items: RefCell<Vec<Wallpaper>>,
     items: RefCell<Vec<Wallpaper>>,
     next: RefCell<Option<String>>,
     categories: RefCell<Vec<Category>>,
@@ -134,6 +139,35 @@ pub fn build(context: Context) -> Rc<OnlinePage> {
     count.set_margin_end(4);
     toolbar.pack_end(&count, false, false, 0);
     root.pack_start(&toolbar, false, false, 0);
+
+    let filters = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    filters.set_margin_start(12);
+    filters.set_margin_end(12);
+    let sort = gtk::ComboBoxText::new();
+    sort.append(Some("default"), &tr("Default"));
+    sort.append(Some("title"), &tr("Title"));
+    sort.append(Some("category"), &tr("Category"));
+    sort.append(Some("size"), &tr("Size"));
+    sort.append(Some("duration"), &tr("Duration"));
+    sort.set_active_id(Some("default"));
+    sort.set_size_request(150, -1);
+    sort.set_tooltip_text(Some(&tr("Sort wallpapers")));
+    set_a11y_name(&sort, &tr("Sort wallpapers"));
+    let resolution = gtk::ComboBoxText::new();
+    resolution.append(Some("all"), &tr("Any resolution"));
+    resolution.append(Some("4k"), &tr("4K"));
+    resolution.append(Some("1440"), &tr("1440p"));
+    resolution.append(Some("1080"), &tr("1080p"));
+    resolution.append(Some("hd"), &tr("HD"));
+    resolution.set_active_id(Some("all"));
+    resolution.set_size_request(170, -1);
+    resolution.set_tooltip_text(Some(&tr(
+        "Resolution filters use metadata from downloaded previews",
+    )));
+    set_a11y_name(&resolution, &tr("Resolution"));
+    filters.pack_start(&sort, false, false, 0);
+    filters.pack_start(&resolution, false, false, 0);
+    root.pack_start(&filters, false, false, 0);
 
     let flow = gtk::FlowBox::new();
     flow.set_selection_mode(gtk::SelectionMode::None);
@@ -246,10 +280,13 @@ pub fn build(context: Context) -> Rc<OnlinePage> {
         count,
         search: search.clone(),
         category: category.clone(),
+        sort: sort.clone(),
+        resolution: resolution.clone(),
         refresh: refresh.clone(),
         footer,
         syncing: Rc::new(Cell::new(false)),
         state: Rc::new(CatalogState {
+            all_items: RefCell::new(Vec::new()),
             items: RefCell::new(Vec::new()),
             next: RefCell::new(None),
             categories: RefCell::new(Vec::new()),
@@ -344,6 +381,22 @@ fn wire_page(page: &Rc<OnlinePage>) {
         let page = Rc::clone(page);
         let retry = page.retry.clone();
         retry.connect_clicked(move |_| load_current(&page, false));
+    }
+
+    {
+        let page = Rc::clone(page);
+        let sort = page.sort.clone();
+        sort.connect_changed(move |_| {
+            render_visible(&page, !page.state.query.borrow().is_empty());
+        });
+    }
+
+    {
+        let page = Rc::clone(page);
+        let resolution = page.resolution.clone();
+        resolution.connect_changed(move |_| {
+            render_visible(&page, !page.state.query.borrow().is_empty());
+        });
     }
 
     {
@@ -481,6 +534,7 @@ fn clear_items(page: &OnlinePage) {
     for child in previous {
         page.flow.remove(&child);
     }
+    page.state.all_items.borrow_mut().clear();
     page.state.items.borrow_mut().clear();
     page.state.thumbs.borrow_mut().clear();
     *page.state.next.borrow_mut() = None;
@@ -504,7 +558,7 @@ fn apply_page(
     let listing = match result {
         Ok(listing) => listing,
         Err(err) => {
-            if page.state.items.borrow().is_empty() {
+            if page.state.all_items.borrow().is_empty() {
                 page.error_label.set_text(&err.to_string());
                 page.stack.set_visible_child_name("error");
                 page.count.set_text(&tr("Unavailable"));
@@ -529,15 +583,13 @@ fn apply_page(
     let searching = !page.state.query.borrow().is_empty();
     let mut known: HashSet<String> = page
         .state
-        .items
+        .all_items
         .borrow()
         .iter()
         .map(|item| item.id.clone())
         .collect();
-    let start;
     {
-        let mut items = page.state.items.borrow_mut();
-        start = items.len();
+        let mut items = page.state.all_items.borrow_mut();
         for item in listing.items {
             if searching && !item.category.starts_with("Живые обои") {
                 continue;
@@ -548,31 +600,135 @@ fn apply_page(
         }
     }
 
-    let items: Vec<Wallpaper> = page.state.items.borrow()[start..].to_vec();
+    render_visible(page, searching);
+}
+
+fn metadata_text(metadata: &CachedMetadata) -> String {
+    let mut parts = Vec::new();
+    if metadata.width > 0 && metadata.height > 0 {
+        parts.push(format!("{}×{}", metadata.width, metadata.height));
+    }
+    if let Some(duration) = metadata.duration.filter(|duration| *duration > 0.0) {
+        parts.push(format!("{duration:.1} s"));
+    }
+    if let Some(size) = metadata.size.filter(|size| *size > 0) {
+        parts.push(format_bytes(size));
+    }
+    parts.join(" · ")
+}
+
+fn resolution_matches(item: &Wallpaper, filter: &str) -> bool {
+    if filter == "all" {
+        return true;
+    }
+    let Some(metadata) = catalogue::cached_metadata(&item.id) else {
+        return false;
+    };
+    let height = metadata.height;
+    match filter {
+        "4k" => height >= 2160,
+        "1440" => height >= 1440,
+        "1080" => height >= 1080,
+        "hd" => height >= 720,
+        _ => true,
+    }
+}
+
+fn sort_items(items: &mut [Wallpaper], sort: &str) {
+    let metadata = |item: &Wallpaper| catalogue::cached_metadata(&item.id);
+    match sort {
+        "title" => items.sort_by_key(|item| item.title.to_lowercase()),
+        "category" => items.sort_by_key(|item| item.category.to_lowercase()),
+        "size" => items.sort_by(|left, right| {
+            let left = metadata(left).and_then(|meta| meta.size);
+            let right = metadata(right).and_then(|meta| meta.size);
+            right.cmp(&left)
+        }),
+        "duration" => items.sort_by(|left, right| {
+            let left = metadata(left)
+                .and_then(|meta| meta.duration)
+                .map(|duration| (duration * 10.0) as u64);
+            let right = metadata(right)
+                .and_then(|meta| meta.duration)
+                .map(|duration| (duration * 10.0) as u64);
+            right.cmp(&left)
+        }),
+        _ => {}
+    }
+}
+
+fn render_visible(page: &Rc<OnlinePage>, searching: bool) {
+    if let Some(cancel) = page.state.thumb_cancel.borrow_mut().take() {
+        cancel.store(true, Ordering::Relaxed);
+    }
+    if let Some(timer) = page.state.thumb_timer.borrow_mut().take() {
+        timer.cancel();
+    }
+    page.state
+        .thumb_generation
+        .set(page.state.thumb_generation.get() + 1);
+    let previous: Vec<gtk::Widget> = page.flow.children();
+    for child in previous {
+        page.flow.remove(&child);
+    }
+    page.state.thumbs.borrow_mut().clear();
+
+    let resolution = page
+        .resolution
+        .active_id()
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "all".to_string());
+    let sort = page
+        .sort
+        .active_id()
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "default".to_string());
+    let mut items: Vec<Wallpaper> = page
+        .state
+        .all_items
+        .borrow()
+        .iter()
+        .filter(|item| resolution_matches(item, &resolution))
+        .cloned()
+        .collect();
+    sort_items(&mut items, &sort);
+    *page.state.items.borrow_mut() = items.clone();
     for item in items {
         add_card(page, item);
     }
 
     let total = page.state.items.borrow().len();
     if total == 0 {
-        if searching {
-            page.count
-                .set_text(&format!("0 {}", tr_n("result", "results", 0)));
-            set_empty(
-                page,
-                &tr("No wallpapers found"),
-                &tr("Try a different search, or clear it to browse the catalogue."),
-            );
+        if page.state.all_items.borrow().is_empty() {
+            if searching {
+                page.count
+                    .set_text(&format!("0 {}", tr_n("result", "results", 0)));
+                set_empty(
+                    page,
+                    &tr("No wallpapers found"),
+                    &tr("Try a different search, or clear it to browse the catalogue."),
+                );
+            } else {
+                page.count
+                    .set_text(&format!("0 {}", tr_n("wallpaper", "wallpapers", 0)));
+                set_empty(
+                    page,
+                    &tr("No wallpapers in this category"),
+                    &tr("Try another category or reload the catalogue."),
+                );
+            }
         } else {
             page.count
                 .set_text(&format!("0 {}", tr_n("wallpaper", "wallpapers", 0)));
             set_empty(
                 page,
-                &tr("No wallpapers in this category"),
-                &tr("Try another category or reload the catalogue."),
+                &tr("No wallpapers match these filters"),
+                &tr("Try another resolution or reload the catalogue."),
             );
         }
-        page.show_more.hide();
+        page.show_more
+            .set_visible(page.state.next.borrow().is_some());
+        page.show_more.set_sensitive(true);
         return;
     }
 
@@ -658,6 +814,15 @@ fn add_card(page: &OnlinePage, item: Wallpaper) {
     category.set_max_width_chars(24);
     info.pack_start(&name, false, false, 0);
     info.pack_start(&category, false, false, 0);
+    if let Some(metadata) = catalogue::cached_metadata(&item.id) {
+        let details = metadata_text(&metadata);
+        if !details.is_empty() {
+            let details = label(&details, "field-hint");
+            details.set_ellipsize(pango::EllipsizeMode::End);
+            details.set_max_width_chars(24);
+            info.pack_start(&details, false, false, 0);
+        }
+    }
     card.pack_start(&info, true, true, 0);
 
     let child = gtk::FlowBoxChild::new();
@@ -1134,6 +1299,7 @@ fn load_cached_frames(
         let size = std::fs::metadata(&video)
             .ok()
             .map(|metadata| metadata.len());
+        catalogue::store_metadata(&id, probe.as_ref(), size);
         let _ = sender.send((probe, sheet, size));
     });
     let state = state.clone();
@@ -1187,6 +1353,10 @@ fn start_download(state: &PreviewState, widgets: &PreviewWidgets, id: &str) {
             Ok(downloaded) => {
                 let probe = catalogue::probe(&downloaded.video);
                 let sheet = catalogue::ensure_sheet(&downloaded.video, &thread_id);
+                let size = std::fs::metadata(&downloaded.video)
+                    .ok()
+                    .map(|metadata| metadata.len());
+                catalogue::store_metadata(&thread_id, probe.as_ref(), size);
                 let _ = sender.send(DownloadEvent::Done {
                     downloaded,
                     probe,

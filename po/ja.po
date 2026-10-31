@@ -343,3 +343,102 @@ msgstr "再生・壁紙・システムの動作"
 
 msgid "App behaviour"
 msgstr "アプリの動作"
+
+msgid "New collection"
+msgstr "新しいコレクション"
+
+msgid "Create a collection"
+msgstr "コレクションを作成"
+
+msgid "All videos"
+msgstr "すべてのビデオ"
+
+msgid "Favorites"
+msgstr "お気に入り"
+
+msgid "Recent"
+msgstr "最近"
+
+msgid "Library view"
+msgstr "ライブラリ表示"
+
+msgid "Rename"
+msgstr "名前を変更"
+
+msgid "Delete"
+msgstr "削除"
+
+msgid "Add to collection"
+msgstr "コレクションに追加"
+
+msgid "Remove from collection"
+msgstr "コレクションから削除"
+
+msgid "Add to favorites"
+msgstr "お気に入りに追加"
+
+msgid "Remove from favorites"
+msgstr "お気に入りから削除"
+
+msgid "Collection name"
+msgstr "コレクション名"
+
+msgid "Delete collection"
+msgstr "コレクションを削除"
+
+msgid "New collection…"
+msgstr "新しいコレクション…"
+
+msgid "No favorite videos"
+msgstr "お気に入りのビデオはありません"
+
+msgid "Mark a video with the star to see it here."
+msgstr "スターを付けたビデオがここに表示されます。"
+
+msgid "No recently used videos"
+msgstr "最近使用したビデオはありません"
+
+msgid "Apply a video and it will appear here."
+msgstr "ビデオを適用するとここに表示されます。"
+
+msgid "Collection is empty"
+msgstr "コレクションは空です"
+
+msgid "Add videos to this collection."
+msgstr "このコレクションにビデオを追加してください。"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Default"
+msgstr "デフォルト"
+
+msgid "Title"
+msgstr "タイトル"
+
+msgid "Category"
+msgstr "カテゴリ"
+
+msgid "Size"
+msgstr "サイズ"
+
+msgid "Duration"
+msgstr "再生時間"
+
+msgid "Any resolution"
+msgstr "すべての解像度"
+
+msgid "Sort wallpapers"
+msgstr "壁紙を並べ替え"
+
+msgid "Resolution"
+msgstr "解像度"
+
+msgid "Resolution filters use metadata from downloaded previews"
+msgstr "解像度フィルターはダウンロード済みプレビューの情報を使用します"
+
+msgid "No wallpapers match these filters"
+msgstr "フィルターに一致する壁紙はありません"
+
+msgid "Try another resolution or reload the catalogue."
+msgstr "別の解像度を選ぶか、カタログを更新してください。"

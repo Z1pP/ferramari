@@ -1,0 +1,4 @@
+#!/bin/sh
+# Run the user's host-installed yt-dlp from inside the Flatpak sandbox.
+# The manifest grants org.freedesktop.Flatpak for this purpose.
+exec flatpak-spawn --host yt-dlp "$@"

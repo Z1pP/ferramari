@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0 — 2026-10-31
+
+Library, catalogue filters and Flatpak.
+
+- Local library: favorites, recent wallpapers and collections.
+- Collection create/rename/delete, add/remove videos and filtering.
+- Catalogue sorting by title, category, size and duration.
+- Resolution filters and metadata (size/duration/resolution) from previews and downloads.
+- Flatpak manifest and host-tool bridge for mpv, ffmpeg, ffprobe and yt-dlp.
+- Testing matrix and smoke checklist in `docs/TESTING.md`.
+
 ## 0.6.0 — 2026-10-31
 
 - Dedicated Settings page with playback, wallpaper and system sections.

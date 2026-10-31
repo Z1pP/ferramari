@@ -11,8 +11,9 @@ iron (*ferrum*) and Rust's crab mascot.
 
 - Play a local video as the wallpaper, one video per monitor
 - Home page with the current wallpaper and per-monitor cards
-- Browse a catalogue of live wallpapers with categories and search, and
-  preview six frames before installing
+- Local library with favorites, recently used wallpapers and collections
+- Browse a catalogue of live wallpapers with categories, search, sorting,
+  resolution filters and a six-frame preview before installing
 - Streaming URLs through `yt-dlp` (YouTube and many other sites)
 - Any web page as the wallpaper (WebKitGTK, so WebGL/Unity/Godot work)
 - GNOME static wallpaper with a blurred frame from the video
@@ -100,6 +101,14 @@ cannot see the rustup toolchain in your home directory).
 
 Uninstall with `sudo make uninstall` (same `PREFIX`).
 
+### Flatpak
+
+A self-hosted Flatpak manifest is available in `flatpak/`. It builds the app
+against the GNOME runtime and uses the host's `mpv`, `ffmpeg` and `yt-dlp`
+through `flatpak-spawn`; a Flathub submission with bundled media tools is not
+ready yet. See [`flatpak/README.md`](flatpak/README.md) for build and test
+instructions.
+
 ## Usage
 
 ```sh
@@ -165,8 +174,10 @@ gdbus call --session --dest io.github.ferramari.Ferramari.server \
 keys are ignored, missing keys get defaults, and a schema-3 file is migrated on
 first start.
 
-The file is written atomically through a temporary file and rename, and the
-previous good copy is kept as `config.json.bak`. A truncated or invalid
+Favourites, history and collections live next to it in `library.json`.
+
+Both files are written atomically through a temporary file and rename; the
+previous good copy is kept as `.json.bak`. A truncated or invalid
 `config.json` is restored from that backup instead of silently resetting the
 settings.
 
@@ -267,8 +278,9 @@ the player restart policy, yt-dlp and ffmpeg timeouts, EWMH decisions, mpv IPC
 framing, monitor naming and scaling, the fade maths, path handling and the
 catalogue parsers (cards, categories, search,
 signed download links, archive extraction, video probing and frame sheets).
-The GUI, video embedding, streaming, webpage and catalogue modes were
-smoke-tested on Ubuntu 26.04 / GNOME Wayland (XWayland). To exercise the
+The GUI, video embedding, streaming, webpage, catalogue and library modes were
+smoke-tested on Ubuntu 26.04 / GNOME Wayland (XWayland). The full environment
+matrix and smoke checklist live in [`docs/TESTING.md`](docs/TESTING.md). To exercise the
 static-wallpaper code without touching your real background:
 
 ```sh

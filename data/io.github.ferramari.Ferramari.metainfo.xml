@@ -16,6 +16,17 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="0.7.0" date="2026-10-31" type="stable">
+      <description>
+        <p>Library, catalogue filters and Flatpak.</p>
+        <ul>
+          <li>Favorites, recent wallpapers and collections</li>
+          <li>Catalogue sorting and resolution filters</li>
+          <li>Size, duration and resolution on catalogue cards</li>
+          <li>Flatpak manifest and testing matrix</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.0" date="2026-10-31" type="stable">
       <description>
         <p>Settings page.</p>

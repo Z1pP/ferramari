@@ -9,6 +9,7 @@ mod dbus;
 mod error;
 mod fade;
 mod handlers;
+mod library;
 mod monitors;
 mod mpv;
 mod paths;

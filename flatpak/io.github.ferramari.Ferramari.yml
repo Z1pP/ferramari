@@ -1,0 +1,53 @@
+app-id: io.github.ferramari.Ferramari
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: ferramari
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=xdg-videos
+  - --talk-name=org.freedesktop.Flatpak
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.gnome.ScreenSaver
+  - --talk-name=org.freedesktop.login1
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.portal.Desktop
+
+modules:
+  - name: ferramari
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/ferramari/.cargo
+      build-args:
+        - --share=network
+    build-commands:
+      - cargo build --release --locked
+      - install -Dm755 target/release/ferramari /app/bin/ferramari
+      - install -Dm644 data/io.github.ferramari.Ferramari.desktop /app/share/applications/io.github.ferramari.Ferramari.desktop
+      - install -Dm644 data/io.github.ferramari.Ferramari.metainfo.xml /app/share/metainfo/io.github.ferramari.Ferramari.metainfo.xml
+      - install -Dm644 data/icons/hicolor/scalable/apps/io.github.ferramari.Ferramari.svg /app/share/icons/hicolor/scalable/apps/io.github.ferramari.Ferramari.svg
+      - install -Dm755 flatpak/bin/mpv flatpak/bin/ffmpeg flatpak/bin/ffprobe flatpak/bin/yt-dlp flatpak/bin/xdg-open flatpak/bin/xdg-user-dir /app/bin/
+      - |
+        for po in po/*.po; do
+          lang=$(basename "$po" .po)
+          mkdir -p "/app/share/locale/$lang/LC_MESSAGES"
+          msgfmt -c -o "/app/share/locale/$lang/LC_MESSAGES/ferramari.mo" "$po"
+        done
+      - gtk-update-icon-cache -qtf /app/share/icons/hicolor || true
+    sources:
+      - type: dir
+        path: ..
+        skip:
+          - .git
+          - target
+          - .flatpak-builder
+          - flatpak/.flatpak-builder

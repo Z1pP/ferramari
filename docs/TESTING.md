@@ -8,7 +8,7 @@ what is still unverified.
 
 | Environment | Status | Notes |
 | --- | --- | --- |
-| GNOME 50, Wayland session, running through XWayland | **tested** 2026-10-31, 1.0.0 | Main development environment |
+| GNOME 50, Wayland session, running through XWayland | **tested** 2026-10-31, 1.0.1 | Main development environment |
 | GNOME 50, X11 session | not tested | The same X11 backend is used, but the session has not been exercised |
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |
@@ -48,6 +48,22 @@ Run from a checkout with `cargo build --release`, or from an installed build.
 - [ ] Open a web page; it renders and the right-click menu works.
 - [ ] Open an invalid URL; one retry, then one clear error.
 - [ ] Resolve a streaming URL with `yt-dlp`; play/pause and mute work.
+
+### Performance and idle
+- [ ] A cold local-video grid shows cards immediately; only two thumbnail
+      workers run at once and stale results do not replace a newer grid.
+- [ ] Opening Local Video a second time does not start ffmpeg for cached
+      thumbnails.
+- [ ] The static wallpaper appears within ~1 s on the first run and almost
+      instantly on the next start (frame cache).
+- [ ] Drag the volume slider: playback follows immediately, and
+      `[Config] Saving` appears once after the drag.
+- [ ] Quit during the debounce window; the last volume is still saved.
+- [ ] Idle voluntary context switches are ~1–2/s, not ~25/s.
+- [ ] Switch between two local videos on one monitor; the mpv PID stays the
+      same and the new file plays.
+- [ ] Switch to a missing or corrupt file; an error is shown or the old file
+      keeps playing, and the app stays responsive.
 
 ### Catalogue
 - [ ] Switch categories, search and Show more.

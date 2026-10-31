@@ -52,19 +52,17 @@ pub fn generate(video: &Path) -> Option<PathBuf> {
 
 fn run_ffmpeg(video: &Path, output: &Path, seek: bool) -> bool {
     let mut command = Command::new(paths::tool("ffmpeg"));
-    command
-        .arg("-y")
-        .arg("-v")
-        .arg("error")
-        .arg("-i")
-        .arg(video);
+    command.arg("-y").arg("-v").arg("error");
     if seek {
+        // Input seek avoids decoding the first second of the file. The
+        // `thumbnail` filter used to scan frames and made this 2.4x slower.
         command.args(["-ss", "1"]);
     }
+    command.arg("-i").arg(video);
     command
         .args([
             "-vf",
-            "thumbnail,scale=400:225:force_original_aspect_ratio=increase,crop=400:225",
+            "scale=400:225:force_original_aspect_ratio=increase,crop=400:225",
             "-frames:v",
             "1",
         ])

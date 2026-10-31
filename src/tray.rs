@@ -2,18 +2,17 @@
 //! KDE, and any other SNI host). No GTK dependency, so it is safe to spawn
 //! from the main process.
 
-use std::sync::mpsc::Sender;
+use ksni::blocking::{Handle, TrayMethods};
 
 use crate::util::tr;
-use ksni::blocking::{Handle, TrayMethods};
 use ksni::menu::StandardItem;
 use ksni::{MenuItem, Tray as KsniTray};
 
-use crate::app::Command;
+use crate::app::{Command, CommandSender};
 use crate::paths;
 
 pub struct Tray {
-    tx: Sender<Command>,
+    tx: CommandSender,
 }
 
 impl KsniTray for Tray {
@@ -75,7 +74,7 @@ where
 
 /// Spawn the tray. Returns a handle so the caller can keep it alive; `None`
 /// when the desktop has no StatusNotifierWatcher.
-pub fn spawn(tx: Sender<Command>) -> Option<Handle<Tray>> {
+pub fn spawn(tx: CommandSender) -> Option<Handle<Tray>> {
     match (Tray { tx }).assume_sni_available(true).spawn() {
         Ok(handle) => {
             log::info!("[Systray] Ready");

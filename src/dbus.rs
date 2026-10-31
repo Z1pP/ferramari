@@ -7,10 +7,9 @@
 //! with `#[zbus(name = ...)]`.
 
 use std::collections::HashMap;
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
-use crate::app::{Command, Snapshot};
+use crate::app::{Command, CommandSender, Snapshot};
 use crate::paths;
 
 pub const SERVER_INTERFACE: &str = "io.github.ferramari.ferramari.server";
@@ -70,7 +69,7 @@ pub fn request_show_gui() -> anyhow::Result<()> {
 
 pub fn register(
     connection: &zbus::blocking::Connection,
-    tx: Sender<Command>,
+    tx: CommandSender,
     snapshot: Arc<Mutex<Snapshot>>,
 ) -> anyhow::Result<()> {
     connection.object_server().at(
@@ -86,14 +85,14 @@ pub fn register(
     Ok(())
 }
 
-fn send(tx: &Sender<Command>, command: Command) {
+fn send(tx: &CommandSender, command: Command) {
     if tx.send(command).is_err() {
         log::debug!("[DBus] Main loop is gone, dropping command");
     }
 }
 
 pub struct ServerInterface {
-    tx: Sender<Command>,
+    tx: CommandSender,
     pub snapshot: Arc<Mutex<Snapshot>>,
 }
 
@@ -246,7 +245,7 @@ impl ServerInterface {
 }
 
 pub struct PlayerInterface {
-    tx: Sender<Command>,
+    tx: CommandSender,
     snapshot: Arc<Mutex<Snapshot>>,
 }
 

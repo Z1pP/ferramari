@@ -16,6 +16,18 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="1.0.1" date="2026-10-31" type="stable">
+      <description>
+        <p>Performance and idle-power improvements.</p>
+        <ul>
+          <li>Thumbnails generate 2–4× faster with a bounded worker pool</li>
+          <li>Static wallpaper frames are cached across restarts</li>
+          <li>Event-driven command loop: ~26 to ~1.2 wakeups per second</li>
+          <li>Volume and blur changes are coalesced into one config write</li>
+          <li>Video-to-video switches reuse the running mpv process</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0.0" date="2026-10-31" type="stable">
       <description>
         <p>First stable release.</p>

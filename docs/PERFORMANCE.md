@@ -1,7 +1,8 @@
 # Performance baseline and optimisation paths
 
 Measured 2026-10-31 on Ubuntu 26.04, GNOME Shell 50.1, Wayland session
-(Ferramari runs through XWayland), release build (`ferramari 1.0.0`),
+(Ferramari runs through XWayland), release build (`ferramari 1.0.0` for the
+baseline, `1.0.1` for the optimisation results),
 single 1920×1080 monitor. Numbers are relative indicators, not a benchmark
 suite. Each scenario ran in an isolated `dbus-run-session`, with a warm page
 cache. RAM/PSS/CPU/threads are for the whole process tree (Ferramari + mpv or
@@ -38,6 +39,59 @@ process-tree CPU from 9.0% to 5.1% by dropping late frames, using one decoder
 thread, bilinear scaling and a 30 fps filter. Performance mode uses
 display-resample interpolation and measured 6.1% in this sample; treat the
 difference from Balanced as workload-dependent rather than a guarantee.
+
+## 1.1 optimisation results (2026-10-31)
+
+These changes keep the RAM/CPU baseline above unchanged; they remove work from
+the startup and idle paths.
+
+### Thumbnails
+
+| Video | Old command | New command | Speed-up |
+| --- | ---: | ---: | ---: |
+| 1080p30 | 432 ms | 197 ms | 2.2× |
+| 4K30 | 1594 ms | 353 ms | 4.5× |
+
+`-ss 1` now precedes `-i` and the `thumbnail` filter is gone. A pool of two
+workers replaces one thread per video, and refreshing the library cancels
+stale work. With the (path, mtime) cache, a warm grid does not start ffmpeg
+at all.
+
+### Static frame cache
+
+Frames are cached by `(path, mtime, blur)` in
+`$XDG_CACHE_HOME/ferramari/static/`. On a 1080p video, the gap from `[Mode]`
+to `[StaticWallpaper] Applied` was 860 ms on the first run and 55 ms on the
+next start (file check plus `gsettings set`). The cache is capped at 12 PNGs,
+so it cannot grow without bound.
+
+### Command loop and config writes
+
+The 40 ms command poll is gone. Producers now write a byte to a pipe and
+`glib::unix_fd_add_local` drains the queue; the remaining periodic sources are
+the 1 s player supervision, 5 s rotation and 30 s power poll. Voluntary
+context switches fell from ~26/s to 1.2/s in both null and video mode, and a
+command no longer waits up to 40 ms.
+
+Nine rapid D-Bus volume changes produced exactly one config write, confirmed
+with the `[Config] Saving` debug line. A flush still happens on quit and
+shutdown, and the 1 s supervision tick flushes a pending write without adding a
+timer.
+
+### Reusing mpv for video → video
+
+A monitor that switches from one local video to another now keeps its mpv
+process and X11 window. `loadfile` is written without waiting for the reply:
+mpv may answer only after the new file is ready, which blocked the GTK thread
+for 845 ms in the first version of this change. Sending it asynchronously
+brings the switch to ~0.2 ms of app time, against ~120 ms for a new process
+plus the IPC wait. The reuse path was verified by reading mpv's `path`
+property after the switch; the PID stays the same.
+
+### DING
+
+`gnome_desktop_icon_workaround()` now runs only when at least one wallpaper
+window exists, so null mode no longer pays for an extension reload.
 
 ## Resolved: static wallpaper no longer blocks the GTK loop
 
@@ -84,7 +138,7 @@ switch. This is the largest *perceived* performance problem.
 4. Do not regenerate at all while the video window is fullscreen and the
    static wallpaper is not visible. Generate lazily when the video is hidden.
 
-### 2. Thumbnails are 2.4× slower than necessary and unbounded
+### 2. Thumbnails (resolved in 1.1)
 
 `thumbnails::generate` runs:
 
@@ -113,7 +167,7 @@ Six videos, cold cache:
    counter and ignore results from old runs.
 4. Keep the existing (path, mtime) cache; it already avoids repeat work.
 
-### 3. 25 idle wakeups/s from the command loop
+### 3. Idle wakeups from the command loop (resolved in 1.1)
 
 The app drains `Command` with
 `glib::timeout_add_local(Duration::from_millis(40))`. Measured 25
@@ -131,7 +185,7 @@ D-Bus/UI command.
 3. The X11 window watcher polls every 300 ms on X11 sessions (disabled on
    Wayland). Move it to `PropertyNotify`/`_NET_CLIENT_LIST` events later.
 
-### 4. Unnecessary DING work in modes without a wallpaper
+### 4. Unnecessary DING work (resolved in 1.1)
 
 `App::rebuild_windows` calls `util::gnome_desktop_icon_workaround()`
 unconditionally, including `MODE_NULL`. It queries
@@ -145,7 +199,7 @@ reload in a background thread) even when no Ferramari window exists.
    DING toggle entirely. It is the expensive, fragile half of the workaround.
 3. Keep the lowering itself: it is two `ConfigureWindow` calls per window.
 
-### 5. Config is written on every volume-slider tick
+### 5. Config writes on every volume-slider tick (resolved in 1.1)
 
 `App::set_volume` calls `save_config()`, `sync_snapshot()` and `refresh_ui()`
 for every `value-changed` emission. A slider drag can write the JSON file
@@ -209,11 +263,11 @@ library at startup.
 | Priority | Change | Expected effect | Effort |
 | --- | --- | --- | --- |
 | Done | Async + cached static wallpaper | 0.4.0: worker thread and generation counter; UI no longer freezes | — |
-| P0 | Thumbnail seek/pool/cancel | 2.7× faster cold GUI; no CPU spike on large libraries | S |
-| P0 | Debounce config writes | fewer disk writes on volume drag | XS |
-| P1 | Event-driven command loop | 25 wakeups/s → ~0; lower latency | S–M |
-| P1 | Conditional/removed DING toggle | ~1.4 s background reload and flicker gone | XS–S |
-| P1 | Reuse mpv for video→video | ~120 ms per switch; less memory churn | M |
+| Done | Thumbnail seek/pool/cancel | 1.1: 2.2× on 1080p, 4.5× on 4K; two workers, stale results cancelled | — |
+| Done | Debounce config writes | 1.1: nine slider changes → one write, flushed on quit | — |
+| Done | Event-driven command loop | 1.1: 26/s → 1.2/s idle wakeups; no 40 ms command latency | — |
+| Done | Conditional DING toggle | 1.1: skipped when there is no wallpaper window | — |
+| Done | Reuse mpv for video→video | 1.1: `loadfile` keeps the PID; ~0.2 ms app time instead of ~120 ms | — |
 | P2 | Stream resolution cache | 1.5–2.4 s saved per reload | S |
 | P2 | mpv low-power/memory profile | lower CPU/GPU on 4K/60 and idle | M |
 | P3 | X11 event watcher | 3.3 wakeups/s on X11 sessions | M |
@@ -242,7 +296,7 @@ grep -E '^(Rss|Pss|Anonymous):' /proc/$(pgrep -x ferramari)/smaps_rollup
 # static wallpaper, 1080p
 ffmpeg -y -v error -ss 00:00:05 -i VIDEO -frames:v 1 -vf gblur=sigma=5 /tmp/static.png
 
-# thumbnails, old vs new
-ffmpeg -y -v error -i VIDEO -ss 1 -vf thumbnail,scale=-1:96 -frames:v 1 old.jpg
-ffmpeg -y -v error -ss 1 -i VIDEO -frames:v 1 -vf scale=-1:96 new.jpg
+# thumbnails, old vs new (card size)
+ffmpeg -y -v error -i VIDEO -ss 1 -vf 'thumbnail,scale=400:225:force_original_aspect_ratio=increase,crop=400:225' -frames:v 1 old.jpg
+ffmpeg -y -v error -ss 1 -i VIDEO -vf 'scale=400:225:force_original_aspect_ratio=increase,crop=400:225' -frames:v 1 new.jpg
 ```

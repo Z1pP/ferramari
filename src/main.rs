@@ -19,6 +19,7 @@ mod thumbnails;
 mod tray;
 mod ui;
 mod util;
+mod wake;
 mod wallpaper;
 mod x11;
 mod ytdlp;
@@ -31,7 +32,7 @@ use std::time::Duration;
 use clap::Parser;
 use gtk::prelude::*;
 
-use app::{App, Command, Snapshot};
+use app::{App, Command, CommandSender, Snapshot};
 
 fn main() {
     paths::prepare_env();
@@ -56,7 +57,8 @@ fn main() {
         paths::is_flatpak()
     );
 
-    let (tx, rx) = mpsc::channel();
+    let (command_tx, rx) = mpsc::channel();
+    let tx = CommandSender::new(command_tx);
     let snapshot = Arc::new(Mutex::new(Snapshot::default()));
 
     // Single instance: a second launch only asks the first to show its GUI.

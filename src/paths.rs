@@ -114,6 +114,11 @@ pub fn thumbnail_cache_dir() -> PathBuf {
     xdg_cache_home().join("ferramari").join("thumbnails")
 }
 
+/// Cached blurred frames used for the GNOME static wallpaper.
+pub fn static_cache_dir() -> PathBuf {
+    xdg_cache_home().join("ferramari").join("static")
+}
+
 /// Cache for the online wallpaper catalogue (pages, previews, downloads).
 pub fn catalogue_cache_dir() -> PathBuf {
     xdg_cache_home().join("ferramari").join("catalogue")
@@ -186,6 +191,7 @@ pub fn ensure_dirs() {
         config_dir(),
         video_wallpaper_dir(),
         thumbnail_cache_dir(),
+        static_cache_dir(),
         catalogue_cache_dir(),
         mpv_socket_dir(),
         autostart_dir(),

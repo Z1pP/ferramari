@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.1 — 2026-10-31
+
+Performance and idle-power improvements.
+
+- Local thumbnails: input seek, no `thumbnail` filter, two-worker pool and
+  cancellation of stale grids (2.2× on 1080p, 4.5× on 4K).
+- Static wallpaper frames cached by path, mtime and blur radius; bounded to 12
+  files. A restart reuses the frame in ~55 ms instead of ~860 ms.
+- Event-driven command loop driven by a wakeup pipe; idle voluntary context
+  switches fall from ~26/s to ~1.2/s.
+- Volume and blur changes are debounced into one atomic config write, flushed
+  on quit and shutdown.
+- The GNOME desktop-icon workaround runs only when a wallpaper window exists.
+- Video-to-video switches on one monitor reuse the existing mpv and window;
+  `loadfile` is sent asynchronously so the GTK thread never waits for a decode.
+
 ## 1.0.0 — 2026-10-31
 
 First stable release.

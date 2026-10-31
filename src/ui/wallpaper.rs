@@ -2,7 +2,6 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use gtk::gdk;
@@ -12,7 +11,7 @@ use webkit2gtk::WebViewExt;
 use x11rb::connection::Connection as _;
 use x11rb::protocol::xproto::ConnectionExt as _;
 
-use crate::app::Command;
+use crate::app::{Command, CommandSender};
 use crate::fade::Fade;
 use crate::monitors::MonitorInfo;
 use crate::mpv::{Mpv, Options as MpvOptions};
@@ -148,7 +147,7 @@ impl WallpaperWindow {
         monitor: &MonitorInfo,
         uri: &str,
         muted: bool,
-        tx: Sender<Command>,
+        tx: CommandSender,
     ) -> anyhow::Result<Self> {
         let primary = monitor.is_primary;
         let (window, _) = base_window(app, monitor)?;
@@ -213,6 +212,21 @@ impl WallpaperWindow {
 
     pub fn is_primary(&self) -> bool {
         self.primary
+    }
+
+    /// Point an existing video player at another file. Keeps the X11 window
+    /// and the mpv process, which saves the ~120 ms cold start.
+    pub fn load_video(&mut self, source: &str, volume: i64, muted: bool) -> anyhow::Result<()> {
+        let Content::Video { mpv } = &self.content else {
+            anyhow::bail!("window does not embed a player");
+        };
+        let mut mpv = mpv.borrow_mut();
+        mpv.set_volume(if self.primary { volume } else { 0 })?;
+        mpv.set_mute(muted)?;
+        mpv.load_file(source)?;
+        drop(mpv);
+        self.key.source = source.to_string();
+        Ok(())
     }
 
     /// True while the embedded player is alive. Web views report alive here;

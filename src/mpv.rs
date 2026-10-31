@@ -228,6 +228,32 @@ impl Mpv {
         self.set_property("pause", json!(paused))
     }
 
+    /// Replace the current file without restarting mpv. Used when a monitor
+    /// switches to another local video.
+    ///
+    /// mpv may only answer `loadfile` after the new file is ready, so the
+    /// command is written without waiting for a reply; the GTK thread must not
+    /// block on a decoder. A later command skips the stale reply.
+    pub fn load_file(&mut self, source: &str) -> anyhow::Result<()> {
+        self.send_command(json!(["loadfile", source, "replace"]))
+    }
+
+    fn send_command(&self, args: Value) -> anyhow::Result<()> {
+        let mut guard = self
+            .ipc
+            .lock()
+            .map_err(|_| anyhow::anyhow!("mpv IPC mutex poisoned"))?;
+        let ipc = guard
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("mpv IPC connection is closed"))?;
+        let request_id = ipc.next_request;
+        ipc.next_request += 1;
+        let request = json!({ "command": args, "request_id": request_id });
+        writeln!(ipc.writer, "{request}")?;
+        ipc.writer.flush()?;
+        Ok(())
+    }
+
     /// Reap the child without blocking. A missing status means mpv exited or
     /// the handle is no longer usable; the caller restarts the window.
     pub fn is_running(&mut self) -> bool {

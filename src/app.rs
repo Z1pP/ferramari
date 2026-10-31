@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, Sender as StdSender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -136,6 +136,25 @@ impl Default for Snapshot {
     }
 }
 
+/// Cloneable command handle shared with UI, D-Bus, tray and watcher threads.
+/// Sending also wakes the GTK main loop, so it does not need to poll.
+#[derive(Clone)]
+pub struct CommandSender(StdSender<Command>);
+
+impl CommandSender {
+    pub fn new(sender: StdSender<Command>) -> Self {
+        Self(sender)
+    }
+
+    pub fn send(&self, command: Command) -> Result<(), mpsc::SendError<Command>> {
+        let result = self.0.send(command);
+        if result.is_ok() {
+            crate::wake::wake();
+        }
+        result
+    }
+}
+
 pub struct App {
     gtk_app: gtk::Application,
     pub config: Config,
@@ -143,7 +162,7 @@ pub struct App {
     pub windows: Vec<WallpaperWindow>,
     pub control: Option<ControlWindow>,
     pub snapshot: Arc<Mutex<Snapshot>>,
-    tx: Sender<Command>,
+    tx: CommandSender,
     weak_self: Weak<RefCell<App>>,
     background: bool,
     version: String,
@@ -161,6 +180,8 @@ pub struct App {
     battery_percent: Option<u8>,
     static_job: Option<(String, i64)>,
     static_generation: u64,
+    /// Pending debounced config save; volume and blur sliders change fast.
+    config_dirty_at: Option<Instant>,
     policies: HashMap<WindowKey, RestartPolicy>,
     window_watcher: Option<x11::Watcher>,
     tray_handle: Option<ksni::blocking::Handle<tray::Tray>>,
@@ -173,7 +194,7 @@ impl App {
     pub fn new(
         gtk_app: &gtk::Application,
         args: &crate::cli::Args,
-        tx: Sender<Command>,
+        tx: CommandSender,
         rx: Receiver<Command>,
         snapshot: Arc<Mutex<Snapshot>>,
     ) -> Rc<RefCell<Self>> {
@@ -211,6 +232,7 @@ impl App {
             battery_percent: power::status().percent,
             static_job: None,
             static_generation: 0,
+            config_dirty_at: None,
             policies: HashMap::new(),
             window_watcher: None,
             tray_handle: None,
@@ -242,25 +264,31 @@ impl App {
 
     fn start_command_loop(app: &Rc<RefCell<Self>>, rx: Receiver<Command>) {
         let weak = Rc::downgrade(app);
-        glib::timeout_add_local(Duration::from_millis(40), move || {
-            let Some(app) = weak.upgrade() else {
-                return glib::ControlFlow::Break;
-            };
-            loop {
-                match rx.try_recv() {
-                    Ok(command) => {
-                        let mut state = app.borrow_mut();
-                        state.handle(command);
-                        if state.quit_requested {
-                            return glib::ControlFlow::Break;
-                        }
-                    }
-                    Err(mpsc::TryRecvError::Empty) => break,
-                    Err(mpsc::TryRecvError::Disconnected) => return glib::ControlFlow::Break,
-                }
+        match crate::wake::init() {
+            Some(fd) => {
+                glib::unix_fd_add_local(fd, glib::IOCondition::IN, move |fd, _| {
+                    crate::wake::drain(fd);
+                    let Some(app) = weak.upgrade() else {
+                        return glib::ControlFlow::Break;
+                    };
+                    drain_commands(&app, &rx)
+                });
+                // Commands sent before the loop started (D-Bus, signals) are
+                // still in the queue; one synthetic wakeup drains them.
+                crate::wake::wake();
             }
-            glib::ControlFlow::Continue
-        });
+            None => {
+                // Pipe creation failed: keep the old polling loop as a
+                // fallback so commands are still processed.
+                log::warn!("[Server] Wakeup pipe unavailable, polling commands");
+                glib::timeout_add_local(Duration::from_millis(40), move || {
+                    let Some(app) = weak.upgrade() else {
+                        return glib::ControlFlow::Break;
+                    };
+                    drain_commands(&app, &rx)
+                });
+            }
+        }
     }
 
     fn start_player_watch(app: &Rc<RefCell<Self>>) {
@@ -274,6 +302,7 @@ impl App {
                 return glib::ControlFlow::Break;
             }
             state.watch_players();
+            state.flush_config_if_due();
             glib::ControlFlow::Continue
         });
     }
@@ -350,6 +379,7 @@ impl App {
     }
 
     pub fn shutdown(&mut self) {
+        self.flush_config();
         self.close_windows();
         self.background_wallpaper.restore();
     }
@@ -773,9 +803,19 @@ impl App {
         let pending_stream = self.config.mode == Mode::Stream && self.stream.is_none();
         self.windows.retain(|window| {
             desired.contains(window.key())
+                // A video player can be reused for a new file on the same
+                // monitor instead of being torn down and respawned.
+                || (window.key().kind == WindowKind::Video
+                    && desired.iter().any(|key| {
+                        key.kind == WindowKind::Video
+                            && key.monitor == window.key().monitor
+                            && Path::new(&key.source).is_file()
+                    }))
                 || (pending_stream && window.key().kind == WindowKind::Stream)
         });
 
+        let volume = self.config.volume;
+        let muted = self.config.is_mute;
         let mut created = Vec::new();
         for key in desired {
             if self.windows.iter().any(|window| window.key() == &key) {
@@ -796,6 +836,36 @@ impl App {
             else {
                 continue;
             };
+            if key.kind == WindowKind::Video && Path::new(&key.source).is_file() {
+                if let Some(index) = self.windows.iter().position(|window| {
+                    window.key().kind == WindowKind::Video && window.key().monitor == key.monitor
+                }) {
+                    let switch_started = Instant::now();
+                    match self.windows[index].load_video(&key.source, volume, muted) {
+                        Ok(()) => {
+                            log::info!(
+                                "[Mode] {} video -> {} (reused player in {:?})",
+                                key.monitor,
+                                key.source,
+                                switch_started.elapsed()
+                            );
+                            let policy = self
+                                .policies
+                                .entry(key.clone())
+                                .or_insert_with(|| RestartPolicy::new(now));
+                            policy.on_started(now);
+                            continue;
+                        }
+                        Err(err) => {
+                            log::warn!(
+                                "[Mode] Reusing the player on {} failed: {err}",
+                                key.monitor
+                            );
+                            self.windows.remove(index);
+                        }
+                    }
+                }
+            }
             log::info!(
                 "[Mode] {} {} -> {}",
                 key.monitor,
@@ -818,7 +888,6 @@ impl App {
 
         // Only new windows fade in; a player that is already running keeps its
         // current volume instead of dipping to zero on every rebuild.
-        let volume = self.config.volume;
         let duration = self.config.fade_duration_sec;
         let interval = self.config.fade_interval;
         let should_play = self.should_play();
@@ -889,7 +958,11 @@ impl App {
 
     fn finish_rebuild(&mut self) {
         self.update_static_wallpaper();
-        util::gnome_desktop_icon_workaround();
+        // The extension reload exists to uncover an existing wallpaper window.
+        // Null mode (and a failed window) must not pay for it.
+        if !self.windows.is_empty() {
+            util::gnome_desktop_icon_workaround();
+        }
         self.sync_snapshot();
         self.refresh_ui();
     }
@@ -1090,7 +1163,7 @@ impl App {
 
     fn set_volume(&mut self, volume: i64) {
         self.config.volume = volume.clamp(0, 100);
-        self.save_config();
+        self.mark_config_dirty();
         let volume = self.config.volume;
         for window in &mut self.windows {
             if window.is_primary() {
@@ -1134,7 +1207,7 @@ impl App {
 
     fn set_blur_radius(&mut self, radius: i64) {
         self.config.blur_radius = radius.clamp(0, 20);
-        self.save_config();
+        self.mark_config_dirty();
         if self.config.is_static_wallpaper && self.config.mode == Mode::Video {
             self.update_static_wallpaper();
         }
@@ -1291,6 +1364,7 @@ impl App {
 
     fn quit(&mut self) {
         log::info!("[Server] Stopping");
+        self.flush_config();
         self.quit_requested = true;
         self.close_windows();
         self.background_wallpaper.restore();
@@ -1300,7 +1374,28 @@ impl App {
         self.gtk_app.quit();
     }
 
+    /// Coalesce rapid slider changes into one write.
+    fn mark_config_dirty(&mut self) {
+        self.config_dirty_at = Some(Instant::now());
+    }
+
+    fn flush_config_if_due(&mut self) {
+        if self
+            .config_dirty_at
+            .is_some_and(|at| at.elapsed() >= Duration::from_millis(500))
+        {
+            self.flush_config();
+        }
+    }
+
+    fn flush_config(&mut self) {
+        if self.config_dirty_at.take().is_some() {
+            self.save_config();
+        }
+    }
+
     fn save_config(&self) {
+        log::debug!("[Config] Saving {}", paths::config_path().display());
         if let Err(err) = self.config.save() {
             self.notify_user_error(UserError::with_detail(
                 ErrorKind::Config,
@@ -1351,6 +1446,24 @@ impl App {
             control.show_error(&error.message());
         }
     }
+}
+
+fn drain_commands(app: &Rc<RefCell<App>>, rx: &Receiver<Command>) -> glib::ControlFlow {
+    let mut state = app.borrow_mut();
+    loop {
+        match rx.try_recv() {
+            Ok(command) => {
+                state.handle(command);
+                if state.quit_requested {
+                    return glib::ControlFlow::Break;
+                }
+            }
+            Err(mpsc::TryRecvError::Empty) => break,
+            Err(mpsc::TryRecvError::Disconnected) => return glib::ControlFlow::Break,
+        }
+    }
+    state.flush_config_if_due();
+    glib::ControlFlow::Continue
 }
 
 /// Pure planning step: which wallpaper window should exist for every monitor
@@ -1474,7 +1587,7 @@ fn kind_label(kind: WindowKind) -> &'static str {
     }
 }
 
-fn install_actions(app: &gtk::Application, tx: &Sender<Command>) {
+fn install_actions(app: &gtk::Application, tx: &CommandSender) {
     let actions = [
         ("show", Command::ShowGui),
         ("toggle-mute", Command::ToggleMute),

@@ -9,7 +9,9 @@
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::mpsc::{self, Sender};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use gdk_pixbuf::Pixbuf;
@@ -58,11 +60,12 @@ impl PendingTimer {
 }
 
 struct Shared {
-    tx: Sender<Command>,
+    tx: crate::app::CommandSender,
     videos: RefCell<Vec<PathBuf>>,
     monitors: RefCell<Vec<MonitorInfo>>,
     menu: RefCell<Option<gtk::Menu>>,
     thumb_timer: RefCell<Option<PendingTimer>>,
+    thumb_cancel: RefCell<Option<Arc<AtomicBool>>>,
 }
 
 struct HeaderParts {
@@ -152,7 +155,7 @@ struct HomePage {
     videos: RefCell<Vec<PathBuf>>,
     collections: RefCell<Vec<(String, String)>>,
     syncing: Rc<Cell<bool>>,
-    tx: Sender<Command>,
+    tx: crate::app::CommandSender,
 }
 
 /// The parts that switch between the sidebar and the compact top rail.
@@ -232,7 +235,7 @@ pub struct ControlWindow {
 impl ControlWindow {
     pub fn new(
         app: &gtk::Application,
-        tx: Sender<Command>,
+        tx: crate::app::CommandSender,
         version: &str,
         library: Rc<RefCell<Library>>,
     ) -> Self {
@@ -251,6 +254,7 @@ impl ControlWindow {
             monitors: RefCell::new(Vec::new()),
             menu: RefCell::new(None),
             thumb_timer: RefCell::new(None),
+            thumb_cancel: RefCell::new(None),
         });
 
         let stack = gtk::Stack::new();
@@ -640,7 +644,11 @@ impl ControlWindow {
     }
 }
 
-fn build_header(tx: &Sender<Command>, volume: &VolumeParts, stack: &gtk::Stack) -> HeaderParts {
+fn build_header(
+    tx: &crate::app::CommandSender,
+    volume: &VolumeParts,
+    stack: &gtk::Stack,
+) -> HeaderParts {
     let header = gtk::HeaderBar::new();
     header.style_context().add_class("ferramari-header");
     header.set_show_close_button(true);
@@ -764,7 +772,7 @@ fn brand_mark_widget() -> gtk::Widget {
     area.upcast()
 }
 
-fn build_volume_popover(tx: &Sender<Command>, syncing: &Rc<Cell<bool>>) -> VolumeParts {
+fn build_volume_popover(tx: &crate::app::CommandSender, syncing: &Rc<Cell<bool>>) -> VolumeParts {
     let popover = gtk::Popover::builder().width_request(304).build();
     let content = gtk::Box::new(gtk::Orientation::Vertical, 12);
     content.set_margin_start(18);
@@ -840,7 +848,7 @@ fn build_volume_popover(tx: &Sender<Command>, syncing: &Rc<Cell<bool>>) -> Volum
 
 fn build_settings_page(
     window: &gtk::ApplicationWindow,
-    tx: &Sender<Command>,
+    tx: &crate::app::CommandSender,
     syncing: &Rc<Cell<bool>>,
     version: &str,
 ) -> SettingsPage {
@@ -1923,7 +1931,7 @@ fn wire_video_page(page: &VideoPage, shared: &Rc<Shared>, library: &Rc<RefCell<L
     }
 }
 
-fn build_stream_page(tx: &Sender<Command>) -> StreamPage {
+fn build_stream_page(tx: &crate::app::CommandSender) -> StreamPage {
     let content = gtk::Box::new(gtk::Orientation::Vertical, 18);
     content.set_margin_start(26);
     content.set_margin_end(26);
@@ -2044,7 +2052,7 @@ fn build_stream_page(tx: &Sender<Command>) -> StreamPage {
     }
 }
 
-fn build_web_page(tx: &Sender<Command>) -> WebPage {
+fn build_web_page(tx: &crate::app::CommandSender) -> WebPage {
     let content = gtk::Box::new(gtk::Orientation::Vertical, 18);
     content.set_margin_start(26);
     content.set_margin_end(26);
@@ -2377,7 +2385,7 @@ fn sync_navigation(buttons: &[(String, gtk::Button)], active: &str) {
     }
 }
 
-fn build_home_page(stack: &gtk::Stack, tx: &Sender<Command>) -> HomePage {
+fn build_home_page(stack: &gtk::Stack, tx: &crate::app::CommandSender) -> HomePage {
     let content = gtk::Box::new(gtk::Orientation::Vertical, 16);
     content.set_margin_start(26);
     content.set_margin_end(26);
@@ -2866,6 +2874,9 @@ fn fill_grid(
     if let Some(timer) = shared.thumb_timer.borrow_mut().take() {
         timer.cancel();
     }
+    if let Some(cancel) = shared.thumb_cancel.borrow_mut().take() {
+        cancel.store(true, Ordering::Relaxed);
+    }
     let previous: Vec<gtk::Widget> = page.flow.children();
     for child in previous {
         page.flow.remove(&child);
@@ -2876,6 +2887,32 @@ fn fill_grid(
     *shared.videos.borrow_mut() = videos.clone();
 
     let (sender, receiver) = mpsc::channel::<(usize, PathBuf)>();
+    let cancel = Arc::new(AtomicBool::new(false));
+    *shared.thumb_cancel.borrow_mut() = Some(Arc::clone(&cancel));
+    let (task_sender, task_receiver) = mpsc::channel::<(usize, PathBuf)>();
+    let task_receiver = Arc::new(Mutex::new(task_receiver));
+    for _ in 0..2 {
+        let task_receiver = Arc::clone(&task_receiver);
+        let sender = sender.clone();
+        let cancel = Arc::clone(&cancel);
+        std::thread::spawn(move || loop {
+            let task = task_receiver
+                .lock()
+                .ok()
+                .and_then(|receiver| receiver.recv().ok());
+            let Some((index, path)) = task else {
+                return;
+            };
+            if cancel.load(Ordering::Relaxed) {
+                return;
+            }
+            if let Some(thumbnail) = thumbnails::generate(&path) {
+                if sender.send((index, thumbnail)).is_err() {
+                    return;
+                }
+            }
+        });
+    }
     let states: ThumbStates = Rc::new(RefCell::new(Vec::new()));
 
     for (index, path) in videos.iter().enumerate() {
@@ -2941,14 +2978,9 @@ fn fill_grid(
         child.show_all();
         update_star_icon(&star, library.borrow().is_favorite(&path_string));
 
-        let sender = sender.clone();
-        let path = path.clone();
-        std::thread::spawn(move || {
-            if let Some(thumbnail) = thumbnails::generate(&path) {
-                let _ = sender.send((index, thumbnail));
-            }
-        });
+        let _ = task_sender.send((index, path.clone()));
     }
+    drop(task_sender);
     drop(sender);
 
     let states_for_timer = Rc::clone(&states);

@@ -1,15 +1,13 @@
 //! Session integrations that only produce events: screen lock and logout.
 
-use std::sync::mpsc::Sender;
-
 use zbus::blocking::{Connection, Proxy};
 
-use crate::app::Command;
+use crate::app::{Command, CommandSender};
 use crate::paths;
 
 /// Watch every screen-saver implementation we know about. Each service gets
 /// its own thread because a missing service must not stop the others.
-pub fn start_screen_lock_watcher(tx: Sender<Command>) {
+pub fn start_screen_lock_watcher(tx: CommandSender) {
     for service in [
         "org.gnome.ScreenSaver",
         "org.cinnamon.ScreenSaver",
@@ -48,7 +46,7 @@ pub fn start_screen_lock_watcher(tx: Sender<Command>) {
 
 /// Pause playback while the machine is suspended. logind emits `true` right
 /// before sleep and `false` after resume.
-pub fn start_sleep_watcher(tx: Sender<Command>) {
+pub fn start_sleep_watcher(tx: CommandSender) {
     let Ok(connection) = Connection::system() else {
         return;
     };
@@ -78,7 +76,7 @@ pub fn start_sleep_watcher(tx: Sender<Command>) {
         .ok();
 }
 
-pub fn start_end_session_watcher(tx: Sender<Command>) {
+pub fn start_end_session_watcher(tx: CommandSender) {
     if paths::is_gnome() {
         start_gnome_session_watcher(tx);
     } else {
@@ -86,7 +84,7 @@ pub fn start_end_session_watcher(tx: Sender<Command>) {
     }
 }
 
-fn start_gnome_session_watcher(tx: Sender<Command>) {
+fn start_gnome_session_watcher(tx: CommandSender) {
     let Ok(connection) = Connection::session() else {
         return;
     };
@@ -137,7 +135,7 @@ fn start_gnome_session_watcher(tx: Sender<Command>) {
     });
 }
 
-fn start_logind_watcher(tx: Sender<Command>) {
+fn start_logind_watcher(tx: CommandSender) {
     let Ok(connection) = Connection::system() else {
         return;
     };

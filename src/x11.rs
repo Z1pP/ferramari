@@ -6,8 +6,8 @@
 //! per-window signal bookkeeping, and windows disappearing mid-query is
 //! harmless.
 
+use crate::app::CommandSender;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -40,7 +40,7 @@ impl Drop for Watcher {
 
 /// Start polling. Returns `None` on Wayland (the feature is disabled
 /// there too) or when X11 is not reachable.
-pub fn start(tx: Sender<Command>) -> Option<Watcher> {
+pub fn start(tx: CommandSender) -> Option<Watcher> {
     if crate::paths::is_wayland() {
         log::info!("[WindowHandler] Wayland session, window polling disabled");
         return None;
@@ -58,7 +58,7 @@ pub fn start(tx: Sender<Command>) -> Option<Watcher> {
     Some(Watcher { stop })
 }
 
-fn run(tx: Sender<Command>, stop: Arc<AtomicBool>) -> anyhow::Result<()> {
+fn run(tx: CommandSender, stop: Arc<AtomicBool>) -> anyhow::Result<()> {
     let (connection, screen) = x11rb::connect(None)?;
     let root = connection.setup().roots[screen].root;
     let atoms = Atoms::new(&connection)?;

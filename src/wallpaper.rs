@@ -5,6 +5,7 @@
 //! Non-GNOME desktops are left untouched.
 
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -20,13 +21,37 @@ const BACKGROUND_SCHEMA: &str = "org.gnome.desktop.background";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 const FRAME_TIMEOUT: Duration = Duration::from_secs(60);
 
+const STATIC_CACHE_LIMIT: usize = 12;
+
 /// Extract a frame at the golden-ratio point of the video, blur it and return
 /// the generated file. This is CPU/GPU work and must run off the GTK thread.
+/// Results are cached by `(path, mtime, blur)` so restarts and source switches
+/// do not decode the video again.
 pub fn render_static_frame(video: &Path, blur_radius: u32) -> Option<PathBuf> {
+    let metadata = fs::metadata(video).ok()?;
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|time| time.as_secs())
+        .unwrap_or(0);
+    let cache_dir = paths::static_cache_dir();
+    fs::create_dir_all(&cache_dir).ok()?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    video.hash(&mut hasher);
+    modified.hash(&mut hasher);
+    blur_radius.hash(&mut hasher);
+    "static-v1".hash(&mut hasher);
+    let file = cache_dir.join(format!("{:016x}.png", hasher.finish()));
+    if file.is_file() {
+        return Some(file);
+    }
+
     let duration = probe_duration(video).unwrap_or(0.0);
     let seek = util::format_hms(duration / std::f64::consts::PI);
-    let file = paths::config_dir().join(format!(
-        "static-{:06}.png",
+    let partial = cache_dir.join(format!(
+        "{:016x}-{:06}.part.png",
+        hasher.finish(),
         rand::random::<u32>() % 1_000_000
     ));
 
@@ -45,7 +70,7 @@ pub fn render_static_frame(video: &Path, blur_radius: u32) -> Option<PathBuf> {
         command.arg("-vf").arg(format!("gblur=sigma={blur_radius}"));
     }
     let Ok(mut child) = command
-        .arg(&file)
+        .arg(&partial)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -54,15 +79,49 @@ pub fn render_static_frame(video: &Path, blur_radius: u32) -> Option<PathBuf> {
     };
     let rendered =
         util::wait_with_timeout(&mut child, FRAME_TIMEOUT).is_some_and(|status| status.success());
-    if !rendered || !file.is_file() {
+    if !rendered || !partial.is_file() {
         log::warn!(
             "[StaticWallpaper] Could not extract a frame from {}",
             video.display()
         );
-        let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(&partial);
         return None;
     }
+    if fs::rename(&partial, &file).is_err() {
+        let _ = fs::remove_file(&partial);
+        return None;
+    }
+    prune_static_cache(&cache_dir, &file);
     Some(file)
+}
+
+/// Keep the cache bounded; one PNG per video can be several megabytes.
+fn prune_static_cache(dir: &Path, keep: &Path) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    let mut files: Vec<(std::time::SystemTime, PathBuf)> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            if path.extension().is_none_or(|ext| ext != "png")
+                || path == keep
+                || path.to_string_lossy().ends_with(".part.png")
+            {
+                return None;
+            }
+            let modified = entry.metadata().ok()?.modified().ok()?;
+            Some((modified, path))
+        })
+        .collect();
+    if files.len() < STATIC_CACHE_LIMIT {
+        return;
+    }
+    files.sort_by_key(|(modified, _)| *modified);
+    let remove = files.len() + 1 - STATIC_CACHE_LIMIT;
+    for (_, path) in files.into_iter().take(remove) {
+        let _ = fs::remove_file(path);
+    }
 }
 
 pub struct GnomeBackground {

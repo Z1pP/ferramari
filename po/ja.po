@@ -442,3 +442,36 @@ msgstr "フィルターに一致する壁紙はありません"
 
 msgid "Try another resolution or reload the catalogue."
 msgstr "別の解像度を選ぶか、カタログを更新してください。"
+
+msgid "Rotation"
+msgstr "ローテーション"
+
+msgid "Rotate wallpapers"
+msgstr "壁紙を切り替える"
+
+msgid "Use the collection assigned to each monitor on Home"
+msgstr "ホームでモニターに割り当てたコレクションを使用します"
+
+msgid "Off"
+msgstr "オフ"
+
+msgid "In order"
+msgstr "順番"
+
+msgid "Random"
+msgstr "ランダム"
+
+msgid "Rotation mode"
+msgstr "ローテーション方式"
+
+msgid "Rotation interval"
+msgstr "ローテーション間隔"
+
+msgid "Minutes between changes"
+msgstr "変更間隔（分）"
+
+msgid "No rotation"
+msgstr "ローテーションなし"
+
+msgid "Rotate this collection on this monitor"
+msgstr "このモニターでこのコレクションを切り替える"

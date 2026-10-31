@@ -790,3 +790,36 @@ msgstr "Нет обоев, подходящих под фильтры"
 
 msgid "Try another resolution or reload the catalogue."
 msgstr "Выберите другое разрешение или обновите каталог."
+
+msgid "Rotation"
+msgstr "Ротация"
+
+msgid "Rotate wallpapers"
+msgstr "Переключать обои"
+
+msgid "Use the collection assigned to each monitor on Home"
+msgstr "Использовать коллекцию, назначенную монитору на главном экране"
+
+msgid "Off"
+msgstr "Выключено"
+
+msgid "In order"
+msgstr "По порядку"
+
+msgid "Random"
+msgstr "Случайно"
+
+msgid "Rotation mode"
+msgstr "Режим ротации"
+
+msgid "Rotation interval"
+msgstr "Интервал ротации"
+
+msgid "Minutes between changes"
+msgstr "Минут между сменами"
+
+msgid "No rotation"
+msgstr "Без ротации"
+
+msgid "Rotate this collection on this monitor"
+msgstr "Переключать эту коллекцию на этом мониторе"

@@ -8,11 +8,11 @@ what is still unverified.
 
 | Environment | Status | Notes |
 | --- | --- | --- |
-| GNOME 50, Wayland session, running through XWayland | **tested** 2026-10-31, 0.7.0 | Main development environment |
+| GNOME 50, Wayland session, running through XWayland | **tested** 2026-10-31, 0.8.0 | Main development environment |
 | GNOME 50, X11 session | not tested | The same X11 backend is used, but the session has not been exercised |
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |
-| GNOME with the Flatpak bundle | **tested** 2026-10-31, 0.7.0 | Built and launched from a local bundle; host mpv/ffmpeg bridge, XWayland, WebKitGTK; tray/autostart not verified |
+| GNOME with the Flatpak bundle | **tested** 2026-10-31, 0.7.0 | Built and launched from a local bundle; host mpv/ffmpeg bridge, XWayland, WebKitGTK; 0.8 uses the same manifest; tray/autostart not verified |
 | Native Wayland (no XWayland) | not supported | No wallpaper surface or `--wid` embedding yet |
 
 Do not mark an environment as supported until the checklist below has been run
@@ -63,6 +63,9 @@ Run from a checkout with `cargo build --release`, or from an installed build.
 - [ ] Apply videos; Recent shows the last used first.
 - [ ] Create a collection, rename it, add/remove items and delete it.
 - [ ] Switch between All, Favorites, Recent and collections.
+- [ ] Assign a collection to a monitor on Home.
+- [ ] Set rotation to In order and a short interval; the monitor advances.
+- [ ] Set rotation to Random; it does not immediately repeat the same item.
 - [ ] Restart the app; library.json survives and is valid.
 
 ### System integration

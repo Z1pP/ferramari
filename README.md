@@ -12,6 +12,7 @@ iron (*ferrum*) and Rust's crab mascot.
 - Play a local video as the wallpaper, one video per monitor
 - Home page with the current wallpaper and per-monitor cards
 - Local library with favorites, recently used wallpapers and collections
+- Automatic wallpaper rotation from a per-monitor collection (order or random)
 - Browse a catalogue of live wallpapers with categories, search, sorting,
   resolution filters and a six-frame preview before installing
 - Streaming URLs through `yt-dlp` (YouTube and many other sites)

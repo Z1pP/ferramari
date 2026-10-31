@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use gtk::prelude::*;
+use rand::seq::SliceRandom;
 
 use crate::autostart;
 use crate::config::{Config, Mode};
@@ -76,6 +77,13 @@ pub enum Command {
     MonitorsChanged,
     SetAutostart(bool),
     SetLanguage(String),
+    SetRotationMode(String),
+    SetRotationInterval(i64),
+    SetMonitorRotation {
+        monitor: String,
+        collection: Option<String>,
+    },
+    LibraryChanged,
     WebError {
         monitor: String,
         message: String,
@@ -139,6 +147,7 @@ pub struct App {
     stream_resolving: bool,
     background_wallpaper: GnomeBackground,
     library: Rc<RefCell<Library>>,
+    last_rotation: HashMap<String, Instant>,
     static_job: Option<(String, i64)>,
     static_generation: u64,
     policies: HashMap<WindowKey, RestartPolicy>,
@@ -185,6 +194,7 @@ impl App {
             stream_resolving: false,
             background_wallpaper,
             library: Rc::new(RefCell::new(Library::load())),
+            last_rotation: HashMap::new(),
             static_job: None,
             static_generation: 0,
             policies: HashMap::new(),
@@ -211,6 +221,7 @@ impl App {
         Self::start_command_loop(&app, rx);
         Self::start_external_watchers(&app);
         Self::start_player_watch(&app);
+        Self::start_rotation_watch(&app);
         app
     }
 
@@ -248,6 +259,21 @@ impl App {
                 return glib::ControlFlow::Break;
             }
             state.watch_players();
+            glib::ControlFlow::Continue
+        });
+    }
+
+    fn start_rotation_watch(app: &Rc<RefCell<Self>>) {
+        let weak = Rc::downgrade(app);
+        glib::timeout_add_local(Duration::from_secs(5), move || {
+            let Some(app) = weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            let mut state = app.borrow_mut();
+            if state.quit_requested {
+                return glib::ControlFlow::Break;
+            }
+            state.rotate_wallpapers();
             glib::ControlFlow::Continue
         });
     }
@@ -425,6 +451,43 @@ impl App {
                     self.config.language = language;
                     self.save_config();
                 }
+            }
+            Command::SetRotationMode(mode) => {
+                if self.config.rotation_mode != mode {
+                    self.config.rotation_mode = mode;
+                    self.last_rotation.clear();
+                    self.save_config();
+                    self.refresh_ui();
+                }
+            }
+            Command::SetRotationInterval(seconds) => {
+                let seconds = seconds.clamp(10, 86_400);
+                if self.config.rotation_interval_sec != seconds {
+                    self.config.rotation_interval_sec = seconds;
+                    self.last_rotation.clear();
+                    self.save_config();
+                    self.refresh_ui();
+                }
+            }
+            Command::LibraryChanged => self.refresh_ui(),
+            Command::SetMonitorRotation {
+                monitor,
+                collection,
+            } => {
+                if !self.monitors.iter().any(|info| info.name == monitor) {
+                    return;
+                }
+                match collection {
+                    Some(id) if self.library.borrow().collection(&id).is_some() => {
+                        self.config.rotations.insert(monitor.clone(), id);
+                    }
+                    _ => {
+                        self.config.rotations.remove(&monitor);
+                    }
+                }
+                self.last_rotation.remove(&monitor);
+                self.save_config();
+                self.refresh_ui();
             }
             Command::WebError { monitor, message } => {
                 log::warn!("[Web] {monitor}: {message}");
@@ -985,6 +1048,69 @@ impl App {
         self.refresh_ui();
     }
 
+    /// Advance every monitor whose rotation timer is due. Collections are
+    /// chosen on the Home screen; the mode and interval are global settings.
+    fn rotate_wallpapers(&mut self) {
+        if self.config.rotation_mode == "off" {
+            return;
+        }
+        let interval =
+            Duration::from_secs(self.config.rotation_interval_sec.clamp(10, 86_400) as u64);
+        let now = Instant::now();
+        let mut changed = false;
+        for monitor in self.monitors.clone() {
+            let Some(collection_id) = self.config.rotations.get(&monitor.name).cloned() else {
+                continue;
+            };
+            let items: Vec<String> = self
+                .library
+                .borrow()
+                .collection(&collection_id)
+                .map(|collection| {
+                    collection
+                        .items
+                        .iter()
+                        .filter(|item| Path::new(item).is_file())
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default();
+            if items.is_empty() {
+                continue;
+            }
+            let last = self
+                .last_rotation
+                .entry(monitor.name.clone())
+                .or_insert(now);
+            if now.duration_since(*last) < interval {
+                continue;
+            }
+            let current = self.config.source_for(&monitor.name).to_string();
+            let Some(next) = next_rotation_path(&self.config.rotation_mode, &items, &current)
+            else {
+                continue;
+            };
+            if next == current {
+                *last = now;
+                continue;
+            }
+            self.config.mode = Mode::Video;
+            self.config
+                .data_source
+                .insert(monitor.name.clone(), next.clone());
+            if !Path::new(self.config.default_source()).is_file() {
+                self.config.data_source.insert("Default".to_string(), next);
+            }
+            *last = now;
+            changed = true;
+        }
+        if changed {
+            self.save_config();
+            self.sync_windows();
+            self.finish_rebuild();
+        }
+    }
+
     fn update_static_wallpaper(&mut self) {
         let source = util::primary_source(&self.config, &self.monitors).to_string();
         let blur = self.config.blur_radius.max(0);
@@ -1212,6 +1338,32 @@ fn assign_video(
     true
 }
 
+/// Pick the next collection item. Order mode advances from the current file;
+/// random mode avoids repeating it when there is more than one candidate.
+fn next_rotation_path(mode: &str, items: &[String], current: &str) -> Option<String> {
+    if items.is_empty() {
+        return None;
+    }
+    if mode == "random" {
+        let candidates: Vec<&String> = items
+            .iter()
+            .filter(|item| item.as_str() != current)
+            .collect();
+        if candidates.is_empty() {
+            return items.first().cloned();
+        }
+        return candidates
+            .choose(&mut rand::thread_rng())
+            .map(|item| (*item).clone());
+    }
+    let index = items
+        .iter()
+        .position(|item| item == current)
+        .map(|index| (index + 1) % items.len())
+        .unwrap_or(0);
+    items.get(index).cloned()
+}
+
 fn kind_label(kind: WindowKind) -> &'static str {
     match kind {
         WindowKind::Video => "video",
@@ -1323,6 +1475,40 @@ mod tests {
             Some("HDMI-9")
         ));
         assert_eq!(config.mode, Mode::Null);
+    }
+
+    #[test]
+    fn order_rotation_advances_and_wraps() {
+        let items = vec!["/a.mp4".to_string(), "/b.mp4".to_string()];
+        assert_eq!(
+            next_rotation_path("order", &items, "/a.mp4"),
+            Some("/b.mp4".into())
+        );
+        assert_eq!(
+            next_rotation_path("order", &items, "/b.mp4"),
+            Some("/a.mp4".into())
+        );
+        assert_eq!(
+            next_rotation_path("order", &items, "/missing.mp4"),
+            Some("/a.mp4".into())
+        );
+        assert_eq!(next_rotation_path("order", &[], "/a.mp4"), None);
+    }
+
+    #[test]
+    fn random_rotation_avoids_the_current_item() {
+        let items = vec!["/a.mp4".to_string(), "/b.mp4".to_string()];
+        for _ in 0..20 {
+            assert_eq!(
+                next_rotation_path("random", &items, "/a.mp4"),
+                Some("/b.mp4".into())
+            );
+        }
+        let one = vec!["/a.mp4".to_string()];
+        assert_eq!(
+            next_rotation_path("random", &one, "/a.mp4"),
+            Some("/a.mp4".into())
+        );
     }
 
     #[test]

@@ -16,6 +16,16 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="0.8.0" date="2026-10-31" type="stable">
+      <description>
+        <p>Automatic wallpaper rotation.</p>
+        <ul>
+          <li>Assign a collection to each monitor</li>
+          <li>Rotate in order or randomly on a configurable interval</li>
+          <li>Rotation settings on the Settings page</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.0" date="2026-10-31" type="stable">
       <description>
         <p>Library, catalogue filters and Flatpak.</p>

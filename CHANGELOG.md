@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0 — 2026-10-31
+
+- Assign a library collection to an individual monitor from the Home page.
+- Rotate that collection in order or randomly on a configurable interval.
+- Settings page controls rotation mode and interval (minutes).
+- Rotation runs on the GTK loop with a five-second tick and never blocks the UI.
+
 ## 0.7.0 — 2026-10-31
 
 Library, catalogue filters and Flatpak.

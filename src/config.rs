@@ -125,6 +125,22 @@ pub struct Config {
     /// `system`, `en`, `ru` or `ja`. Empty is treated as `system`.
     #[serde(default)]
     pub language: String,
+    /// `off`, `order` or `random`.
+    #[serde(default = "default_rotation_mode")]
+    pub rotation_mode: String,
+    #[serde(default = "default_rotation_interval")]
+    pub rotation_interval_sec: i64,
+    /// Monitor name -> collection id.
+    #[serde(default)]
+    pub rotations: HashMap<String, String>,
+}
+
+fn default_rotation_mode() -> String {
+    "off".to_string()
+}
+
+fn default_rotation_interval() -> i64 {
+    300
 }
 
 impl Config {
@@ -149,6 +165,9 @@ impl Config {
             is_show_systray: false,
             is_first_time: true,
             language: "system".to_string(),
+            rotation_mode: default_rotation_mode(),
+            rotation_interval_sec: default_rotation_interval(),
+            rotations: HashMap::new(),
         }
     }
 
@@ -239,6 +258,10 @@ impl Config {
             config.version = CONFIG_VERSION;
             changed = true;
         }
+        if !matches!(config.rotation_mode.as_str(), "order" | "random") {
+            config.rotation_mode = "off".to_string();
+        }
+        config.rotation_interval_sec = config.rotation_interval_sec.clamp(10, 86_400);
 
         // Monitors come and go; a new monitor inherits the Default source.
         for monitor in monitors {
@@ -453,6 +476,28 @@ mod tests {
         assert!(path.is_file());
 
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rotation_defaults_and_persists() {
+        let template = Config::template(&monitors());
+        assert_eq!(template.rotation_mode, "off");
+        assert_eq!(template.rotation_interval_sec, 300);
+        assert!(template.rotations.is_empty());
+
+        let text = r#"{
+            "version": 4, "mode": "MODE_VIDEO",
+            "data_source": {"Default": ""},
+            "rotation_mode": "random", "rotation_interval_sec": 60,
+            "rotations": {"eDP-1": "collection-1"}
+        }"#;
+        let (config, _) = Config::parse(text, &monitors());
+        assert_eq!(config.rotation_mode, "random");
+        assert_eq!(config.rotation_interval_sec, 60);
+        assert_eq!(
+            config.rotations.get("eDP-1").map(String::as_str),
+            Some("collection-1")
+        );
     }
 
     #[test]

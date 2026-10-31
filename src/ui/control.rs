@@ -85,6 +85,8 @@ struct SettingsPage {
     root: gtk::ScrolledWindow,
     monitors_summary: gtk::Label,
     combo_language: gtk::ComboBoxText,
+    rotation_mode: gtk::ComboBoxText,
+    rotation_interval: gtk::SpinButton,
     switch_autostart: gtk::Switch,
     switch_static: gtk::Switch,
     switch_pause_max: gtk::Switch,
@@ -134,6 +136,7 @@ struct MonitorCard {
     meta: gtk::Label,
     state: gtk::Label,
     combo: gtk::ComboBoxText,
+    rotation: gtk::ComboBoxText,
 }
 
 struct HomePage {
@@ -144,6 +147,7 @@ struct HomePage {
     monitors_box: gtk::Box,
     cards: RefCell<Vec<MonitorCard>>,
     videos: RefCell<Vec<PathBuf>>,
+    collections: RefCell<Vec<(String, String)>>,
     syncing: Rc<Cell<bool>>,
     tx: Sender<Command>,
 }
@@ -197,6 +201,8 @@ pub struct ControlWindow {
     switch_pause_max: gtk::Switch,
     switch_mute_max: gtk::Switch,
     combo_language: gtk::ComboBoxText,
+    rotation_mode: gtk::ComboBoxText,
+    rotation_interval: gtk::SpinButton,
     settings_monitors: gtk::Label,
     play_button: gtk::Button,
     stack: gtk::Stack,
@@ -373,6 +379,8 @@ impl ControlWindow {
             switch_pause_max: settings_page.switch_pause_max,
             switch_mute_max: settings_page.switch_mute_max,
             combo_language: settings_page.combo_language,
+            rotation_mode: settings_page.rotation_mode,
+            rotation_interval: settings_page.rotation_interval,
             settings_monitors: settings_page.monitors_summary,
             play_button: header_parts.play_button,
             stack: stack.clone(),
@@ -420,12 +428,27 @@ impl ControlWindow {
         paused_by_user: bool,
         is_playing: bool,
     ) {
-        self.home
-            .update(config, monitors, paused_by_user, is_playing);
+        self.home.update(
+            config,
+            monitors,
+            paused_by_user,
+            is_playing,
+            &self.library.borrow(),
+        );
         self.syncing.set(true);
         *self.shared.monitors.borrow_mut() = monitors.to_vec();
 
         self.switch_autostart.set_active(autostart_enabled);
+        let rotation = match config.rotation_mode.as_str() {
+            "order" => "order",
+            "random" => "random",
+            _ => "off",
+        };
+        if !self.rotation_mode.set_active_id(Some(rotation)) {
+            self.rotation_mode.set_active_id(Some("off"));
+        }
+        self.rotation_interval
+            .set_value((config.rotation_interval_sec as f64 / 60.0).clamp(1.0, 1440.0));
         if monitors.is_empty() {
             self.settings_monitors.set_text(&tr("No displays detected"));
         } else {
@@ -860,6 +883,64 @@ fn build_settings_page(
 
     let wallpaper_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
     content.pack_start(&wallpaper_separator, false, false, 0);
+
+    content.pack_start(&section_label(&tr("Rotation")), false, false, 0);
+    let rotation_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    rotation_row.style_context().add_class("setting-row");
+    let rotation_text = gtk::Box::new(gtk::Orientation::Vertical, 1);
+    rotation_text.pack_start(
+        &label(&tr("Rotate wallpapers"), "setting-title"),
+        false,
+        false,
+        0,
+    );
+    rotation_text.pack_start(
+        &label(
+            &tr("Use the collection assigned to each monitor on Home"),
+            "setting-description",
+        ),
+        false,
+        false,
+        0,
+    );
+    let rotation_mode = gtk::ComboBoxText::new();
+    rotation_mode.append(Some("off"), &tr("Off"));
+    rotation_mode.append(Some("order"), &tr("In order"));
+    rotation_mode.append(Some("random"), &tr("Random"));
+    rotation_mode.set_active_id(Some("off"));
+    rotation_mode.set_valign(gtk::Align::Center);
+    rotation_mode.set_size_request(150, -1);
+    set_a11y_name(&rotation_mode, &tr("Rotation mode"));
+    rotation_row.pack_start(&rotation_text, true, true, 0);
+    rotation_row.pack_end(&rotation_mode, false, false, 0);
+    content.pack_start(&rotation_row, false, false, 0);
+
+    let interval_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    interval_row.style_context().add_class("setting-row");
+    let interval_text = gtk::Box::new(gtk::Orientation::Vertical, 1);
+    interval_text.pack_start(
+        &label(&tr("Rotation interval"), "setting-title"),
+        false,
+        false,
+        0,
+    );
+    interval_text.pack_start(
+        &label(&tr("Minutes between changes"), "setting-description"),
+        false,
+        false,
+        0,
+    );
+    let rotation_interval = gtk::SpinButton::with_range(1.0, 1440.0, 1.0);
+    rotation_interval.set_numeric(true);
+    rotation_interval.set_value(5.0);
+    rotation_interval.set_valign(gtk::Align::Center);
+    set_a11y_name(&rotation_interval, &tr("Rotation interval"));
+    interval_row.pack_start(&interval_text, true, true, 0);
+    interval_row.pack_end(&rotation_interval, false, false, 0);
+    content.pack_start(&interval_row, false, false, 0);
+
+    let system_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
+    content.pack_start(&system_separator, false, false, 0);
     content.pack_start(&section_label(&tr("System")), false, false, 0);
 
     let row_language = gtk::Box::new(gtk::Orientation::Horizontal, 10);
@@ -959,6 +1040,29 @@ fn build_settings_page(
     {
         let tx = tx.clone();
         let syncing = Rc::clone(syncing);
+        rotation_mode.connect_changed(move |combo| {
+            if syncing.get() {
+                return;
+            }
+            let mode = combo
+                .active_id()
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| "off".to_string());
+            let _ = tx.send(Command::SetRotationMode(mode));
+        });
+    }
+    {
+        let tx = tx.clone();
+        let syncing = Rc::clone(syncing);
+        rotation_interval.connect_value_changed(move |spin| {
+            if !syncing.get() {
+                let _ = tx.send(Command::SetRotationInterval((spin.value() * 60.0) as i64));
+            }
+        });
+    }
+    {
+        let tx = tx.clone();
+        let syncing = Rc::clone(syncing);
         let window = window.clone();
         combo_language.connect_changed(move |combo| {
             if syncing.get() {
@@ -1029,6 +1133,8 @@ fn build_settings_page(
         root,
         monitors_summary,
         combo_language,
+        rotation_mode,
+        rotation_interval,
         switch_autostart,
         switch_static,
         switch_pause_max,
@@ -1507,6 +1613,7 @@ fn wire_video_page(page: &VideoPage, shared: &Rc<Shared>, library: &Rc<RefCell<L
 
     {
         let library = Rc::clone(library);
+        let shared = Rc::clone(shared);
         let page = page.clone();
         let button_widget = page.new_collection.clone();
         button_widget.connect_clicked(move |button| {
@@ -1526,6 +1633,7 @@ fn wire_video_page(page: &VideoPage, shared: &Rc<Shared>, library: &Rc<RefCell<L
             };
             let _ = library.borrow().save();
             refresh_collection_choices(&page, &library.borrow());
+            let _ = shared.tx.send(Command::LibraryChanged);
             page.view.set_active_id(Some(&format!("collection:{id}")));
         });
     }
@@ -1558,6 +1666,7 @@ fn wire_video_page(page: &VideoPage, shared: &Rc<Shared>, library: &Rc<RefCell<L
             if library.borrow_mut().rename_collection(&id, &name) {
                 let _ = library.borrow().save();
                 refresh_collection_choices(&page, &library.borrow());
+                let _ = shared.tx.send(Command::LibraryChanged);
                 let view = view_from_page(&page);
                 fill_grid(&shared, &page, &library, &view);
             }
@@ -1591,6 +1700,7 @@ fn wire_video_page(page: &VideoPage, shared: &Rc<Shared>, library: &Rc<RefCell<L
             if library.borrow_mut().delete_collection(&id) {
                 let _ = library.borrow().save();
                 refresh_collection_choices(&page, &library.borrow());
+                let _ = shared.tx.send(Command::LibraryChanged);
                 page.view.set_active_id(Some("all"));
                 let view = view_from_page(&page);
                 fill_grid(&shared, &page, &library, &view);
@@ -1618,6 +1728,7 @@ fn wire_video_page(page: &VideoPage, shared: &Rc<Shared>, library: &Rc<RefCell<L
                 item.connect_activate(move |_| {
                     if library.borrow_mut().add_to_collection(&id, &path) {
                         let _ = library.borrow().save();
+                        let _ = shared.tx.send(Command::LibraryChanged);
                         if view_from_page(&page) == LibraryView::Collection(id.clone()) {
                             fill_grid(
                                 &shared,
@@ -1636,6 +1747,7 @@ fn wire_video_page(page: &VideoPage, shared: &Rc<Shared>, library: &Rc<RefCell<L
             let new_item = gtk::MenuItem::with_label(&tr("New collection…"));
             {
                 let library = Rc::clone(&library);
+                let shared = Rc::clone(&shared);
                 let page = page.clone();
                 let path = path.clone();
                 let button = button.clone();
@@ -1657,6 +1769,7 @@ fn wire_video_page(page: &VideoPage, shared: &Rc<Shared>, library: &Rc<RefCell<L
                     let _ = library.borrow_mut().add_to_collection(&id, &path);
                     let _ = library.borrow().save();
                     refresh_collection_choices(&page, &library.borrow());
+                    let _ = shared.tx.send(Command::LibraryChanged);
                 });
             }
             menu.append(&new_item);
@@ -1680,6 +1793,7 @@ fn wire_video_page(page: &VideoPage, shared: &Rc<Shared>, library: &Rc<RefCell<L
             };
             if library.borrow_mut().remove_from_collection(&id, &path) {
                 let _ = library.borrow().save();
+                let _ = shared.tx.send(Command::LibraryChanged);
                 let view = LibraryView::Collection(id);
                 fill_grid(&shared, &page, &library, &view);
             }
@@ -2227,6 +2341,7 @@ fn build_home_page(stack: &gtk::Stack, tx: &Sender<Command>) -> HomePage {
         monitors_box,
         cards: RefCell::new(Vec::new()),
         videos: RefCell::new(Vec::new()),
+        collections: RefCell::new(Vec::new()),
         syncing: Rc::new(Cell::new(false)),
         tx: tx.clone(),
     }
@@ -2239,6 +2354,7 @@ impl HomePage {
         monitors: &[MonitorInfo],
         paused_by_user: bool,
         is_playing: bool,
+        library: &Library,
     ) {
         let source = util::primary_source(config, monitors);
         let has_source = !matches!(config.mode, Mode::Null | Mode::Unknown) && !source.is_empty();
@@ -2263,6 +2379,15 @@ impl HomePage {
         if videos_changed {
             *self.videos.borrow_mut() = videos.clone();
         }
+        let collections: Vec<(String, String)> = library
+            .collections()
+            .iter()
+            .map(|collection| (collection.id.clone(), collection.name.clone()))
+            .collect();
+        let collections_changed = *self.collections.borrow() != collections;
+        if collections_changed {
+            *self.collections.borrow_mut() = collections;
+        }
         let rebuild = {
             let cards = self.cards.borrow();
             cards.len() != monitors.len()
@@ -2271,8 +2396,8 @@ impl HomePage {
                     .zip(monitors)
                     .any(|(card, monitor)| card.name != monitor.name)
         };
-        if rebuild || videos_changed {
-            self.rebuild_cards(monitors, &videos);
+        if rebuild || videos_changed || collections_changed {
+            self.rebuild_cards(monitors, &videos, library);
         }
 
         self.syncing.set(true);
@@ -2304,24 +2429,37 @@ impl HomePage {
                 if !card.combo.set_active_id(Some(active)) {
                     card.combo.set_active_id(Some("none"));
                 }
+                let rotation = config
+                    .rotations
+                    .get(&monitor.name)
+                    .map(String::as_str)
+                    .unwrap_or("off");
+                if !card.rotation.set_active_id(Some(rotation)) {
+                    card.rotation.set_active_id(Some("off"));
+                }
             }
         }
         self.syncing.set(false);
     }
 
-    fn rebuild_cards(&self, monitors: &[MonitorInfo], videos: &[PathBuf]) {
+    fn rebuild_cards(&self, monitors: &[MonitorInfo], videos: &[PathBuf], library: &Library) {
         for child in self.monitors_box.children() {
             self.monitors_box.remove(&child);
         }
         let mut cards = Vec::new();
         for monitor in monitors {
-            cards.push(self.build_card(monitor, videos));
+            cards.push(self.build_card(monitor, videos, library));
         }
         *self.cards.borrow_mut() = cards;
         self.monitors_box.show_all();
     }
 
-    fn build_card(&self, monitor: &MonitorInfo, videos: &[PathBuf]) -> MonitorCard {
+    fn build_card(
+        &self,
+        monitor: &MonitorInfo,
+        videos: &[PathBuf],
+        library: &Library,
+    ) -> MonitorCard {
         let (card, inner) = glass_card(8);
         card.set_hexpand(true);
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
@@ -2371,8 +2509,37 @@ impl HomePage {
             });
         }
 
+        let rotation = gtk::ComboBoxText::new();
+        rotation.append(Some("off"), &tr("No rotation"));
+        for collection in library.collections() {
+            rotation.append(Some(&collection.id), &collection.name);
+        }
+        rotation.set_size_request(230, -1);
+        rotation.set_valign(gtk::Align::Center);
+        rotation.set_tooltip_text(Some(&tr("Rotate this collection on this monitor")));
+        set_a11y_name(&rotation, &format!("{} {}", monitor.name, tr("Rotation")));
+        {
+            let tx = self.tx.clone();
+            let syncing = Rc::clone(&self.syncing);
+            let name = monitor.name.clone();
+            rotation.connect_changed(move |combo| {
+                if syncing.get() {
+                    return;
+                }
+                let collection = combo.active_id().map(|id| id.to_string());
+                let collection = collection.filter(|id| id != "off");
+                let _ = tx.send(Command::SetMonitorRotation {
+                    monitor: name.clone(),
+                    collection,
+                });
+            });
+        }
+
+        let controls = gtk::Box::new(gtk::Orientation::Vertical, 5);
+        controls.pack_start(&combo, false, false, 0);
+        controls.pack_start(&rotation, false, false, 0);
         row.pack_start(&text, true, true, 0);
-        row.pack_end(&combo, false, false, 0);
+        row.pack_end(&controls, false, false, 0);
         inner.pack_start(&row, false, false, 0);
         self.monitors_box.pack_start(&card, false, false, 0);
         MonitorCard {
@@ -2381,6 +2548,7 @@ impl HomePage {
             meta,
             state,
             combo,
+            rotation,
         }
     }
 }

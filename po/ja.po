@@ -283,6 +283,18 @@ msgstr "音量"
 msgid "Mute"
 msgstr "ミュート"
 
+msgid "Theme"
+msgstr "テーマ"
+
+msgid "Window and control appearance"
+msgstr "ウィンドウとコントロールの外観"
+
+msgid "Light"
+msgstr "ライト"
+
+msgid "Dark"
+msgstr "ダーク"
+
 msgid "Language"
 msgstr "言語"
 

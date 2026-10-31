@@ -238,6 +238,22 @@ msgid "Interface language"
 msgstr "Язык интерфейса"
 
 #: src/ui/control.rs
+#: src/ui/control.rs
+msgid "Theme"
+msgstr "Тема"
+
+#: src/ui/control.rs
+msgid "Window and control appearance"
+msgstr "Оформление окон и элементов"
+
+#: src/ui/control.rs
+msgid "Light"
+msgstr "Светлая"
+
+#: src/ui/control.rs
+msgid "Dark"
+msgstr "Тёмная"
+
 msgid "Language"
 msgstr "Язык"
 

@@ -13,6 +13,12 @@ iron (*ferrum*) and Rust's crab mascot.
 | --- | --- | --- |
 | ![Home](docs/screenshots/home.png) | ![Catalogue](docs/screenshots/catalogue.png) | ![Settings](docs/screenshots/settings.png) |
 
+The interface has a hand-tuned dark palette as well as the light one:
+
+| Settings, dark theme |
+| --- |
+| ![Settings in the dark theme](docs/screenshots/settings-dark.png) |
+
 ## Features
 
 - Play a local video as the wallpaper, one video per monitor
@@ -36,6 +42,7 @@ iron (*ferrum*) and Rust's crab mascot.
 - Settings page grouped by playback, wallpaper and system behaviour
 - English, Russian and Japanese interface; the language can be changed in
   Settings
+- Light, dark or system colour scheme; changes apply immediately
 - Config format schema version 4, including the 3.x → 4 migration
 - D-Bus API for scripting and the tray/CLI
 
@@ -188,6 +195,14 @@ Both files are written atomically through a temporary file and rename; the
 previous good copy is kept as `.json.bak`. A truncated or invalid
 `config.json` is restored from that backup instead of silently resetting the
 settings.
+
+### Theme
+
+Ferramari follows the desktop colour scheme by default and also ships a
+hand-tuned dark palette. Choose **Settings → System → Theme** → System
+default, Light or Dark; the window, popovers and dialogs switch immediately.
+The choice is stored as `"theme"` in `config.json` and exposed as the `theme`
+D-Bus property.
 
 ### Language
 

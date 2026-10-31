@@ -138,10 +138,17 @@ pub struct Config {
     pub playback_profile: String,
     #[serde(default)]
     pub pause_on_battery: bool,
+    /// `system`, `light` or `dark`.
+    #[serde(default = "default_theme")]
+    pub theme: String,
 }
 
 fn default_profile() -> String {
     "balanced".to_string()
+}
+
+fn default_theme() -> String {
+    "system".to_string()
 }
 
 fn default_rotation_mode() -> String {
@@ -179,6 +186,7 @@ impl Config {
             rotations: HashMap::new(),
             playback_profile: default_profile(),
             pause_on_battery: false,
+            theme: default_theme(),
         }
     }
 
@@ -275,6 +283,9 @@ impl Config {
         config.rotation_interval_sec = config.rotation_interval_sec.clamp(10, 86_400);
         if !matches!(config.playback_profile.as_str(), "performance" | "power") {
             config.playback_profile = "balanced".to_string();
+        }
+        if !matches!(config.theme.as_str(), "light" | "dark") {
+            config.theme = default_theme();
         }
 
         // Monitors come and go; a new monitor inherits the Default source.
@@ -528,6 +539,26 @@ mod tests {
         let (config, _) = Config::parse(text, &monitors());
         assert_eq!(config.playback_profile, "power");
         assert!(config.pause_on_battery);
+    }
+
+    #[test]
+    fn theme_defaults_and_persists() {
+        let template = Config::template(&monitors());
+        assert_eq!(template.theme, "system");
+
+        let text = r#"{
+            "version": 4, "mode": "MODE_NULL",
+            "data_source": {"Default": ""}, "theme": "dark"
+        }"#;
+        let (config, _) = Config::parse(text, &monitors());
+        assert_eq!(config.theme, "dark");
+
+        let text = r#"{
+            "version": 4, "mode": "MODE_NULL",
+            "data_source": {"Default": ""}, "theme": "sepia"
+        }"#;
+        let (config, _) = Config::parse(text, &monitors());
+        assert_eq!(config.theme, "system");
     }
 
     #[test]

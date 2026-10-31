@@ -66,6 +66,29 @@ pub struct Palette {
     scrollbar: &'static str,
 }
 
+/// Read the desktop preference once, before the app can override it.
+pub fn system_prefers_dark() -> bool {
+    Settings::default()
+        .map(|settings| settings.is_gtk_application_prefer_dark_theme())
+        .unwrap_or(false)
+}
+
+/// Apply `system`, `light` or `dark` to the process-wide GTK setting. The
+/// change notification in [`Theme::install`] re-renders the open window.
+pub fn apply_mode(mode: &str, system_dark: bool) {
+    let Some(settings) = Settings::default() else {
+        return;
+    };
+    let dark = match mode {
+        "dark" => true,
+        "light" => false,
+        _ => system_dark,
+    };
+    if settings.is_gtk_application_prefer_dark_theme() != dark {
+        settings.set_gtk_application_prefer_dark_theme(dark);
+    }
+}
+
 impl Palette {
     pub fn dark() -> Self {
         Self {

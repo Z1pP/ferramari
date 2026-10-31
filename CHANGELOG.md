@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0 — 2026-10-31
+
+- Light, dark and system colour schemes in Settings → System → Theme.
+- The selected theme is stored in `config.json` and exposed as the `theme`
+  D-Bus property; changes apply immediately, without a restart.
+- A dark-theme screenshot is included in the README.
+
 ## 1.0.1 — 2026-10-31
 
 Performance and idle-power improvements.

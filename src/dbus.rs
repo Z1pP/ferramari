@@ -242,6 +242,16 @@ impl ServerInterface {
     fn set_is_mute_when_maximized(&self, enabled: bool) {
         send(&self.tx, Command::SetMuteWhenMaximized(enabled));
     }
+
+    #[zbus(property, name = "theme")]
+    fn theme(&self) -> String {
+        self.snapshot().theme
+    }
+
+    #[zbus(property, name = "theme")]
+    fn set_theme(&self, theme: String) {
+        send(&self.tx, Command::SetTheme(theme));
+    }
 }
 
 pub struct PlayerInterface {

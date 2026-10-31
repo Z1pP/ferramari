@@ -29,6 +29,14 @@ Run from a checkout with `cargo build --release`, or from an installed build.
       processes remain.
 - [ ] SIGTERM during playback shuts down cleanly.
 
+### Theme and appearance
+- [ ] Settings → System → Theme switches between System default, Light and Dark.
+- [ ] The window, backdrop, popovers and dialogs all follow the change immediately.
+- [ ] Restart the app; the chosen theme is still applied.
+- [ ] Choose System default with a light and with a dark desktop setting; the
+      app follows the desktop.
+- [ ] Put an invalid value in `config.json`; the app falls back to System default.
+
 ### Local video
 - [ ] Pick a 1080p video from Local Video and apply it to one monitor.
 - [ ] Apply another video to another monitor; the first keeps playing.

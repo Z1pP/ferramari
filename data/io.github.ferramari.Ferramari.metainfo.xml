@@ -16,6 +16,16 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="1.1.0" date="2026-10-31" type="stable">
+      <description>
+        <p>Theme selection.</p>
+        <ul>
+          <li>Choose System default, Light or Dark in Settings</li>
+          <li>The choice applies immediately and is stored in the config</li>
+          <li>The theme is also available through the D-Bus API</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0.1" date="2026-10-31" type="stable">
       <description>
         <p>Performance and idle-power improvements.</p>

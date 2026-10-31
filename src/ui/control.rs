@@ -87,6 +87,7 @@ struct VolumeParts {
 struct SettingsPage {
     root: gtk::ScrolledWindow,
     monitors_summary: gtk::Label,
+    combo_theme: gtk::ComboBoxText,
     combo_language: gtk::ComboBoxText,
     rotation_mode: gtk::ComboBoxText,
     rotation_interval: gtk::SpinButton,
@@ -206,6 +207,7 @@ pub struct ControlWindow {
     switch_static: gtk::Switch,
     switch_pause_max: gtk::Switch,
     switch_mute_max: gtk::Switch,
+    combo_theme: gtk::ComboBoxText,
     combo_language: gtk::ComboBoxText,
     rotation_mode: gtk::ComboBoxText,
     rotation_interval: gtk::SpinButton,
@@ -388,6 +390,7 @@ impl ControlWindow {
             switch_static: settings_page.switch_static,
             switch_pause_max: settings_page.switch_pause_max,
             switch_mute_max: settings_page.switch_mute_max,
+            combo_theme: settings_page.combo_theme,
             combo_language: settings_page.combo_language,
             rotation_mode: settings_page.rotation_mode,
             rotation_interval: settings_page.rotation_interval,
@@ -498,6 +501,9 @@ impl ControlWindow {
         } else {
             config.language.as_str()
         };
+        if !self.combo_theme.set_active_id(Some(config.theme.as_str())) {
+            self.combo_theme.set_active_id(Some("system"));
+        }
         if !self.combo_language.set_active_id(Some(language)) {
             self.combo_language.set_active_id(Some("system"));
         }
@@ -1027,6 +1033,27 @@ fn build_settings_page(
     content.pack_start(&system_separator, false, false, 0);
     content.pack_start(&section_label(&tr("System")), false, false, 0);
 
+    let row_theme = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    row_theme.style_context().add_class("setting-row");
+    let theme_text = gtk::Box::new(gtk::Orientation::Vertical, 1);
+    theme_text.pack_start(&label(&tr("Theme"), "setting-title"), false, false, 0);
+    theme_text.pack_start(
+        &label(&tr("Window and control appearance"), "setting-description"),
+        false,
+        false,
+        0,
+    );
+    let combo_theme = gtk::ComboBoxText::new();
+    combo_theme.append(Some("system"), &tr("System default"));
+    combo_theme.append(Some("light"), &tr("Light"));
+    combo_theme.append(Some("dark"), &tr("Dark"));
+    combo_theme.set_active_id(Some("system"));
+    combo_theme.set_valign(gtk::Align::Center);
+    set_a11y_name(&combo_theme, &tr("Theme"));
+    row_theme.pack_start(&theme_text, true, true, 0);
+    row_theme.pack_end(&combo_theme, false, false, 0);
+    content.pack_start(&row_theme, false, false, 0);
+
     let row_language = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     row_language.style_context().add_class("setting-row");
     let language_text = gtk::Box::new(gtk::Orientation::Vertical, 1);
@@ -1170,6 +1197,20 @@ fn build_settings_page(
     {
         let tx = tx.clone();
         let syncing = Rc::clone(syncing);
+        combo_theme.connect_changed(move |combo| {
+            if syncing.get() {
+                return;
+            }
+            let theme = combo
+                .active_id()
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| "system".to_string());
+            let _ = tx.send(Command::SetTheme(theme));
+        });
+    }
+    {
+        let tx = tx.clone();
+        let syncing = Rc::clone(syncing);
         let window = window.clone();
         combo_language.connect_changed(move |combo| {
             if syncing.get() {
@@ -1239,6 +1280,7 @@ fn build_settings_page(
     SettingsPage {
         root,
         monitors_summary,
+        combo_theme,
         combo_language,
         rotation_mode,
         rotation_interval,

@@ -29,6 +29,7 @@ use crate::power;
 use crate::supervisor::{RestartPolicy, Retry, MAX_RETRIES};
 use crate::tray;
 use crate::ui::control::ControlWindow;
+use crate::ui::theme;
 use crate::ui::wallpaper::{WallpaperWindow, WindowKey, WindowKind};
 use crate::util;
 use crate::wallpaper::GnomeBackground;
@@ -78,6 +79,7 @@ pub enum Command {
     MonitorsChanged,
     SetAutostart(bool),
     SetLanguage(String),
+    SetTheme(String),
     SetRotationMode(String),
     SetRotationInterval(i64),
     SetMonitorRotation {
@@ -116,6 +118,7 @@ pub struct Snapshot {
     pub is_static_wallpaper: bool,
     pub is_pause_when_maximized: bool,
     pub is_mute_when_maximized: bool,
+    pub theme: String,
     pub data_source: std::collections::HashMap<String, String>,
 }
 
@@ -131,6 +134,7 @@ impl Default for Snapshot {
             is_static_wallpaper: true,
             is_pause_when_maximized: true,
             is_mute_when_maximized: false,
+            theme: "system".to_string(),
             data_source: std::collections::HashMap::new(),
         }
     }
@@ -180,6 +184,8 @@ pub struct App {
     battery_percent: Option<u8>,
     static_job: Option<(String, i64)>,
     static_generation: u64,
+    /// Desktop dark preference captured before the in-app override.
+    system_prefers_dark: bool,
     /// Pending debounced config save; volume and blur sliders change fast.
     config_dirty_at: Option<Instant>,
     policies: HashMap<WindowKey, RestartPolicy>,
@@ -205,6 +211,8 @@ impl App {
             .map(|monitor| monitor.name.clone())
             .collect();
         let config = Config::load(&names);
+        let system_prefers_dark = theme::system_prefers_dark();
+        theme::apply_mode(&config.theme, system_prefers_dark);
         let background_wallpaper = GnomeBackground::capture();
 
         let mut app = Self {
@@ -232,6 +240,7 @@ impl App {
             battery_percent: power::status().percent,
             static_job: None,
             static_generation: 0,
+            system_prefers_dark,
             config_dirty_at: None,
             policies: HashMap::new(),
             window_watcher: None,
@@ -513,6 +522,20 @@ impl App {
                     self.save_config();
                 }
             }
+            Command::SetTheme(mode) => {
+                let mode = if matches!(mode.as_str(), "light" | "dark") {
+                    mode
+                } else {
+                    "system".to_string()
+                };
+                if self.config.theme != mode {
+                    self.config.theme = mode;
+                    self.save_config();
+                    theme::apply_mode(&self.config.theme, self.system_prefers_dark);
+                    self.sync_snapshot();
+                    self.refresh_ui();
+                }
+            }
             Command::SetRotationMode(mode) => {
                 if self.config.rotation_mode != mode {
                     self.config.rotation_mode = mode;
@@ -650,6 +673,7 @@ impl App {
                     .map(|monitor| monitor.name.clone())
                     .collect();
                 self.config = Config::load(&names);
+                theme::apply_mode(&self.config.theme, self.system_prefers_dark);
                 self.rebuild_windows();
             }
         }
@@ -975,6 +999,7 @@ impl App {
             .map(|monitor| monitor.name.clone())
             .collect();
         self.config = Config::load(&names);
+        theme::apply_mode(&self.config.theme, self.system_prefers_dark);
         // Volume, mute, mode and sources all come from the file now, so the
         // players are recreated rather than patched. Streaming sources are
         // page URLs and have to be resolved again.
@@ -1416,6 +1441,7 @@ impl App {
             is_static_wallpaper: self.config.is_static_wallpaper,
             is_pause_when_maximized: self.config.is_pause_when_maximized,
             is_mute_when_maximized: self.config.is_mute_when_maximized,
+            theme: self.config.theme.clone(),
             data_source: self.config.data_source.clone(),
         };
         if let Ok(mut shared) = self.snapshot.lock() {

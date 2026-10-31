@@ -174,7 +174,7 @@ After the first stabilisation step:
 ```sh
 cargo fmt --check                                      # clean
 cargo clippy --all-targets -- -D warnings              # clean
-cargo test --all-targets                               # 107 passed
+cargo test --all-targets                               # 110 passed
 ```
 
 Live smoke checks on the single 1080p XWayland display, with an isolated

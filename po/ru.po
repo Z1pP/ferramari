@@ -935,3 +935,9 @@ msgstr "Потребление ресурсов"
 
 msgid "Eco Engine"
 msgstr "Движок Eco"
+
+msgid "Desktop integration"
+msgstr "Интеграция с рабочим столом"
+
+msgid "Native Wayland surfaces are not implemented; Ferramari uses X11/XWayland."
+msgstr "Нативные поверхности Wayland не реализованы; Ferramari использует X11/XWayland."

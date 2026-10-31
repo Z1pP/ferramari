@@ -135,6 +135,55 @@ pub fn start_screen_lock_watcher(tx: CommandSender) {
     }
 }
 
+/// Watch the login session's lock/unlock signals as a fallback for
+/// compositors that do not expose one of the screensaver services above.
+/// Both sources are aggregated by the app, so a logind unlock cannot override
+/// a still-active screensaver lock.
+pub fn start_logind_lock_watcher(tx: CommandSender) {
+    std::thread::Builder::new()
+        .name("ferramari-logind-lock".to_string())
+        .spawn(move || {
+            let Ok(connection) = Connection::system() else {
+                return;
+            };
+            let Ok(proxy) = Proxy::new(
+                &connection,
+                "org.freedesktop.login1",
+                "/org/freedesktop/login1/session/auto",
+                "org.freedesktop.login1.Session",
+            ) else {
+                return;
+            };
+            let unlock_proxy = proxy.clone();
+            let unlock_tx = tx.clone();
+            if let Ok(signals) = proxy.receive_signal("Lock") {
+                std::thread::Builder::new()
+                    .name("ferramari-logind-lock-on".to_string())
+                    .spawn(move || {
+                        for _ in signals {
+                            if tx.send(Command::SessionLock(true)).is_err() {
+                                break;
+                            }
+                        }
+                    })
+                    .ok();
+            }
+            if let Ok(signals) = unlock_proxy.receive_signal("Unlock") {
+                std::thread::Builder::new()
+                    .name("ferramari-logind-lock-off".to_string())
+                    .spawn(move || {
+                        for _ in signals {
+                            if unlock_tx.send(Command::SessionLock(false)).is_err() {
+                                break;
+                            }
+                        }
+                    })
+                    .ok();
+            }
+        })
+        .ok();
+}
+
 /// Pause playback while the machine is suspended. logind emits `true` right
 /// before sleep and `false` after resume.
 ///

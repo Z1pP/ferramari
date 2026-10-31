@@ -6,6 +6,7 @@ mod catalogue;
 mod cli;
 mod config;
 mod dbus;
+mod desktop;
 mod eco;
 mod error;
 mod fade;
@@ -46,6 +47,11 @@ fn main() {
         std::env::set_var("LANGUAGE", language);
     }
     init_i18n();
+
+    if args.doctor {
+        println!("{}", desktop::doctor());
+        return;
+    }
 
     log::info!(
         "Ferramari v{}\n--- System information ---\n\

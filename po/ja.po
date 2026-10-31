@@ -586,3 +586,9 @@ msgstr "リアルタイムのリソース使用量"
 
 msgid "Eco Engine"
 msgstr "Eco エンジン"
+
+msgid "Desktop integration"
+msgstr "デスクトップ統合"
+
+msgid "Native Wayland surfaces are not implemented; Ferramari uses X11/XWayland."
+msgstr "ネイティブ Wayland サーフェスは未実装です。Ferramari は X11/XWayland を使用します。"

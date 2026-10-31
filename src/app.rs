@@ -77,6 +77,7 @@ pub enum Command {
     SetPauseWhenMaximized(bool),
     SetMuteWhenMaximized(bool),
     ScreenLockActive(bool),
+    SessionLock(bool),
     WindowState(WindowState),
     Idle(bool),
     MonitorsChanged,
@@ -182,7 +183,10 @@ pub struct App {
     background: bool,
     version: String,
     paused_by_user: bool,
+    /// Aggregate lock state; a lock from either source keeps it true.
     screen_locked: bool,
+    screensaver_locked: bool,
+    logind_locked: bool,
     suspended: bool,
     /// Set from desktop idle time; only the Eco profile stops for it.
     idle: bool,
@@ -259,6 +263,8 @@ impl App {
             version: env!("CARGO_PKG_VERSION").to_string(),
             paused_by_user: false,
             screen_locked: false,
+            screensaver_locked: false,
+            logind_locked: false,
             suspended: false,
             idle: false,
             window_state: WindowState::default(),
@@ -400,6 +406,7 @@ impl App {
         handlers::start_screen_lock_watcher(tx.clone());
         handlers::start_end_session_watcher(tx.clone());
         handlers::start_sleep_watcher(tx.clone());
+        handlers::start_logind_lock_watcher(tx.clone());
         handlers::start_idle_watcher(tx.clone(), idle_threshold);
         if !is_wayland {
             if let Some(watcher) = x11::start(tx.clone()) {
@@ -522,8 +529,17 @@ impl App {
                 self.apply_mute_states();
             }
             Command::ScreenLockActive(active) => {
-                log::debug!("[ScreenLock] active={active}");
-                self.screen_locked = active;
+                log::debug!("[ScreenLock] screensaver active={active}");
+                self.screensaver_locked = active;
+                self.screen_locked = self.screensaver_locked || self.logind_locked;
+                self.apply_playback_states();
+                self.sync_snapshot();
+                self.refresh_ui();
+            }
+            Command::SessionLock(active) => {
+                log::debug!("[ScreenLock] logind lock active={active}");
+                self.logind_locked = active;
+                self.screen_locked = self.screensaver_locked || self.logind_locked;
                 self.apply_playback_states();
                 self.sync_snapshot();
                 self.refresh_ui();

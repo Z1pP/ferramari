@@ -113,6 +113,13 @@ Run from a checkout with `cargo build --release`, or from an installed build.
 - [ ] Apply a local HTML file with network disabled: it loads, and no pop-up window opens.
 - [ ] `make bench VIDEO=... SECONDS=5` prints startup/CPU/RAM/process/GPU rows.
 
+### Cross-desktop diagnostics
+- [ ] `ferramari --doctor` prints the session, backend, desktop and tool versions without starting the UI.
+- [ ] On a Wayland session it reports `Wayland (XWayland)` and `per-monitor occlusion: no`.
+- [ ] On X11 it reports `X11` and `per-monitor occlusion: yes`.
+- [ ] Settings → System → Desktop integration shows the same backend summary.
+- [ ] Lock via logind and via the screensaver in either order; playback resumes only after both report unlocked.
+
 ### System integration
 - [ ] Screen lock pauses and unlock resumes.
 - [ ] Maximized/fullscreen window pauses only the covered monitor (X11).

@@ -38,6 +38,9 @@ The interface has a hand-tuned dark palette as well as the light one:
   Web wallpapers
 - Reproducible benchmark harness (`make bench`) for startup, CPU, RAM,
   processes, GPU and mpv recovery
+- `--doctor` diagnostics for session/backend, desktop, media tools, DRM nodes,
+  idle and lock services
+- Logind lock/unlock fallback, aggregated with screensaver lock state
 - Browse a catalogue of live wallpapers with categories, search, sorting,
   resolution filters and a six-frame preview before installing
 - Streaming URLs through `yt-dlp` (YouTube and many other sites)
@@ -145,6 +148,7 @@ ferramari -b          # background: live wallpaper only
 ferramari -b -p 5     # wait 5 seconds before starting (autostart delay)
 ferramari -d          # debug logging
 ferramari -r          # reset the configuration
+ferramari --doctor    # print session/backend/tool diagnostics and exit
 ```
 
 A second `ferramari` invocation does not start another server: it asks the
@@ -268,6 +272,7 @@ WallpaperWindow   Config/D-Bus    GNOME background
 | `src/mpv.rs` | mpv process + a dedicated JSON IPC worker (volume, mute, pause, profiles) |
 | `src/eco.rs` | pure per-monitor Eco Engine policy and profiles |
 | `src/metrics.rs` | `/proc` + sysfs process-tree metrics for the Performance page |
+| `src/desktop.rs` | session/desktop detection and `--doctor` diagnostics |
 | `src/power.rs` | battery/AC state from `/sys/class/power_supply` |
 | `src/ui/control.rs` | control window (videos, streaming, web page, toggles) |
 | `src/util.rs` | gettext helpers, video discovery, string utilities |
@@ -334,7 +339,8 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 - Fractional scaling and mixed-DPI layouts are upscaled by XWayland; expect
   softer output than a native Wayland client.
 - KDE Plasma and GNOME X11 are not part of the tested matrix yet; the
-  XWayland desktop window is the only supported path there.
+  XWayland desktop window is the only supported path there. `--doctor` reports
+  what the current session actually exposes instead of guessing.
 - The Flatpak bundle is self-hosted and uses host media tools. Tray and portal
   autostart inside the sandbox are not verified.
 - Two- and three-monitor performance scenarios are not measured on the current
@@ -379,10 +385,10 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 `cargo test` covers config parsing/migration (including per-field corruption),
 atomic saves and backup recovery, the player restart policy, yt-dlp and ffmpeg
 timeouts, per-monitor EWMH coverage, Eco Engine decisions, mpv IPC framing and
-the worker command order, process-tree metric parsing, monitor naming/scaling,
-the fade maths, path handling, URI safety and the catalogue parsers (cards,
-categories, search, signed download links, archive extraction, video probing and
-frame sheets).
+the worker command order, process-tree metric parsing, session/desktop
+classification, monitor naming/scaling, the fade maths, path handling, URI
+safety and the catalogue parsers (cards, categories, search, signed download
+links, archive extraction, video probing and frame sheets).
 The GUI, video embedding, streaming, webpage, catalogue and library modes were
 smoke-tested on Ubuntu 26.04 / GNOME Wayland (XWayland). The full environment
 matrix and smoke checklist live in [`docs/TESTING.md`](docs/TESTING.md). To exercise the

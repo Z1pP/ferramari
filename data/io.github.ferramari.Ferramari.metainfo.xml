@@ -16,6 +16,16 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="1.5.0" date="2026-11-01" type="stable">
+      <description>
+        <p>Cross-desktop diagnostics and session integration:</p>
+        <ul>
+          <li>New --doctor report: session/backend, desktop, X11 screens, media tools, VA-API probe, render nodes, idle and lock services.</li>
+          <li>Desktop integration summary in Settings; native Wayland is explicitly reported as unsupported.</li>
+          <li>Logind Lock/Unlock signals as a fallback for non-GNOME sessions, aggregated with the screensaver lock so one source cannot unlock early.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.4.0" date="2026-11-01" type="stable">
       <description>
         <p>Performance and hardening:</p>

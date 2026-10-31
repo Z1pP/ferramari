@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.5.0 — 2026-11-01
+
+Cross-desktop diagnostics and session integration.
+
+- Add `ferramari --doctor`: prints session type (X11 / Wayland-XWayland / native
+  Wayland), desktop, X11 screen count, backend, tool versions (mpv, ffmpeg,
+  ffprobe, yt-dlp, vainfo), DRM render nodes and their drivers, idle service and
+  lock services. It never initialises GTK or claims a D-Bus name.
+- Show the desktop integration summary in Settings and state explicitly that
+  native Wayland surfaces are not implemented.
+- Watch `org.freedesktop.login1.Session` `Lock`/`Unlock` as a fallback. Locks
+  from the screensaver and logind are aggregated, so a logind unlock cannot
+  resume playback while a screensaver still reports locked.
+- Add pure tests for session/desktop classification and the “native Wayland is
+  never claimed” invariant.
+- Tests: 110 passing.
+
 ## 1.4.0 — 2026-11-01
 
 Performance and hardening.

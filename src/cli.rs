@@ -20,4 +20,8 @@ pub struct Args {
     /// Reset user configuration
     #[arg(short = 'r', long = "reset")]
     pub reset: bool,
+
+    /// Print desktop/session/tool diagnostics and exit
+    #[arg(long = "doctor")]
+    pub doctor: bool,
 }

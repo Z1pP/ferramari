@@ -1245,6 +1245,19 @@ fn build_settings_page(
         false,
         0,
     );
+    content.pack_start(&section_label(&tr("Desktop integration")), false, false, 0);
+    let environment = label(&crate::desktop::detect().summary(), "field-hint");
+    environment.set_xalign(0.0);
+    environment.set_line_wrap(true);
+    content.pack_start(&environment, false, false, 0);
+    let native_wayland = label(
+        &tr("Native Wayland surfaces are not implemented; Ferramari uses X11/XWayland."),
+        "setting-description",
+    );
+    native_wayland.set_xalign(0.0);
+    native_wayland.set_line_wrap(true);
+    content.pack_start(&native_wayland, false, false, 0);
+
     content.pack_start(&section_label(&tr("Monitors")), false, false, 0);
     let monitors_summary = label("", "field-hint");
     monitors_summary.set_line_wrap(true);

@@ -90,6 +90,7 @@ pub enum Command {
         on_battery: bool,
         percent: Option<u8>,
     },
+    Suspend(bool),
     LibraryChanged,
     WebError {
         monitor: String,
@@ -148,6 +149,7 @@ pub struct App {
     version: String,
     paused_by_user: bool,
     screen_locked: bool,
+    suspended: bool,
     is_any_maximized: bool,
     is_any_fullscreen: bool,
     stream: Option<ytdlp::StreamInfo>,
@@ -197,6 +199,7 @@ impl App {
             version: env!("CARGO_PKG_VERSION").to_string(),
             paused_by_user: false,
             screen_locked: false,
+            suspended: false,
             is_any_maximized: false,
             is_any_fullscreen: false,
             stream: None,
@@ -313,6 +316,7 @@ impl App {
 
         handlers::start_screen_lock_watcher(tx.clone());
         handlers::start_end_session_watcher(tx.clone());
+        handlers::start_sleep_watcher(tx.clone());
         if !is_wayland {
             if let Some(watcher) = x11::start(tx.clone()) {
                 app.borrow_mut().window_watcher = Some(watcher);
@@ -507,6 +511,16 @@ impl App {
                 self.config.pause_on_battery = enabled;
                 self.save_config();
                 if enabled && self.on_battery {
+                    self.pause_all();
+                } else if self.should_play() {
+                    self.play_all();
+                }
+                self.refresh_ui();
+            }
+            Command::Suspend(sleeping) => {
+                log::info!("[Power] Suspend={sleeping}");
+                self.suspended = sleeping;
+                if sleeping {
                     self.pause_all();
                 } else if self.should_play() {
                     self.play_all();
@@ -1024,6 +1038,9 @@ impl App {
 
     fn should_play(&self) -> bool {
         if self.screen_locked {
+            return false;
+        }
+        if self.suspended {
             return false;
         }
         if self.config.pause_on_battery && self.on_battery {

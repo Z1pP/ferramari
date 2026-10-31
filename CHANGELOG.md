@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.0 — 2026-10-31
+
+First stable release.
+
+- Reliable mpv supervision, crash-safe config and library data.
+- Multi-monitor sources, hotplug handling and per-monitor rotation.
+- Local library: favorites, recent history, collections and rotation.
+- Catalogue: search, categories, sorting, resolution filters and frame previews.
+- Web pages, streaming, static wallpaper and power profiles.
+- Suspend/resume, screen lock, battery pause and autostart integration.
+- English, Russian and Japanese UI.
+- Flatpak manifest, tagged releases, CI and testing documentation.
+
 ## 0.9.0 — 2026-10-31
 
 - Performance, Balanced and Power saving playback profiles.

@@ -8,7 +8,7 @@ what is still unverified.
 
 | Environment | Status | Notes |
 | --- | --- | --- |
-| GNOME 50, Wayland session, running through XWayland | **tested** 2026-10-31, 0.9.0 | Main development environment |
+| GNOME 50, Wayland session, running through XWayland | **tested** 2026-10-31, 1.0.0 | Main development environment |
 | GNOME 50, X11 session | not tested | The same X11 backend is used, but the session has not been exercised |
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |

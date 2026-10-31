@@ -16,6 +16,19 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="1.0.0" date="2026-10-31" type="stable">
+      <description>
+        <p>First stable release.</p>
+        <ul>
+          <li>Local, streaming and web-page wallpapers with per-monitor sources</li>
+          <li>Home screen, favorites, collections and automatic rotation</li>
+          <li>Catalogue with search, sorting, filters and previews</li>
+          <li>Power profiles, battery pause and suspend/resume handling</li>
+          <li>English, Russian and Japanese interface</li>
+          <li>Flatpak manifest, CI, release automation and testing matrix</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.9.0" date="2026-10-31" type="stable">
       <description>
         <p>Power profiles.</p>

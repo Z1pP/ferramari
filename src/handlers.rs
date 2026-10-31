@@ -46,6 +46,38 @@ pub fn start_screen_lock_watcher(tx: Sender<Command>) {
     }
 }
 
+/// Pause playback while the machine is suspended. logind emits `true` right
+/// before sleep and `false` after resume.
+pub fn start_sleep_watcher(tx: Sender<Command>) {
+    let Ok(connection) = Connection::system() else {
+        return;
+    };
+    let Ok(proxy) = Proxy::new(
+        &connection,
+        "org.freedesktop.login1",
+        "/org/freedesktop/login1",
+        "org.freedesktop.login1.Manager",
+    ) else {
+        return;
+    };
+    let Ok(signals) = proxy.receive_signal("PrepareForSleep") else {
+        return;
+    };
+    std::thread::Builder::new()
+        .name("ferramari-sleep".to_string())
+        .spawn(move || {
+            for message in signals {
+                let Ok(sleeping) = message.body().deserialize::<bool>() else {
+                    continue;
+                };
+                if tx.send(Command::Suspend(sleeping)).is_err() {
+                    break;
+                }
+            }
+        })
+        .ok();
+}
+
 pub fn start_end_session_watcher(tx: Sender<Command>) {
     if paths::is_gnome() {
         start_gnome_session_watcher(tx);

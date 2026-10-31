@@ -7,6 +7,12 @@ Video wallpaper for Linux, written in Rust.
 Ferramari makes video and web content your desktop wallpaper. The name nods to
 iron (*ferrum*) and Rust's crab mascot.
 
+## Screenshots
+
+| Home | Catalogue | Settings |
+| --- | --- | --- |
+| ![Home](docs/screenshots/home.png) | ![Catalogue](docs/screenshots/catalogue.png) | ![Settings](docs/screenshots/settings.png) |
+
 ## Features
 
 - Play a local video as the wallpaper, one video per monitor
@@ -235,6 +241,38 @@ typography, motion and accessibility rules) is documented in
 [`docs/DESIGN.md`](docs/DESIGN.md). The stylesheet lives in
 `data/ui/ferramari.css` and is compiled into the binary.
 
+## FAQ
+
+**Does it work on native Wayland?**
+No. Ferramari runs through XWayland on Wayland sessions. A desktop-type
+window and `mpv --wid` embedding need X11; native Wayland needs a compositor
+specific surface and is not claimed.
+
+**Does it work on KDE?**
+The code uses standard X11/EWMH paths, but KDE is not part of the tested
+matrix yet. Treat it as unsupported until the checklist in
+`docs/TESTING.md` has been run there.
+
+**Where do I put my videos?**
+In `$XDG_VIDEOS_DIR/Ferramari` (usually `~/Videos/Ferramari`). The video folder
+is not recursive.
+
+**The catalogue shows no resolution/size/duration.**
+Those values are learned from previews and downloads and cached; cards that
+have never been previewed cannot be filtered by resolution yet.
+
+**Why does mpv/ffmpeg not start?**
+Install `mpv`, `ffmpeg` and `ffprobe`. Streaming also needs a current
+`yt-dlp`. The error dialog names the missing tool.
+
+**How do I rotate wallpapers?**
+Create a collection in Local Video, assign it to a monitor on Home, then
+choose Off/In order/Random and an interval in Settings → Rotation.
+
+**Is there a Flatpak?**
+Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
+`ffmpeg` and `yt-dlp` through `flatpak-spawn`; Flathub packaging is not ready.
+
 ## Known limitations
 
 - The app always runs on X11/XWayland (`GDK_BACKEND=x11`): a wallpaper window is
@@ -246,8 +284,12 @@ typography, motion and accessibility rules) is documented in
   controls are hidden in the quick settings.
 - Fractional scaling and mixed-DPI layouts are upscaled by XWayland; expect
   softer output than a native Wayland client.
-- KDE Plasma is not part of the tested matrix; the XWayland desktop window is
-  the only supported path there.
+- KDE Plasma and GNOME X11 are not part of the tested matrix yet; the
+  XWayland desktop window is the only supported path there.
+- The Flatpak bundle is self-hosted and uses host media tools. Tray and portal
+  autostart inside the sandbox are not verified.
+- Two- and three-monitor performance scenarios are not measured on the current
+  single-display test machine.
 
 ## Implementation notes
 
@@ -289,6 +331,11 @@ static-wallpaper code without touching your real background:
 ```sh
 GSETTINGS_BACKEND=memory ferramari -b -d
 ```
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md), [`ROADMAP.md`](ROADMAP.md) and the
+[`docs/TESTING.md`](docs/TESTING.md) matrix.
 
 ## License
 

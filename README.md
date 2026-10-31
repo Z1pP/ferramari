@@ -30,6 +30,14 @@ The interface has a hand-tuned dark palette as well as the light one:
   handling and the Quality/Balanced/Eco profiles; optional pause on battery
 - Per-monitor Eco state on Home cards and in the D-Bus `monitor_states`
   property
+- Event-driven X11 window watcher (no 300 ms polling)
+- Performance page with live CPU, RAM, thread, process and (where available)
+  GPU metrics
+- Hardware decoding selector (Auto / VA-API / Off)
+- WebKit hardening: denied permissions, no pop-ups, optional network access for
+  Web wallpapers
+- Reproducible benchmark harness (`make bench`) for startup, CPU, RAM,
+  processes, GPU and mpv recovery
 - Browse a catalogue of live wallpapers with categories, search, sorting,
   resolution filters and a six-frame preview before installing
 - Streaming URLs through `yt-dlp` (YouTube and many other sites)
@@ -259,6 +267,7 @@ WallpaperWindow   Config/D-Bus    GNOME background
 | `src/config.rs` | schema-v4 config, validation, 3.x migration |
 | `src/mpv.rs` | mpv process + a dedicated JSON IPC worker (volume, mute, pause, profiles) |
 | `src/eco.rs` | pure per-monitor Eco Engine policy and profiles |
+| `src/metrics.rs` | `/proc` + sysfs process-tree metrics for the Performance page |
 | `src/power.rs` | battery/AC state from `/sys/class/power_supply` |
 | `src/ui/control.rs` | control window (videos, streaming, web page, toggles) |
 | `src/util.rs` | gettext helpers, video discovery, string utilities |
@@ -334,8 +343,11 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
   local video sources are assigned independently.
 - WebKitGTK has no public freeze API, so a hidden web wallpaper is muted but
   its JavaScript timers and animations are only throttled, not stopped.
-- There is no live resource monitor or dedicated Performance page yet; profile
-  energy claims still need a measured before/after table.
+- The Performance page reports GPU usage only where the driver exposes
+  `gpu_busy_percent` (currently AMDGPU). NVIDIA/Intel utilisation is shown as
+  unavailable.
+- Multi-monitor, 4K, Web-wallpaper and locked-screen benchmarks are not yet
+  measured on the single-display test machine; see `docs/BENCHMARKS.md`.
 
 ## Implementation notes
 
@@ -367,9 +379,10 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 `cargo test` covers config parsing/migration (including per-field corruption),
 atomic saves and backup recovery, the player restart policy, yt-dlp and ffmpeg
 timeouts, per-monitor EWMH coverage, Eco Engine decisions, mpv IPC framing and
-the worker command order, monitor naming/scaling, the fade maths, path handling
-and the catalogue parsers (cards, categories, search, signed download links,
-archive extraction, video probing and frame sheets).
+the worker command order, process-tree metric parsing, monitor naming/scaling,
+the fade maths, path handling, URI safety and the catalogue parsers (cards,
+categories, search, signed download links, archive extraction, video probing and
+frame sheets).
 The GUI, video embedding, streaming, webpage, catalogue and library modes were
 smoke-tested on Ubuntu 26.04 / GNOME Wayland (XWayland). The full environment
 matrix and smoke checklist live in [`docs/TESTING.md`](docs/TESTING.md). To exercise the
@@ -383,7 +396,8 @@ GSETTINGS_BACKEND=memory ferramari -b -d
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md), [`ROADMAP.md`](ROADMAP.md) and the
 [`docs/TESTING.md`](docs/TESTING.md) matrix. The 2026-11-01 architecture audit
-and its open findings live in [`docs/AUDIT.md`](docs/AUDIT.md).
+and its open findings live in [`docs/AUDIT.md`](docs/AUDIT.md); reproducible
+measurements are in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
 
 ## License
 

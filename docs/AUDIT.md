@@ -95,20 +95,20 @@ monitor (pause/mute).
 | B12 | HiDPI: X11 window rectangles are device pixels while GDK monitor geometry is logical pixels. Occlusion needs the scale factor. | **fixed** — `MonitorInfo::scale_factor` |
 | B13 | Native Wayland has no wallpaper surface in the current implementation; the X11 watcher is disabled on Wayland sessions, so occlusion/smart pause is unavailable there. | open, documented |
 | B14 | WebKit can crash independently; `player_alive` always returns true for a WebView, and only load failures are reported. | open |
-| B15 | `Mpv::spawn` with `--hwdec=auto-safe` assumes mpv picks a working hardware decoder; there is no VA-API probe, no fallback report and no manual override. | open |
+| B15 | `Mpv::spawn` with `--hwdec=auto-safe` assumes mpv picks a working hardware decoder; there is no VA-API probe and no fallback report. | manual override added (Auto/VA-API/Off); probe still open |
 
 ### 3.2 Performance and resource use
 
 | ID | Finding | Status |
 | --- | --- | --- |
-| P1 | The command loop is event-driven, but the player supervision (1 s), rotation (5 s), power (30 s) and X11 watcher (300 ms) timers remain. | partly open |
-| P2 | The X11 watcher now performs `get_property` (types/state/desktop), `get_geometry` and `translate_coordinates` per window every 300 ms. Correctness improved; cost scales with window count. An event-driven `PropertyNotify` watcher is the next step. | open |
+| P1 | The command loop is event-driven; player supervision (1 s), rotation (5 s) and power (30 s) timers remain. | partly open |
+| P2 | The X11 watcher polls every 300 ms. | **fixed** — `PropertyNotify`/`StructureNotify` watcher with no idle timer |
 | P3 | `HomePage::update` runs `util::video_paths()` on every `refresh_ui`, including every volume-slider tick. That spawns `xdg-user-dir`, reads the video directory and runs a GIO content-type query per file. | partly fixed — `xdg-user-dir` cached, folder scan reused for 1 s |
 | P4 | All library cards are created for the whole folder; thumbnails are lazy and pooled, but there is no virtualisation for very large libraries. | open |
 | P5 | Static/thumbnail `.part` files can survive a process crash. Catalogue partials are cleaned after one hour; static/thumbnail partials are not. | open, low impact |
 | P6 | `reload_config` deliberately re-reads from disk and closes/recreates windows; a D-Bus reload during a pending edit discards the edit. | open by design |
 | P7 | WebKit views are never frozen (no API in the binding); memory and JS timers remain while a page is hidden. | open |
-| P8 | No automated resource benchmark exists. `docs/PERFORMANCE.md` has a single-display baseline only. | open |
+| P8 | No automated resource benchmark exists. | **fixed** — `scripts/benchmark.py`, `docs/BENCHMARKS.md`; single-display results recorded |
 
 ### 3.3 Memory / lifetime
 
@@ -148,10 +148,10 @@ monitor (pause/mute).
 ### 3.5 Security and untrusted content
 
 - Web wallpapers load arbitrary local/remote pages with JavaScript enabled.
-  There is no explicit content policy, no network-disable switch, no
-  navigation/new-window restriction and no per-wallpaper resource isolation.
-  WebKitGTK's own sandbox is the current boundary; the app does not add a
-  package-level policy.
+  Explicit WebKit settings, denied permissions, no pop-ups and an optional
+  network switch were added; per-wallpaper resource isolation and a full
+  subresource network filter are still missing. WebKitGTK's own sandbox remains
+  the main boundary.
 - Catalogue and streaming URLs are handled as remote input with size limits
   and timeouts; `yt-dlp` gets `--` before the URL.
 - `file://` paths are now accepted only for local authorities (`localhost` or
@@ -174,7 +174,7 @@ After the first stabilisation step:
 ```sh
 cargo fmt --check                                      # clean
 cargo clippy --all-targets -- -D warnings              # clean
-cargo test --all-targets                               # 98 passed
+cargo test --all-targets                               # 107 passed
 ```
 
 Live smoke checks on the single 1080p XWayland display, with an isolated

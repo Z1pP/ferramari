@@ -535,3 +535,54 @@ msgstr "アイドル"
 
 msgid "Paused (covered)"
 msgstr "一時停止（ウィンドウに覆われています）"
+
+msgid "Hardware decoding"
+msgstr "ハードウェアデコード"
+
+msgid "Auto lets mpv choose a safe decoder; VA-API forces it; Off uses software"
+msgstr "自動では mpv が安全なデコーダーを選択し、VA-API は強制、オフはソフトウェアを使用します"
+
+msgid "Auto"
+msgstr "自動"
+
+msgid "Allow network for web wallpapers"
+msgstr "Web 壁紙のネットワークを許可"
+
+msgid "Remote pages and subresources; local HTML and data URIs are always allowed"
+msgstr "リモートページとサブリソース。ローカル HTML と data URI は常に許可されます"
+
+msgid "Live resource use of Ferramari and its media processes"
+msgstr "Ferramari とメディアプロセスのリアルタイムリソース使用量"
+
+msgid "Resources"
+msgstr "リソース"
+
+msgid "CPU"
+msgstr "CPU"
+
+msgid "Memory (RSS)"
+msgstr "メモリ (RSS)"
+
+msgid "Threads"
+msgstr "スレッド"
+
+msgid "Processes"
+msgstr "プロセス"
+
+msgid "GPU"
+msgstr "GPU"
+
+msgid "Unavailable"
+msgstr "利用不可"
+
+msgid "Waiting for the first sample…"
+msgstr "最初のサンプルを待っています…"
+
+msgid "Metrics cover the Ferramari process and its mpv/WebKit children. GPU usage is read from sysfs and is unavailable on drivers that do not expose gpu_busy_percent."
+msgstr "計測対象は Ferramari プロセスとその mpv/WebKit 子プロセスです。GPU 使用率は sysfs から読み取り、gpu_busy_percent を公開しないドライバーでは利用できません。"
+
+msgid "Live resource use"
+msgstr "リアルタイムのリソース使用量"
+
+msgid "Eco Engine"
+msgstr "Eco エンジン"

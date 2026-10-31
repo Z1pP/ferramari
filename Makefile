@@ -12,7 +12,7 @@ ICONDIR    = $(DATADIR)/icons/hicolor/scalable/apps
 METAINFODIR= $(DATADIR)/metainfo
 LOCALEDIR  = $(DATADIR)/locale
 
-.PHONY: all build release test lint fmt clean install uninstall run translations
+.PHONY: all build release test lint fmt clean install uninstall run translations bench
 
 all: build
 
@@ -31,6 +31,15 @@ lint:
 
 run:
 	$(CARGO) run -- -d
+
+# Usage: make bench VIDEO=/path/to/video.mp4 [PROFILE=balanced] [SECONDS=10]
+VIDEO ?=
+PROFILE ?= balanced
+SECONDS ?= 10
+bench: release
+	@test -n "$(VIDEO)" || (echo "usage: make bench VIDEO=/path/to/video.mp4"; exit 2)
+	python3 scripts/benchmark.py --binary "$(TARGET_DIR)/release/ferramari" \
+		--video "$(VIDEO)" --profile "$(PROFILE)" --seconds "$(SECONDS)"
 
 translations:
 	@for po in po/*.po; do \

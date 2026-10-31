@@ -34,9 +34,12 @@ bundle uses host media tools.
 - [x] HiDPI-aware per-monitor occlusion
 - [x] Configurable idle delay and per-monitor state display
 - [x] Dynamic 30 fps cap while Balanced is idle
+- [x] Event-driven X11 window watcher
+- [x] Live Performance page and benchmark harness
+- [x] Hardware decoding selector and WebKit hardening
 - [ ] Decoder resource release after a long pause
 - [ ] Per-monitor stream/web sources
-- [ ] Automated performance/energy benchmark harness
+- [ ] 4K / multi-monitor / Web-wallpaper benchmarks
 
 ### 1.1 — distribution and desktop coverage
 

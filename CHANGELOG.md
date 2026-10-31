@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.4.0 — 2026-11-01
+
+Performance and hardening.
+
+- Replace the 300 ms X11 polling loop with a `PropertyNotify`/`StructureNotify`
+  watcher. An idle desktop produces no wakeups; fullscreen/maximise changes are
+  processed immediately. Transient query errors still keep the last good state.
+- Add a Performance page with live CPU, RSS, thread, process and GPU metrics
+  (`src/metrics.rs`), sampled every 2 s only while the control window is
+  visible.
+- Add `scripts/benchmark.py` and `make bench`: isolated config/cache, private
+  D-Bus, startup/CPU/RSS/threads/processes/GPU sampling and optional mpv
+  recovery. See `docs/BENCHMARKS.md`.
+- Add the hardware decoding setting (Auto / VA-API / Off) and pass it as mpv
+  `--hwdec`.
+- Harden WebKit wallpapers: explicit file-access settings, no developer
+  extras, denied permissions, no pop-up windows, and an optional network switch
+  that blocks non-local navigations.
+- Fix a deadlock when the mpv child exited before `Mpv::Drop`: the IPC worker
+  waited in `recv()` while `join()` waited for it. Always wake the worker.
+- Report `loadfile` failures from the worker as a user-visible error.
+- Remove abandoned `.part` thumbnail/static files older than an hour on start.
+- Tests: 107 passing.
+
 ## 1.3.0 — 2026-11-01
 
 Eco Engine completion.

@@ -887,3 +887,51 @@ msgstr "Простой"
 
 msgid "Paused (covered)"
 msgstr "Пауза (перекрыто)"
+
+msgid "Hardware decoding"
+msgstr "Аппаратное декодирование"
+
+msgid "Auto lets mpv choose a safe decoder; VA-API forces it; Off uses software"
+msgstr "Авто позволяет mpv выбрать безопасный декодер; VA-API включает его принудительно; Выкл использует программное декодирование"
+
+msgid "Auto"
+msgstr "Авто"
+
+msgid "Allow network for web wallpapers"
+msgstr "Разрешить сеть для веб-обоев"
+
+msgid "Remote pages and subresources; local HTML and data URIs are always allowed"
+msgstr "Удалённые страницы и ресурсы; локальный HTML и data-URI разрешены всегда"
+
+msgid "Live resource use of Ferramari and its media processes"
+msgstr "Текущее потребление ресурсов Ferramari и его медиапроцессов"
+
+msgid "Resources"
+msgstr "Ресурсы"
+
+msgid "CPU"
+msgstr "ЦП"
+
+msgid "Memory (RSS)"
+msgstr "Память (RSS)"
+
+msgid "Threads"
+msgstr "Потоки"
+
+msgid "Processes"
+msgstr "Процессы"
+
+msgid "GPU"
+msgstr "ГП"
+
+msgid "Waiting for the first sample…"
+msgstr "Ожидание первого замера…"
+
+msgid "Metrics cover the Ferramari process and its mpv/WebKit children. GPU usage is read from sysfs and is unavailable on drivers that do not expose gpu_busy_percent."
+msgstr "Метрики охватывают процесс Ferramari и его дочерние mpv/WebKit. Загрузка ГП читается из sysfs и недоступна на драйверах без gpu_busy_percent."
+
+msgid "Live resource use"
+msgstr "Потребление ресурсов"
+
+msgid "Eco Engine"
+msgstr "Движок Eco"

@@ -16,6 +16,20 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="1.4.0" date="2026-11-01" type="stable">
+      <description>
+        <p>Performance and hardening:</p>
+        <ul>
+          <li>Event-driven X11 window watcher; idle desktops no longer wake the app every 300 ms.</li>
+          <li>Performance page with live CPU, RSS, thread, process and (where available) GPU metrics.</li>
+          <li>Benchmark harness for startup, CPU, memory, processes, GPU and mpv recovery.</li>
+          <li>Hardware decoding setting: Auto, VA-API or Off.</li>
+          <li>WebKit security settings, denied permissions, no pop-ups, and an optional network switch for web wallpapers.</li>
+          <li>Fix a deadlock in mpv shutdown after a crash; surface loadfile failures.</li>
+          <li>Clean abandoned thumbnail/static partial files on start.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.3.0" date="2026-11-01" type="stable">
       <description>
         <p>Eco Engine completion:</p>

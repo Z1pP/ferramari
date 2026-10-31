@@ -94,6 +94,8 @@ struct SettingsPage {
     rotation_interval: gtk::SpinButton,
     profile: gtk::ComboBoxText,
     idle_timeout: gtk::SpinButton,
+    combo_hwdec: gtk::ComboBoxText,
+    switch_web_network: gtk::Switch,
     switch_pause_battery: gtk::Switch,
     battery_status: gtk::Label,
     switch_autostart: gtk::Switch,
@@ -101,6 +103,16 @@ struct SettingsPage {
     switch_pause_max: gtk::Switch,
     switch_mute_max: gtk::Switch,
     spin_blur: gtk::SpinButton,
+}
+
+struct PerformancePage {
+    root: gtk::ScrolledWindow,
+    cpu: gtk::Label,
+    ram: gtk::Label,
+    threads: gtk::Label,
+    processes: gtk::Label,
+    gpu: gtk::Label,
+    states: gtk::Label,
 }
 
 #[derive(Clone)]
@@ -228,6 +240,8 @@ pub struct ControlWindow {
     rotation_interval: gtk::SpinButton,
     profile: gtk::ComboBoxText,
     idle_timeout: gtk::SpinButton,
+    combo_hwdec: gtk::ComboBoxText,
+    switch_web_network: gtk::Switch,
     switch_pause_battery: gtk::Switch,
     battery_status: gtk::Label,
     settings_monitors: gtk::Label,
@@ -246,6 +260,7 @@ pub struct ControlWindow {
     now_monitor: gtk::Label,
     stream_page: StreamPage,
     home: HomePage,
+    performance: PerformancePage,
     library: Rc<RefCell<Library>>,
     video_page: VideoPage,
 }
@@ -328,6 +343,42 @@ impl ControlWindow {
 
         let web_page = build_web_page(&tx);
         stack.add_titled(&web_page.root, "webpage", &tr("Web Page"));
+
+        let performance = build_performance_page();
+        stack.add_titled(&performance.root, "performance", &tr("Performance"));
+
+        // Sample the process tree only while the control window is visible.
+        // The weak window reference lets the source stop when the window dies.
+        {
+            let monitor = Rc::new(RefCell::new(crate::metrics::Monitor::default()));
+            let cpu = performance.cpu.clone();
+            let ram = performance.ram.clone();
+            let threads = performance.threads.clone();
+            let processes = performance.processes.clone();
+            let gpu = performance.gpu.clone();
+            let window_weak = window.downgrade();
+            glib::timeout_add_local(Duration::from_secs(2), move || {
+                let Some(window) = window_weak.upgrade() else {
+                    return glib::ControlFlow::Break;
+                };
+                if !window.is_visible() {
+                    return glib::ControlFlow::Continue;
+                }
+                let sample = monitor.borrow_mut().sample();
+                cpu.set_text(&format!("{:.1} %", sample.cpu_percent));
+                ram.set_text(&format!(
+                    "{:.1} MiB",
+                    sample.rss_bytes as f64 / (1024.0 * 1024.0)
+                ));
+                threads.set_text(&sample.threads.to_string());
+                processes.set_text(&sample.processes.to_string());
+                gpu.set_text(&match sample.gpu_percent {
+                    Some(percent) => format!("{percent:.0} %"),
+                    None => tr("Unavailable"),
+                });
+                glib::ControlFlow::Continue
+            });
+        }
 
         let (sidebar, top_nav) = build_navigation(&stack);
         let now = build_now_playing_card();
@@ -412,6 +463,8 @@ impl ControlWindow {
             rotation_interval: settings_page.rotation_interval,
             profile: settings_page.profile,
             idle_timeout: settings_page.idle_timeout,
+            combo_hwdec: settings_page.combo_hwdec,
+            switch_web_network: settings_page.switch_web_network,
             switch_pause_battery: settings_page.switch_pause_battery,
             battery_status: settings_page.battery_status,
             settings_monitors: settings_page.monitors_summary,
@@ -430,6 +483,7 @@ impl ControlWindow {
             now_monitor: now.monitor,
             stream_page,
             home: home_page,
+            performance,
             library: Rc::clone(&library),
             video_page: video_page.clone(),
         };
@@ -473,6 +527,22 @@ impl ControlWindow {
         );
         self.syncing.set(true);
         *self.shared.monitors.borrow_mut() = monitors.to_vec();
+        let states = if monitors.is_empty() {
+            tr("No displays detected")
+        } else {
+            monitors
+                .iter()
+                .map(|monitor| {
+                    let state = eco_states
+                        .get(&monitor.name)
+                        .copied()
+                        .unwrap_or(eco::State::Active);
+                    format!("{}: {}", monitor.name, state.as_str())
+                })
+                .collect::<Vec<_>>()
+                .join(" · ")
+        };
+        self.performance.states.set_text(&states);
 
         self.switch_autostart.set_active(autostart_enabled);
         let rotation = match config.rotation_mode.as_str() {
@@ -495,6 +565,10 @@ impl ControlWindow {
         }
         self.idle_timeout
             .set_value((config.idle_timeout_sec as f64 / 60.0).clamp(1.0, 1440.0));
+        if !self.combo_hwdec.set_active_id(Some(config.hwdec.as_str())) {
+            self.combo_hwdec.set_active_id(Some("auto"));
+        }
+        self.switch_web_network.set_active(config.web_allow_network);
         self.switch_pause_battery
             .set_active(config.pause_on_battery);
         let battery_text = match battery.percent {
@@ -1065,6 +1139,45 @@ fn build_settings_page(
     idle_row.pack_end(&idle_timeout, false, false, 0);
     content.pack_start(&idle_row, false, false, 0);
 
+    let hwdec_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    hwdec_row.style_context().add_class("setting-row");
+    let hwdec_text = gtk::Box::new(gtk::Orientation::Vertical, 1);
+    hwdec_text.pack_start(
+        &label(&tr("Hardware decoding"), "setting-title"),
+        false,
+        false,
+        0,
+    );
+    hwdec_text.pack_start(
+        &label(
+            &tr("Auto lets mpv choose a safe decoder; VA-API forces it; Off uses software"),
+            "setting-description",
+        ),
+        false,
+        false,
+        0,
+    );
+    let combo_hwdec = gtk::ComboBoxText::new();
+    combo_hwdec.append(Some("auto"), &tr("Auto"));
+    combo_hwdec.append(Some("vaapi"), "VA-API");
+    combo_hwdec.append(Some("none"), &tr("Off"));
+    combo_hwdec.set_active_id(Some("auto"));
+    combo_hwdec.set_valign(gtk::Align::Center);
+    combo_hwdec.set_size_request(150, -1);
+    set_a11y_name(&combo_hwdec, &tr("Hardware decoding"));
+    hwdec_row.pack_start(&hwdec_text, true, true, 0);
+    hwdec_row.pack_end(&combo_hwdec, false, false, 0);
+    content.pack_start(&hwdec_row, false, false, 0);
+
+    let switch_web_network = gtk::Switch::new();
+    switch_web_network.set_valign(gtk::Align::Center);
+    let row_web_network = switch_row(
+        &tr("Allow network for web wallpapers"),
+        &tr("Remote pages and subresources; local HTML and data URIs are always allowed"),
+        &switch_web_network,
+    );
+    content.pack_start(&row_web_network, false, false, 0);
+
     let switch_pause_battery = gtk::Switch::new();
     switch_pause_battery.set_valign(gtk::Align::Center);
     let row_pause_battery = switch_row(
@@ -1245,6 +1358,29 @@ fn build_settings_page(
     {
         let tx = tx.clone();
         let syncing = Rc::clone(syncing);
+        combo_hwdec.connect_changed(move |combo| {
+            if syncing.get() {
+                return;
+            }
+            let mode = combo
+                .active_id()
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| "auto".to_string());
+            let _ = tx.send(Command::SetHardwareDecoding(mode));
+        });
+    }
+    {
+        let tx = tx.clone();
+        let syncing = Rc::clone(syncing);
+        switch_web_network.connect_active_notify(move |switch| {
+            if !syncing.get() {
+                let _ = tx.send(Command::SetWebNetwork(switch.is_active()));
+            }
+        });
+    }
+    {
+        let tx = tx.clone();
+        let syncing = Rc::clone(syncing);
         switch_pause_battery.connect_active_notify(move |switch| {
             if !syncing.get() {
                 let _ = tx.send(Command::SetPauseOnBattery(switch.is_active()));
@@ -1343,6 +1479,8 @@ fn build_settings_page(
         rotation_interval,
         profile,
         idle_timeout,
+        combo_hwdec,
+        switch_web_network,
         switch_pause_battery,
         battery_status,
         switch_autostart,
@@ -1351,6 +1489,83 @@ fn build_settings_page(
         switch_mute_max,
         spin_blur,
     }
+}
+
+fn build_performance_page() -> PerformancePage {
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    content.set_margin_start(26);
+    content.set_margin_end(26);
+    content.set_margin_top(26);
+    content.set_margin_bottom(26);
+    content.pack_start(
+        &page_heading(
+            &tr("Performance"),
+            &tr("Live resource use of Ferramari and its media processes"),
+        ),
+        false,
+        false,
+        0,
+    );
+
+    content.pack_start(&section_label(&tr("Resources")), false, false, 0);
+    let (card, inner) = glass_card(10);
+    let cpu = metric_label();
+    let ram = metric_label();
+    let threads = metric_label();
+    let processes = metric_label();
+    let gpu = metric_label();
+    for (name, value) in [
+        (tr("CPU"), &cpu),
+        (tr("Memory (RSS)"), &ram),
+        (tr("Threads"), &threads),
+        (tr("Processes"), &processes),
+        (tr("GPU"), &gpu),
+    ] {
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        row.style_context().add_class("metric-grid");
+        let title = label(&name, "metric-label");
+        title.set_xalign(0.0);
+        row.pack_start(&title, true, true, 0);
+        row.pack_end(value, false, false, 0);
+        inner.pack_start(&row, false, false, 0);
+    }
+    content.pack_start(&card, false, false, 8);
+
+    content.pack_start(&section_label(&tr("Eco Engine")), false, false, 0);
+    let states = label(&tr("Waiting for the first sample…"), "field-hint");
+    states.set_xalign(0.0);
+    states.set_line_wrap(true);
+    states.set_max_width_chars(72);
+    content.pack_start(&states, false, false, 0);
+
+    let note = label(
+        &tr(
+            "Metrics cover the Ferramari process and its mpv/WebKit children. \
+             GPU usage is read from sysfs and is unavailable on drivers that \
+             do not expose gpu_busy_percent.",
+        ),
+        "setting-description",
+    );
+    note.set_xalign(0.0);
+    note.set_line_wrap(true);
+    note.set_max_width_chars(72);
+    content.pack_start(&note, false, false, 0);
+
+    PerformancePage {
+        root: page_scroller(&content),
+        cpu,
+        ram,
+        threads,
+        processes,
+        gpu,
+        states,
+    }
+}
+
+fn metric_label() -> gtk::Label {
+    let label = label("—", "metric-value");
+    label.set_xalign(1.0);
+    label
 }
 
 fn build_video_page() -> VideoPage {
@@ -2424,6 +2639,12 @@ fn build_navigation(stack: &gtk::Stack) -> (gtk::Box, gtk::Box) {
             "web-browser-symbolic",
             tr("Web Page"),
             tr("URL or HTML"),
+        ),
+        (
+            "performance",
+            "utilities-system-monitor-symbolic",
+            tr("Performance"),
+            tr("Live resource use"),
         ),
         (
             "settings",

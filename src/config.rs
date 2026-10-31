@@ -142,6 +142,13 @@ pub struct Config {
     /// 24 h; the UI exposes it in minutes.
     #[serde(default = "default_idle_timeout")]
     pub idle_timeout_sec: i64,
+    /// `auto`, `vaapi` or `none`. `auto` lets mpv pick a safe decoder.
+    #[serde(default = "default_hwdec")]
+    pub hwdec: String,
+    /// Allow remote resources in web wallpapers. Local `file:`/`data:` URIs
+    /// remain available when this is off.
+    #[serde(default = "default_true")]
+    pub web_allow_network: bool,
     /// `system`, `light` or `dark`.
     #[serde(default = "default_theme")]
     pub theme: String,
@@ -165,6 +172,14 @@ fn default_rotation_interval() -> i64 {
 
 fn default_idle_timeout() -> i64 {
     300
+}
+
+fn default_hwdec() -> String {
+    "auto".to_string()
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Config {
@@ -195,6 +210,8 @@ impl Config {
             playback_profile: default_profile(),
             pause_on_battery: false,
             idle_timeout_sec: default_idle_timeout(),
+            hwdec: default_hwdec(),
+            web_allow_network: true,
             theme: default_theme(),
         }
     }
@@ -294,6 +311,10 @@ impl Config {
         }
         config.rotation_interval_sec = config.rotation_interval_sec.clamp(10, 86_400);
         config.idle_timeout_sec = config.idle_timeout_sec.clamp(30, 86_400);
+        if !matches!(config.hwdec.as_str(), "auto" | "vaapi" | "none") {
+            config.hwdec = default_hwdec();
+            changed = true;
+        }
         // Accept the newer profile names and keep the legacy identifiers on
         // disk so old versions still understand the file.
         let profile = match config.playback_profile.as_str() {
@@ -644,6 +665,23 @@ mod tests {
             );
             let (config, _) = Config::parse(&text, &monitors());
             assert_eq!(config.playback_profile, expected, "input {input}");
+        }
+    }
+
+    #[test]
+    fn hardware_decoding_defaults_and_validates() {
+        assert_eq!(Config::template(&monitors()).hwdec, "auto");
+        assert!(Config::template(&monitors()).web_allow_network);
+        for (input, expected) in [
+            ("auto", "auto"),
+            ("vaapi", "vaapi"),
+            ("none", "none"),
+            ("vdpau", "auto"),
+        ] {
+            let text = format!(
+                r#"{{"version": 4, "mode": "MODE_NULL", "data_source": {{"Default": ""}}, "hwdec": "{input}"}}"#
+            );
+            assert_eq!(Config::parse(&text, &monitors()).0.hwdec, expected);
         }
     }
 

@@ -43,6 +43,19 @@ pub struct Options {
     pub loop_file: bool,
     /// `performance`, `balanced` or `power`.
     pub profile: String,
+    /// `auto`, `vaapi` or `none`.
+    pub hwdec: String,
+}
+
+/// Map the user-facing setting to an mpv `--hwdec` value. `auto-safe` is the
+/// default because it only enables decoders mpv knows to be safe on the
+/// current platform; `vaapi` is an explicit override for hardware testing.
+pub fn hwdec_arg(mode: &str) -> &'static str {
+    match mode {
+        "vaapi" => "vaapi",
+        "none" => "no",
+        _ => "auto-safe",
+    }
 }
 
 /// The base `vf` chain for a profile. Eco starts with a 30 fps cap; the idle
@@ -144,7 +157,7 @@ impl Mpv {
             .arg("--no-stop-screensaver")
             .arg("--keepaspect=yes")
             .arg("--panscan=1.0")
-            .arg("--hwdec=auto-safe")
+            .arg(format!("--hwdec={}", hwdec_arg(&options.hwdec)))
             .arg("--gpu-context=x11egl")
             .arg("--no-border");
         for argument in profile_args(&options.profile) {
@@ -318,13 +331,11 @@ impl Drop for Mpv {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
         // Ask mpv to quit, then give it a short grace period. A wedged
-        // decoder must not keep the GTK process (or the session) alive. A
-        // child that already exited is not asked again: its IPC socket may
-        // still be open, and waiting for the reply would only delay shutdown.
-        let already_exited = matches!(self.child.try_wait(), Ok(Some(_)));
-        if !already_exited {
-            let _ = self.requests.send(Request::Quit);
-        }
+        // decoder must not keep the GTK process (or the session) alive.
+        // Always wake the IPC worker, even when the child already exited:
+        // otherwise it would stay blocked in `recv()` and `join()` below would
+        // deadlock (the request sender is only dropped after this function).
+        let _ = self.requests.send(Request::Quit);
         let deadline = Instant::now() + Duration::from_secs(1);
         loop {
             match self.child.try_wait() {
@@ -495,6 +506,10 @@ mod tests {
         assert_eq!(profile_video_filter("balanced"), "");
         // The runtime cap must replace the same filter the profile starts with.
         assert!(profile_args("power").contains(&"--vf=fps=30"));
+        assert_eq!(hwdec_arg("auto"), "auto-safe");
+        assert_eq!(hwdec_arg("vaapi"), "vaapi");
+        assert_eq!(hwdec_arg("none"), "no");
+        assert_eq!(hwdec_arg("unknown"), "auto-safe");
     }
 
     #[test]

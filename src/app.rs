@@ -93,6 +93,8 @@ pub enum Command {
     SetPlaybackProfile(String),
     SetPauseOnBattery(bool),
     SetIdleTimeout(i64),
+    SetHardwareDecoding(String),
+    SetWebNetwork(bool),
     PowerStatus {
         on_battery: bool,
         percent: Option<u8>,
@@ -223,6 +225,11 @@ impl App {
         snapshot: Arc<Mutex<Snapshot>>,
     ) -> Rc<RefCell<Self>> {
         paths::ensure_dirs();
+        std::thread::spawn(|| {
+            let age = Duration::from_secs(3600);
+            util::cleanup_partial_files(&paths::thumbnail_cache_dir(), age);
+            util::cleanup_partial_files(&paths::static_cache_dir(), age);
+        });
         let monitors = monitors::list();
         let names: Vec<String> = monitors
             .iter()
@@ -607,6 +614,31 @@ impl App {
                     self.idle_threshold.store(seconds as u64, Ordering::Relaxed);
                     self.save_config();
                     self.refresh_ui();
+                }
+            }
+            Command::SetHardwareDecoding(mode) => {
+                let mode = match mode.as_str() {
+                    "vaapi" => "vaapi",
+                    "none" => "none",
+                    _ => "auto",
+                }
+                .to_string();
+                if self.config.hwdec != mode {
+                    self.config.hwdec = mode;
+                    self.save_config();
+                    // The decoder mode is a process-start flag in mpv.
+                    self.restart_windows();
+                }
+            }
+            Command::SetWebNetwork(enabled) => {
+                if self.config.web_allow_network != enabled {
+                    self.config.web_allow_network = enabled;
+                    self.save_config();
+                    if self.config.mode == Mode::Webpage {
+                        self.restart_windows();
+                    } else {
+                        self.refresh_ui();
+                    }
                 }
             }
             Command::Suspend(sleeping) => {
@@ -1009,6 +1041,7 @@ impl App {
                 volume,
                 muted,
                 &self.config.playback_profile,
+                &self.config.hwdec,
             ),
             WindowKind::Stream => {
                 let stream = self
@@ -1022,11 +1055,17 @@ impl App {
                     volume,
                     muted,
                     &self.config.playback_profile,
+                    &self.config.hwdec,
                 )
             }
-            WindowKind::Web => {
-                WallpaperWindow::web(&self.gtk_app, monitor, &key.source, muted, self.tx.clone())
-            }
+            WindowKind::Web => WallpaperWindow::web(
+                &self.gtk_app,
+                monitor,
+                &key.source,
+                muted,
+                self.config.web_allow_network,
+                self.tx.clone(),
+            ),
         }
     }
 
@@ -1099,6 +1138,7 @@ impl App {
     /// a tight loop.
     fn watch_players(&mut self) {
         let now = Instant::now();
+        log::trace!("[Player] tick: {} window(s)", self.windows.len());
         // Command-level errors arrive asynchronously from the IPC worker.
         // Reporting them here keeps the GTK thread free of IPC waits.
         let mut reported_errors = Vec::new();

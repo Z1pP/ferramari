@@ -11,6 +11,7 @@ mod error;
 mod fade;
 mod handlers;
 mod library;
+mod metrics;
 mod monitors;
 mod mpv;
 mod paths;

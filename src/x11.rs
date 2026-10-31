@@ -9,10 +9,10 @@
 use crate::app::CommandSender;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 
 use x11rb::connection::Connection;
-use x11rb::protocol::xproto::{AtomEnum, ConnectionExt};
+use x11rb::protocol::xproto::{AtomEnum, ChangeWindowAttributesAux, ConnectionExt, EventMask};
+use x11rb::protocol::Event;
 
 use crate::app::Command;
 
@@ -128,26 +128,99 @@ fn run(tx: CommandSender, stop: Arc<AtomicBool>) -> anyhow::Result<()> {
     let root = connection.setup().roots[screen].root;
     let atoms = Atoms::new(&connection)?;
 
+    // Root property events tell us when a window appears/disappears or the
+    // workspace changes. Client property/structure events tell us when a
+    // visible window is maximised, resized or destroyed. No polling timer is
+    // involved; an idle desktop produces no wakeups.
+    connection.change_window_attributes(
+        root,
+        &ChangeWindowAttributesAux::new().event_mask(EventMask::PROPERTY_CHANGE),
+    )?;
+    connection.flush()?;
+
     let mut previous = None;
+    let mut known_clients = std::collections::HashSet::new();
+    refresh(
+        &connection,
+        root,
+        &atoms,
+        &tx,
+        &mut previous,
+        &mut known_clients,
+    );
+
     while !stop.load(Ordering::Relaxed) {
-        match query(&connection, root, &atoms) {
-            Ok(state) => {
-                if previous.as_ref() != Some(&state) {
-                    log::debug!("[WindowHandler] {state:?}");
-                    previous = Some(state.clone());
-                    if tx.send(Command::WindowState(state)).is_err() {
-                        break;
-                    }
-                }
-            }
-            // A transient X error (a client vanishing mid-query, a slow
-            // compositor) must not be mistaken for "nothing is maximised":
-            // that would resume the wallpaper behind a fullscreen game.
-            Err(err) => log::debug!("[WindowHandler] query failed ({err}); keeping {previous:?}"),
+        let event = connection.wait_for_event()?;
+        let mut dirty = event_is_relevant(&event, &atoms);
+        while let Some(event) = connection.poll_for_event()? {
+            dirty |= event_is_relevant(&event, &atoms);
         }
-        std::thread::sleep(Duration::from_millis(300));
+        if dirty {
+            refresh(
+                &connection,
+                root,
+                &atoms,
+                &tx,
+                &mut previous,
+                &mut known_clients,
+            );
+        }
     }
     Ok(())
+}
+
+fn event_is_relevant(event: &Event, atoms: &Atoms) -> bool {
+    match event {
+        Event::PropertyNotify(event) => {
+            event.atom == atoms.wm_state
+                || event.atom == atoms.client_list
+                || event.atom == atoms.current_desktop
+        }
+        // StructureNotify on each client: mapping, resizing and destruction
+        // can all change whether the wallpaper is covered.
+        Event::ConfigureNotify(_)
+        | Event::MapNotify(_)
+        | Event::UnmapNotify(_)
+        | Event::DestroyNotify(_) => true,
+        _ => false,
+    }
+}
+
+fn refresh(
+    connection: &impl Connection,
+    root: u32,
+    atoms: &Atoms,
+    tx: &CommandSender,
+    previous: &mut Option<WindowState>,
+    known_clients: &mut std::collections::HashSet<u32>,
+) {
+    // Subscribe before querying so a state change that lands between the
+    // query and the next wait is not lost.
+    if let Ok(clients) = property32(connection, root, atoms.client_list, AtomEnum::WINDOW) {
+        known_clients.retain(|window| clients.contains(window));
+        for window in clients.into_iter().filter(|window| *window != 0) {
+            if known_clients.insert(window) {
+                let _ = connection.change_window_attributes(
+                    window,
+                    &ChangeWindowAttributesAux::new()
+                        .event_mask(EventMask::PROPERTY_CHANGE | EventMask::STRUCTURE_NOTIFY),
+                );
+            }
+        }
+    }
+    match query(connection, root, atoms) {
+        Ok(state) => {
+            if previous.as_ref() != Some(&state) {
+                log::debug!("[WindowHandler] {state:?}");
+                *previous = Some(state.clone());
+                let _ = tx.send(Command::WindowState(state));
+            }
+        }
+        // A transient X error (a client vanishing mid-query, a slow
+        // compositor) must not be mistaken for "nothing is maximised":
+        // that would resume the wallpaper behind a fullscreen game.
+        Err(err) => log::debug!("[WindowHandler] query failed ({err}); keeping {previous:?}"),
+    }
 }
 
 struct Atoms {

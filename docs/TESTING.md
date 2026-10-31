@@ -105,6 +105,14 @@ Run from a checkout with `cargo build --release`, or from an installed build.
 - [ ] In `-d` logs, check `[Eco] <monitor>: Active/Occluded/Idle/Suspended` transitions and the fps value.
 - [ ] `gdbus ... Properties.Get ... monitor_states` returns one entry per monitor.
 
+### Performance and hardening
+- [ ] Open Performance: CPU, RSS, threads, processes update every ~2 s; GPU shows a value on AMDGPU and "Unavailable" otherwise.
+- [ ] Close the control window: no resource sampling runs (check CPU in `top`).
+- [ ] Select Off for hardware decoding; mpv starts with `--hwdec=no` (visible in `-d`).
+- [ ] Disable network for web wallpapers and apply a remote URL: a clear error appears instead of a blank page.
+- [ ] Apply a local HTML file with network disabled: it loads, and no pop-up window opens.
+- [ ] `make bench VIDEO=... SECONDS=5` prints startup/CPU/RAM/process/GPU rows.
+
 ### System integration
 - [ ] Screen lock pauses and unlock resumes.
 - [ ] Maximized/fullscreen window pauses only the covered monitor (X11).

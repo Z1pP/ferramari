@@ -7,7 +7,10 @@ use std::time::Duration;
 use gtk::gdk;
 use gtk::glib;
 use gtk::prelude::*;
-use webkit2gtk::WebViewExt;
+use webkit2gtk::{
+    NavigationPolicyDecisionExt, PermissionRequestExt, PolicyDecisionExt, SettingsExt,
+    URIRequestExt, WebViewExt,
+};
 use x11rb::connection::Connection as _;
 use x11rb::protocol::xproto::ConnectionExt as _;
 
@@ -63,6 +66,7 @@ impl WallpaperWindow {
         volume: i64,
         muted: bool,
         profile: &str,
+        hwdec: &str,
     ) -> anyhow::Result<Self> {
         let primary = monitor.is_primary;
         let (window, xid) = base_window(app, monitor)?;
@@ -76,6 +80,7 @@ impl WallpaperWindow {
             paused: true,
             loop_file: true,
             profile: profile.to_string(),
+            hwdec: hwdec.to_string(),
         }) {
             Ok(mpv) => Rc::new(RefCell::new(mpv)),
             Err(err) => {
@@ -110,6 +115,7 @@ impl WallpaperWindow {
         volume: i64,
         muted: bool,
         profile: &str,
+        hwdec: &str,
     ) -> anyhow::Result<Self> {
         let primary = monitor.is_primary;
         let (window, xid) = base_window(app, monitor)?;
@@ -127,6 +133,7 @@ impl WallpaperWindow {
             paused: true,
             loop_file: true,
             profile: profile.to_string(),
+            hwdec: hwdec.to_string(),
         }) {
             Ok(mpv) => Rc::new(RefCell::new(mpv)),
             Err(err) => {
@@ -156,13 +163,66 @@ impl WallpaperWindow {
         monitor: &MonitorInfo,
         uri: &str,
         muted: bool,
+        allow_network: bool,
         tx: CommandSender,
     ) -> anyhow::Result<Self> {
+        if !allow_network && !crate::util::is_local_uri(uri) {
+            anyhow::bail!(
+                "Network access is disabled for web wallpapers; choose a local HTML file"
+            );
+        }
         let primary = monitor.is_primary;
         let (window, _) = base_window(app, monitor)?;
 
-        let webview = webkit2gtk::WebView::new();
+        // Explicit security posture instead of inheriting every WebKit
+        // default. Local pages may reference files next to them, but a file
+        // page must not gain universal access to the filesystem, and pages
+        // never get camera/microphone/notification permissions.
+        let settings = webkit2gtk::Settings::new();
+        settings.set_allow_file_access_from_file_urls(true);
+        settings.set_allow_universal_access_from_file_urls(false);
+        settings.set_enable_developer_extras(false);
+        settings.set_enable_webgl(true);
+        settings.set_enable_media(true);
+        settings.set_enable_media_stream(true);
+        settings.set_enable_mediasource(true);
+        let webview = webkit2gtk::WebView::builder().settings(&settings).build();
         webview.set_is_muted(muted || !primary);
+        webview.connect_create(|_, _| None);
+        webview.connect_permission_request(|_, request| {
+            request.deny();
+            true
+        });
+        if !allow_network {
+            webview.connect_decide_policy(|_, decision, decision_type| {
+                if !matches!(
+                    decision_type,
+                    webkit2gtk::PolicyDecisionType::NavigationAction
+                        | webkit2gtk::PolicyDecisionType::NewWindowAction
+                ) {
+                    return false;
+                }
+                let Some(navigation) =
+                    decision.downcast_ref::<webkit2gtk::NavigationPolicyDecision>()
+                else {
+                    return false;
+                };
+                let Some(action) = navigation.navigation_action() else {
+                    return false;
+                };
+                let Some(request) = action.request() else {
+                    return false;
+                };
+                let Some(uri) = request.uri() else {
+                    return false;
+                };
+                if crate::util::is_local_uri(uri.as_str()) {
+                    return false;
+                }
+                decision.ignore();
+                true
+            });
+        }
 
         // WebKit gives the page one automatic retry, then reports the failure
         // to the command loop where it becomes a user-visible message. Without

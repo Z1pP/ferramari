@@ -8,7 +8,7 @@ what is still unverified.
 
 | Environment | Status | Notes |
 | --- | --- | --- |
-| GNOME 50, Wayland session, running through XWayland | **tested** 2026-10-31, 0.8.0 | Main development environment |
+| GNOME 50, Wayland session, running through XWayland | **tested** 2026-10-31, 0.9.0 | Main development environment |
 | GNOME 50, X11 session | not tested | The same X11 backend is used, but the session has not been exercised |
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |
@@ -67,6 +67,12 @@ Run from a checkout with `cargo build --release`, or from an installed build.
 - [ ] Set rotation to In order and a short interval; the monitor advances.
 - [ ] Set rotation to Random; it does not immediately repeat the same item.
 - [ ] Restart the app; library.json survives and is valid.
+
+### Power profiles
+- [ ] Select Performance, Balanced and Power saving; each restarts playback.
+- [ ] Power saving adds frame dropping, single decoder thread and bilinear scaling.
+- [ ] With "Pause on battery" enabled on battery, playback pauses; connecting AC resumes it.
+- [ ] Battery percentage/AC state appears in Settings.
 
 ### System integration
 - [ ] Screen lock pauses and unlock resumes.

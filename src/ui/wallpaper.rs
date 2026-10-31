@@ -58,6 +58,7 @@ impl WallpaperWindow {
         source: &str,
         volume: i64,
         muted: bool,
+        profile: &str,
     ) -> anyhow::Result<Self> {
         let primary = monitor.is_primary;
         let (window, xid) = base_window(app, monitor)?;
@@ -70,6 +71,7 @@ impl WallpaperWindow {
             muted,
             paused: true,
             loop_file: true,
+            profile: profile.to_string(),
         }) {
             Ok(mpv) => Rc::new(RefCell::new(mpv)),
             Err(err) => {
@@ -101,6 +103,7 @@ impl WallpaperWindow {
         stream: &StreamInfo,
         volume: i64,
         muted: bool,
+        profile: &str,
     ) -> anyhow::Result<Self> {
         let primary = monitor.is_primary;
         let (window, xid) = base_window(app, monitor)?;
@@ -117,6 +120,7 @@ impl WallpaperWindow {
             muted,
             paused: true,
             loop_file: true,
+            profile: profile.to_string(),
         }) {
             Ok(mpv) => Rc::new(RefCell::new(mpv)),
             Err(err) => {

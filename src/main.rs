@@ -13,6 +13,7 @@ mod library;
 mod monitors;
 mod mpv;
 mod paths;
+mod power;
 mod supervisor;
 mod thumbnails;
 mod tray;

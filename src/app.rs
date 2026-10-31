@@ -25,6 +25,7 @@ use crate::handlers;
 use crate::library::Library;
 use crate::monitors::{self, MonitorInfo};
 use crate::paths;
+use crate::power;
 use crate::supervisor::{RestartPolicy, Retry, MAX_RETRIES};
 use crate::tray;
 use crate::ui::control::ControlWindow;
@@ -82,6 +83,12 @@ pub enum Command {
     SetMonitorRotation {
         monitor: String,
         collection: Option<String>,
+    },
+    SetPlaybackProfile(String),
+    SetPauseOnBattery(bool),
+    PowerStatus {
+        on_battery: bool,
+        percent: Option<u8>,
     },
     LibraryChanged,
     WebError {
@@ -148,6 +155,8 @@ pub struct App {
     background_wallpaper: GnomeBackground,
     library: Rc<RefCell<Library>>,
     last_rotation: HashMap<String, Instant>,
+    on_battery: bool,
+    battery_percent: Option<u8>,
     static_job: Option<(String, i64)>,
     static_generation: u64,
     policies: HashMap<WindowKey, RestartPolicy>,
@@ -195,6 +204,8 @@ impl App {
             background_wallpaper,
             library: Rc::new(RefCell::new(Library::load())),
             last_rotation: HashMap::new(),
+            on_battery: power::status().on_battery,
+            battery_percent: power::status().percent,
             static_job: None,
             static_generation: 0,
             policies: HashMap::new(),
@@ -222,6 +233,7 @@ impl App {
         Self::start_external_watchers(&app);
         Self::start_player_watch(&app);
         Self::start_rotation_watch(&app);
+        Self::start_power_watch(&app);
         app
     }
 
@@ -259,6 +271,21 @@ impl App {
                 return glib::ControlFlow::Break;
             }
             state.watch_players();
+            glib::ControlFlow::Continue
+        });
+    }
+
+    fn start_power_watch(app: &Rc<RefCell<Self>>) {
+        let weak = Rc::downgrade(app);
+        glib::timeout_add_local(Duration::from_secs(30), move || {
+            let Some(app) = weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            let status = power::status();
+            let _ = app.borrow().tx.send(Command::PowerStatus {
+                on_battery: status.on_battery,
+                percent: status.percent,
+            });
             glib::ControlFlow::Continue
         });
     }
@@ -466,6 +493,41 @@ impl App {
                     self.config.rotation_interval_sec = seconds;
                     self.last_rotation.clear();
                     self.save_config();
+                    self.refresh_ui();
+                }
+            }
+            Command::SetPlaybackProfile(profile) => {
+                if self.config.playback_profile != profile {
+                    self.config.playback_profile = profile;
+                    self.save_config();
+                    self.restart_windows();
+                }
+            }
+            Command::SetPauseOnBattery(enabled) => {
+                self.config.pause_on_battery = enabled;
+                self.save_config();
+                if enabled && self.on_battery {
+                    self.pause_all();
+                } else if self.should_play() {
+                    self.play_all();
+                }
+                self.refresh_ui();
+            }
+            Command::PowerStatus {
+                on_battery,
+                percent,
+            } => {
+                let changed = self.on_battery != on_battery || self.battery_percent != percent;
+                self.on_battery = on_battery;
+                self.battery_percent = percent;
+                if changed {
+                    if self.config.pause_on_battery {
+                        if self.on_battery {
+                            self.pause_all();
+                        } else if self.should_play() {
+                            self.play_all();
+                        }
+                    }
                     self.refresh_ui();
                 }
             }
@@ -768,15 +830,27 @@ impl App {
         let volume = self.config.volume;
         let muted = self.config.is_mute;
         match key.kind {
-            WindowKind::Video => {
-                WallpaperWindow::video(&self.gtk_app, monitor, &key.source, volume, muted)
-            }
+            WindowKind::Video => WallpaperWindow::video(
+                &self.gtk_app,
+                monitor,
+                &key.source,
+                volume,
+                muted,
+                &self.config.playback_profile,
+            ),
             WindowKind::Stream => {
                 let stream = self
                     .stream
                     .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("stream is not resolved yet"))?;
-                WallpaperWindow::stream(&self.gtk_app, monitor, stream, volume, muted)
+                WallpaperWindow::stream(
+                    &self.gtk_app,
+                    monitor,
+                    stream,
+                    volume,
+                    muted,
+                    &self.config.playback_profile,
+                )
             }
             WindowKind::Web => {
                 WallpaperWindow::web(&self.gtk_app, monitor, &key.source, muted, self.tx.clone())
@@ -950,6 +1024,9 @@ impl App {
 
     fn should_play(&self) -> bool {
         if self.screen_locked {
+            return false;
+        }
+        if self.config.pause_on_battery && self.on_battery {
             return false;
         }
         if self.config.is_pause_when_maximized && (self.is_any_maximized || self.is_any_fullscreen)
@@ -1168,6 +1245,10 @@ impl App {
                 autostart::is_enabled(),
                 self.paused_by_user,
                 is_playing,
+                power::PowerStatus {
+                    on_battery: self.on_battery,
+                    percent: self.battery_percent,
+                },
             );
             if !self.gui_shown && first_time {
                 control.show_welcome();
@@ -1239,6 +1320,10 @@ impl App {
                 autostart::is_enabled(),
                 self.paused_by_user,
                 is_playing,
+                power::PowerStatus {
+                    on_battery: self.on_battery,
+                    percent: self.battery_percent,
+                },
             );
         }
     }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.0 — 2026-10-31
+
+- Performance, Balanced and Power saving playback profiles.
+- Power saving uses frame dropping, one decoder thread, bilinear scaling and a 30 fps filter.
+- Optional pause when running on battery; playback resumes when AC returns.
+- Battery percentage and AC/battery state shown in Settings.
+
 ## 0.8.0 — 2026-10-31
 
 - Assign a library collection to an individual monitor from the Home page.

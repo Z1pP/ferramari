@@ -16,6 +16,16 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="0.9.0" date="2026-10-31" type="stable">
+      <description>
+        <p>Power profiles.</p>
+        <ul>
+          <li>Performance, Balanced and Power saving playback profiles</li>
+          <li>Optional pause on battery and battery status in Settings</li>
+          <li>Power saving reduces decoder threads, scaling and frame rate</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.8.0" date="2026-10-31" type="stable">
       <description>
         <p>Automatic wallpaper rotation.</p>

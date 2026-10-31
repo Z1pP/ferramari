@@ -133,6 +133,15 @@ pub struct Config {
     /// Monitor name -> collection id.
     #[serde(default)]
     pub rotations: HashMap<String, String>,
+    /// `performance`, `balanced` or `power`.
+    #[serde(default = "default_profile")]
+    pub playback_profile: String,
+    #[serde(default)]
+    pub pause_on_battery: bool,
+}
+
+fn default_profile() -> String {
+    "balanced".to_string()
 }
 
 fn default_rotation_mode() -> String {
@@ -168,6 +177,8 @@ impl Config {
             rotation_mode: default_rotation_mode(),
             rotation_interval_sec: default_rotation_interval(),
             rotations: HashMap::new(),
+            playback_profile: default_profile(),
+            pause_on_battery: false,
         }
     }
 
@@ -262,6 +273,9 @@ impl Config {
             config.rotation_mode = "off".to_string();
         }
         config.rotation_interval_sec = config.rotation_interval_sec.clamp(10, 86_400);
+        if !matches!(config.playback_profile.as_str(), "performance" | "power") {
+            config.playback_profile = "balanced".to_string();
+        }
 
         // Monitors come and go; a new monitor inherits the Default source.
         for monitor in monitors {
@@ -498,6 +512,22 @@ mod tests {
             config.rotations.get("eDP-1").map(String::as_str),
             Some("collection-1")
         );
+    }
+
+    #[test]
+    fn playback_profile_defaults_and_persists() {
+        let template = Config::template(&monitors());
+        assert_eq!(template.playback_profile, "balanced");
+        assert!(!template.pause_on_battery);
+
+        let text = r#"{
+            "version": 4, "mode": "MODE_VIDEO",
+            "data_source": {"Default": ""},
+            "playback_profile": "power", "pause_on_battery": true
+        }"#;
+        let (config, _) = Config::parse(text, &monitors());
+        assert_eq!(config.playback_profile, "power");
+        assert!(config.pause_on_battery);
     }
 
     #[test]

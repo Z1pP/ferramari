@@ -13,6 +13,7 @@ iron (*ferrum*) and Rust's crab mascot.
 - Home page with the current wallpaper and per-monitor cards
 - Local library with favorites, recently used wallpapers and collections
 - Automatic wallpaper rotation from a per-monitor collection (order or random)
+- Playback profiles (Performance, Balanced, Power saving), optional pause on battery
 - Browse a catalogue of live wallpapers with categories, search, sorting,
   resolution filters and a six-frame preview before installing
 - Streaming URLs through `yt-dlp` (YouTube and many other sites)
@@ -211,7 +212,8 @@ WallpaperWindow   Config/D-Bus    GNOME background
 | --- | --- |
 | `src/app.rs` | application state, command handling, mode switching |
 | `src/config.rs` | schema-v4 config, validation, 3.x migration |
-| `src/mpv.rs` | mpv process + JSON IPC (volume, mute, pause) |
+| `src/mpv.rs` | mpv process + JSON IPC (volume, mute, pause, power profiles) |
+| `src/power.rs` | battery/AC state from `/sys/class/power_supply` |
 | `src/ui/control.rs` | control window (videos, streaming, web page, toggles) |
 | `src/util.rs` | gettext helpers, video discovery, string utilities |
 | `src/ui/online.rs` | wallpaper catalogue and preview/install dialog |

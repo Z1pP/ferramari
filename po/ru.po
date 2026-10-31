@@ -823,3 +823,36 @@ msgstr "Без ротации"
 
 msgid "Rotate this collection on this monitor"
 msgstr "Переключать эту коллекцию на этом мониторе"
+
+msgid "Performance"
+msgstr "Производительность"
+
+msgid "Playback profile"
+msgstr "Профиль воспроизведения"
+
+msgid "Performance prioritises smoothness; Power saving reduces decoding and scaling"
+msgstr "Производительность важнее плавности; энергосбережение снижает декодирование и масштабирование"
+
+msgid "Balanced"
+msgstr "Сбалансированный"
+
+msgid "Power saving"
+msgstr "Энергосбережение"
+
+msgid "Pause on battery"
+msgstr "Пауза от батареи"
+
+msgid "Stop playback when running on battery"
+msgstr "Останавливать воспроизведение при работе от батареи"
+
+msgid "Battery"
+msgstr "Батарея"
+
+msgid "on battery"
+msgstr "от батареи"
+
+msgid "on AC power"
+msgstr "от сети"
+
+msgid "No battery detected"
+msgstr "Батарея не обнаружена"

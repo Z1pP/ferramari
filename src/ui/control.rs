@@ -87,6 +87,9 @@ struct SettingsPage {
     combo_language: gtk::ComboBoxText,
     rotation_mode: gtk::ComboBoxText,
     rotation_interval: gtk::SpinButton,
+    profile: gtk::ComboBoxText,
+    switch_pause_battery: gtk::Switch,
+    battery_status: gtk::Label,
     switch_autostart: gtk::Switch,
     switch_static: gtk::Switch,
     switch_pause_max: gtk::Switch,
@@ -203,6 +206,9 @@ pub struct ControlWindow {
     combo_language: gtk::ComboBoxText,
     rotation_mode: gtk::ComboBoxText,
     rotation_interval: gtk::SpinButton,
+    profile: gtk::ComboBoxText,
+    switch_pause_battery: gtk::Switch,
+    battery_status: gtk::Label,
     settings_monitors: gtk::Label,
     play_button: gtk::Button,
     stack: gtk::Stack,
@@ -381,6 +387,9 @@ impl ControlWindow {
             combo_language: settings_page.combo_language,
             rotation_mode: settings_page.rotation_mode,
             rotation_interval: settings_page.rotation_interval,
+            profile: settings_page.profile,
+            switch_pause_battery: settings_page.switch_pause_battery,
+            battery_status: settings_page.battery_status,
             settings_monitors: settings_page.monitors_summary,
             play_button: header_parts.play_button,
             stack: stack.clone(),
@@ -427,6 +436,7 @@ impl ControlWindow {
         autostart_enabled: bool,
         paused_by_user: bool,
         is_playing: bool,
+        battery: crate::power::PowerStatus,
     ) {
         self.home.update(
             config,
@@ -449,6 +459,26 @@ impl ControlWindow {
         }
         self.rotation_interval
             .set_value((config.rotation_interval_sec as f64 / 60.0).clamp(1.0, 1440.0));
+        let profile = match config.playback_profile.as_str() {
+            "performance" => "performance",
+            "power" => "power",
+            _ => "balanced",
+        };
+        if !self.profile.set_active_id(Some(profile)) {
+            self.profile.set_active_id(Some("balanced"));
+        }
+        self.switch_pause_battery
+            .set_active(config.pause_on_battery);
+        let battery_text = match battery.percent {
+            Some(percent) if battery.on_battery => {
+                format!("{} {percent}% · {}", tr("Battery"), tr("on battery"))
+            }
+            Some(percent) => {
+                format!("{} {percent}% · {}", tr("Battery"), tr("on AC power"))
+            }
+            None => tr("No battery detected"),
+        };
+        self.battery_status.set_text(&battery_text);
         if monitors.is_empty() {
             self.settings_monitors.set_text(&tr("No displays detected"));
         } else {
@@ -939,6 +969,52 @@ fn build_settings_page(
     interval_row.pack_end(&rotation_interval, false, false, 0);
     content.pack_start(&interval_row, false, false, 0);
 
+    let performance_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
+    content.pack_start(&performance_separator, false, false, 0);
+    content.pack_start(&section_label(&tr("Performance")), false, false, 0);
+
+    let profile_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    profile_row.style_context().add_class("setting-row");
+    let profile_text = gtk::Box::new(gtk::Orientation::Vertical, 1);
+    profile_text.pack_start(
+        &label(&tr("Playback profile"), "setting-title"),
+        false,
+        false,
+        0,
+    );
+    profile_text.pack_start(
+        &label(
+            &tr("Performance prioritises smoothness; Power saving reduces decoding and scaling"),
+            "setting-description",
+        ),
+        false,
+        false,
+        0,
+    );
+    let profile = gtk::ComboBoxText::new();
+    profile.append(Some("performance"), &tr("Performance"));
+    profile.append(Some("balanced"), &tr("Balanced"));
+    profile.append(Some("power"), &tr("Power saving"));
+    profile.set_active_id(Some("balanced"));
+    profile.set_valign(gtk::Align::Center);
+    profile.set_size_request(150, -1);
+    set_a11y_name(&profile, &tr("Playback profile"));
+    profile_row.pack_start(&profile_text, true, true, 0);
+    profile_row.pack_end(&profile, false, false, 0);
+    content.pack_start(&profile_row, false, false, 0);
+
+    let switch_pause_battery = gtk::Switch::new();
+    switch_pause_battery.set_valign(gtk::Align::Center);
+    let row_pause_battery = switch_row(
+        &tr("Pause on battery"),
+        &tr("Stop playback when running on battery"),
+        &switch_pause_battery,
+    );
+    content.pack_start(&row_pause_battery, false, false, 0);
+    let battery_status = label("", "field-hint");
+    battery_status.set_margin_start(4);
+    content.pack_start(&battery_status, false, false, 0);
+
     let system_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
     content.pack_start(&system_separator, false, false, 0);
     content.pack_start(&section_label(&tr("System")), false, false, 0);
@@ -1063,6 +1139,29 @@ fn build_settings_page(
     {
         let tx = tx.clone();
         let syncing = Rc::clone(syncing);
+        profile.connect_changed(move |combo| {
+            if syncing.get() {
+                return;
+            }
+            let profile = combo
+                .active_id()
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| "balanced".to_string());
+            let _ = tx.send(Command::SetPlaybackProfile(profile));
+        });
+    }
+    {
+        let tx = tx.clone();
+        let syncing = Rc::clone(syncing);
+        switch_pause_battery.connect_active_notify(move |switch| {
+            if !syncing.get() {
+                let _ = tx.send(Command::SetPauseOnBattery(switch.is_active()));
+            }
+        });
+    }
+    {
+        let tx = tx.clone();
+        let syncing = Rc::clone(syncing);
         let window = window.clone();
         combo_language.connect_changed(move |combo| {
             if syncing.get() {
@@ -1135,6 +1234,9 @@ fn build_settings_page(
         combo_language,
         rotation_mode,
         rotation_interval,
+        profile,
+        switch_pause_battery,
+        battery_status,
         switch_autostart,
         switch_static,
         switch_pause_max,

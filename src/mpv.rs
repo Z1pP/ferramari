@@ -34,6 +34,24 @@ pub struct Options {
     pub muted: bool,
     pub paused: bool,
     pub loop_file: bool,
+    /// `performance`, `balanced` or `power`.
+    pub profile: String,
+}
+
+/// Extra mpv flags for the selected power profile.
+fn profile_args(profile: &str) -> &'static [&'static str] {
+    match profile {
+        "performance" => &["--video-sync=display-resample", "--interpolation=yes"],
+        "power" => &[
+            "--framedrop=vo",
+            "--vd-lavc-threads=1",
+            "--scale=bilinear",
+            "--cscale=bilinear",
+            "--dscale=bilinear",
+            "--vf=fps=30",
+        ],
+        _ => &[],
+    }
 }
 
 pub struct Mpv {
@@ -90,7 +108,11 @@ impl Mpv {
             .arg("--panscan=1.0")
             .arg("--hwdec=auto-safe")
             .arg("--gpu-context=x11egl")
-            .arg("--no-border")
+            .arg("--no-border");
+        for argument in profile_args(&options.profile) {
+            command.arg(argument);
+        }
+        command
             .arg(format!("--input-ipc-server={}", socket.display()))
             .arg(format!("--volume={}", options.volume.clamp(0, 100)))
             .arg(format!(
@@ -303,6 +325,14 @@ fn next_response(line: &str, request_id: u64) -> anyhow::Result<Option<Value>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn power_profiles_add_only_their_own_flags() {
+        assert!(profile_args("balanced").is_empty());
+        assert!(profile_args("performance").contains(&"--interpolation=yes"));
+        assert!(profile_args("power").contains(&"--vd-lavc-threads=1"));
+        assert!(profile_args("power").contains(&"--scale=bilinear"));
+    }
 
     #[test]
     fn events_are_not_command_replies() {

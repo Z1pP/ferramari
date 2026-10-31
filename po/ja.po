@@ -475,3 +475,36 @@ msgstr "ローテーションなし"
 
 msgid "Rotate this collection on this monitor"
 msgstr "このモニターでこのコレクションを切り替える"
+
+msgid "Performance"
+msgstr "パフォーマンス"
+
+msgid "Playback profile"
+msgstr "再生プロファイル"
+
+msgid "Performance prioritises smoothness; Power saving reduces decoding and scaling"
+msgstr "パフォーマンスは滑らかさを優先し、省電力はデコードとスケーリングを軽減します"
+
+msgid "Balanced"
+msgstr "バランス"
+
+msgid "Power saving"
+msgstr "省電力"
+
+msgid "Pause on battery"
+msgstr "バッテリー時に一時停止"
+
+msgid "Stop playback when running on battery"
+msgstr "バッテリー駆動時は再生を停止します"
+
+msgid "Battery"
+msgstr "バッテリー"
+
+msgid "on battery"
+msgstr "バッテリー駆動"
+
+msgid "on AC power"
+msgstr "AC電源"
+
+msgid "No battery detected"
+msgstr "バッテリーが見つかりません"

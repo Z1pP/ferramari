@@ -2,6 +2,7 @@
 
 mod app;
 mod autostart;
+mod catalog_api;
 mod catalogue;
 mod cli;
 mod config;
@@ -15,7 +16,9 @@ mod library;
 mod metrics;
 mod monitors;
 mod mpv;
+mod package;
 mod paths;
+mod plugin;
 mod power;
 mod supervisor;
 mod thumbnails;
@@ -50,6 +53,22 @@ fn main() {
 
     if args.doctor {
         println!("{}", desktop::doctor());
+        return;
+    }
+    if let Some(base) = args.catalog.as_deref() {
+        let result = catalog_api::Client::new(base).and_then(|client| client.list(1, None, None));
+        match result {
+            Ok(page) => {
+                println!("page {} next {:?}", page.page, page.next);
+                for item in page.items {
+                    println!("{}\t{}", item.id, item.name);
+                }
+            }
+            Err(err) => {
+                eprintln!("catalog: {err}");
+                std::process::exit(2);
+            }
+        }
         return;
     }
 

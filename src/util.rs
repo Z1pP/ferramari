@@ -89,7 +89,11 @@ pub fn primary_source<'a>(config: &'a Config, monitors: &[MonitorInfo]) -> &'a s
 /// All regular files in the wallpaper folder whose content type is `video/*`.
 /// Sorted for a stable GUI order.
 pub fn video_paths() -> Vec<PathBuf> {
-    video_paths_in(&paths::video_wallpaper_dir())
+    let mut videos = video_paths_in(&paths::video_wallpaper_dir());
+    videos.extend(crate::package::installed_videos());
+    videos.sort();
+    videos.dedup();
+    videos
 }
 
 pub fn video_paths_in(dir: &Path) -> Vec<PathBuf> {

@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.7.0 — 2026-11-01
+
+Ecosystem foundation.
+
+- Add declarative catalogue-source plugins (`$XDG_DATA_HOME/ferramari/plugins/
+  <id>/plugin.json`). Plugins are never executed; they provide only an HTTP
+  API base URL. Invalid ids, non-http URLs and future `engine_min` versions are
+  skipped with a log line. See `docs/PLUGIN_API.md`.
+- Add the Ferramari Catalog API v1 client (`src/catalog_api.rs`): pagination,
+  search/category query encoding, 15 s timeout, 2 MiB body limit, up to 200
+  items, HTTP-only preview/download URLs. See `docs/CATALOG_API.md`.
+- Add `ferramari --catalog <base>` to inspect a deployment and list accepted
+  plugins in `--doctor` and Settings → Community sources.
+- Tests: 123 passing.
+
+## 1.6.0 — 2026-11-01
+
+Creator Engine: `.ferramari` packages.
+
+- Add `src/package.rs`: manifest parsing, strict validation, import, export and
+  installed-video discovery.
+- Validation rejects newer formats/engine versions, path traversal, symlinks,
+  wrong extensions, more than 10,000 files and packages over 2 GiB. Import
+  revalidates after copying and cleans up on failure.
+- Local Video gains **Import…** and **Export .ferramari**; imported video
+  packages join the library grid, imported web packages are applied as the
+  wallpaper.
+- Export writes `wallpaper.<ext>`, a manifest and an optional thumbnail preview,
+  then reloads the package before reporting success.
+- Add `docs/FERRAMARI_FORMAT.md` and package tests.
+- Tests: 117 passing.
+
 ## 1.5.0 — 2026-11-01
 
 Cross-desktop diagnostics and session integration.

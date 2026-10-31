@@ -89,6 +89,12 @@ fn xdg_cache_home() -> PathBuf {
         .unwrap_or_else(|| home().join(".cache"))
 }
 
+fn xdg_data_home() -> PathBuf {
+    env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join(".local/share"))
+}
+
 pub fn config_dir() -> PathBuf {
     xdg_config_home().join("ferramari")
 }
@@ -117,6 +123,16 @@ pub fn thumbnail_cache_dir() -> PathBuf {
 /// Cached blurred frames used for the GNOME static wallpaper.
 pub fn static_cache_dir() -> PathBuf {
     xdg_cache_home().join("ferramari").join("static")
+}
+
+/// Installed `.ferramari` packages.
+pub fn packages_dir() -> PathBuf {
+    xdg_data_home().join("ferramari").join("packages")
+}
+
+/// Declarative plugin manifests.
+pub fn plugins_dir() -> PathBuf {
+    xdg_data_home().join("ferramari").join("plugins")
 }
 
 /// Cache for the online wallpaper catalogue (pages, previews, downloads).
@@ -202,6 +218,8 @@ pub fn ensure_dirs() {
         thumbnail_cache_dir(),
         static_cache_dir(),
         catalogue_cache_dir(),
+        packages_dir(),
+        plugins_dir(),
         mpv_socket_dir(),
         autostart_dir(),
     ] {

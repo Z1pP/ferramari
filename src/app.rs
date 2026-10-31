@@ -26,6 +26,7 @@ use crate::error::{ErrorKind, UserError};
 use crate::handlers;
 use crate::library::Library;
 use crate::monitors::{self, MonitorInfo};
+use crate::package;
 use crate::paths;
 use crate::power;
 use crate::supervisor::{RestartPolicy, Retry, MAX_RETRIES};
@@ -102,6 +103,13 @@ pub enum Command {
     },
     Suspend(bool),
     LibraryChanged,
+    ImportPackage(PathBuf),
+    PackageImported(Result<package::ImportedPackage, String>),
+    ExportPackage {
+        video: PathBuf,
+        parent: PathBuf,
+    },
+    PackageExported(Result<PathBuf, String>),
     WebError {
         monitor: String,
         message: String,
@@ -678,6 +686,83 @@ impl App {
                 }
             }
             Command::LibraryChanged => self.refresh_ui(),
+            Command::ImportPackage(source) => {
+                let tx = self.tx.clone();
+                let destination = paths::packages_dir();
+                std::thread::Builder::new()
+                    .name("ferramari-package-import".to_string())
+                    .spawn(move || {
+                        let result = package::import(&source, &destination);
+                        let _ = tx.send(Command::PackageImported(result));
+                    })
+                    .ok();
+            }
+            Command::PackageImported(result) => match result {
+                Ok(imported) => {
+                    log::info!(
+                        "[Package] Imported {} ({}, {} bytes, preview={}) from {}",
+                        imported.name,
+                        imported.kind.as_str(),
+                        imported.size_bytes,
+                        imported.preview.is_some(),
+                        imported.package_dir.display()
+                    );
+                    match imported.kind {
+                        package::PackageType::Video => {
+                            let source = imported.entry.to_string_lossy().into_owned();
+                            if assign_video(&mut self.config, &self.monitors, source.clone(), None)
+                            {
+                                self.save_config();
+                                self.library.borrow_mut().record_use(&source);
+                                let _ = self.library.borrow().save();
+                                self.rebuild_windows();
+                                self.reload_library_ui();
+                            }
+                        }
+                        package::PackageType::Web => {
+                            self.config.mode = Mode::Webpage;
+                            self.config
+                                .data_source
+                                .insert("Default".to_string(), util::path_to_uri(&imported.entry));
+                            self.save_config();
+                            self.rebuild_windows();
+                        }
+                    }
+                    if let Some(control) = &self.control {
+                        control.show_info(&format!(
+                            "{}: {}",
+                            imported.name,
+                            imported.package_dir.display()
+                        ));
+                    }
+                }
+                Err(err) => self.notify_user_error(UserError::new(
+                    ErrorKind::FileSystem,
+                    format!("Could not import the package: {err}"),
+                )),
+            },
+            Command::ExportPackage { video, parent } => {
+                let tx = self.tx.clone();
+                std::thread::Builder::new()
+                    .name("ferramari-package-export".to_string())
+                    .spawn(move || {
+                        let result = package::export_video(&video, &parent);
+                        let _ = tx.send(Command::PackageExported(result));
+                    })
+                    .ok();
+            }
+            Command::PackageExported(result) => match result {
+                Ok(path) => {
+                    log::info!("[Package] Exported {}", path.display());
+                    if let Some(control) = &self.control {
+                        control.show_info(&path.display().to_string());
+                    }
+                }
+                Err(err) => self.notify_user_error(UserError::new(
+                    ErrorKind::FileSystem,
+                    format!("Could not export the package: {err}"),
+                )),
+            },
             Command::SetMonitorRotation {
                 monitor,
                 collection,

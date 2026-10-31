@@ -105,6 +105,20 @@ Run from a checkout with `cargo build --release`, or from an installed build.
 - [ ] In `-d` logs, check `[Eco] <monitor>: Active/Occluded/Idle/Suspended` transitions and the fps value.
 - [ ] `gdbus ... Properties.Get ... monitor_states` returns one entry per monitor.
 
+### `.ferramari` packages
+- [ ] Export a selected video; a `<name>.ferramari/` directory appears with `manifest.json` and `wallpaper.<ext>`.
+- [ ] Import that package; it is copied to the data directory and applied to all monitors.
+- [ ] Import a web package; it becomes the current web wallpaper.
+- [ ] Edit `entry` to `../x.mp4` or add a symlink; import fails with a clear message and no partial directory remains.
+- [ ] Set `engine_min` to a future version; import fails.
+- [ ] Import a package with a 3 GiB file; it is rejected (do not commit the fixture).
+
+### Ecosystem
+- [ ] Place a valid `plugin.json` under `$XDG_DATA_HOME/ferramari/plugins/<id>/`; `--doctor` and Settings list it.
+- [ ] Use an invalid id, a `file://` API or `engine_min: 99`; the plugin is skipped and the app still starts.
+- [ ] `ferramari --catalog <base>` prints page/next/items for a compatible server and exits non-zero on invalid JSON or HTTP errors.
+- [ ] A catalogue item with a `file://` download is rejected.
+
 ### Performance and hardening
 - [ ] Open Performance: CPU, RSS, threads, processes update every ~2 s; GPU shows a value on AMDGPU and "Unavailable" otherwise.
 - [ ] Close the control window: no resource sampling runs (check CPU in `top`).

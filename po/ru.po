@@ -941,3 +941,33 @@ msgstr "Интеграция с рабочим столом"
 
 msgid "Native Wayland surfaces are not implemented; Ferramari uses X11/XWayland."
 msgstr "Нативные поверхности Wayland не реализованы; Ferramari использует X11/XWayland."
+
+msgid "Import…"
+msgstr "Импорт…"
+
+msgid "Import a .ferramari package"
+msgstr "Импортировать пакет .ferramari"
+
+msgid "Export .ferramari"
+msgstr "Экспорт .ferramari"
+
+msgid "Export the selected video as a package"
+msgstr "Экспортировать выбранное видео как пакет"
+
+msgid "Choose a .ferramari package"
+msgstr "Выберите пакет .ferramari"
+
+msgid "Choose a folder for the package"
+msgstr "Выберите папку для пакета"
+
+msgid "Select"
+msgstr "Выбрать"
+
+msgid "Done"
+msgstr "Готово"
+
+msgid "Community sources"
+msgstr "Источники сообщества"
+
+msgid "No catalogue plugins installed"
+msgstr "Плагины каталога не установлены"

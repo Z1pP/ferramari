@@ -592,3 +592,33 @@ msgstr "デスクトップ統合"
 
 msgid "Native Wayland surfaces are not implemented; Ferramari uses X11/XWayland."
 msgstr "ネイティブ Wayland サーフェスは未実装です。Ferramari は X11/XWayland を使用します。"
+
+msgid "Import…"
+msgstr "インポート…"
+
+msgid "Import a .ferramari package"
+msgstr ".ferramari パッケージをインポート"
+
+msgid "Export .ferramari"
+msgstr ".ferramari にエクスポート"
+
+msgid "Export the selected video as a package"
+msgstr "選択した動画をパッケージとしてエクスポート"
+
+msgid "Choose a .ferramari package"
+msgstr ".ferramari パッケージを選択"
+
+msgid "Choose a folder for the package"
+msgstr "パッケージの保存先フォルダーを選択"
+
+msgid "Select"
+msgstr "選択"
+
+msgid "Done"
+msgstr "完了"
+
+msgid "Community sources"
+msgstr "コミュニティソース"
+
+msgid "No catalogue plugins installed"
+msgstr "カタログプラグインがインストールされていません"

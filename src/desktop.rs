@@ -198,6 +198,25 @@ pub fn doctor() -> String {
         ])
     );
     let _ = writeln!(report, "lock services: {}", lock_services());
+    let plugins = crate::plugin::list();
+    let _ = writeln!(
+        report,
+        "plugin sources: {}",
+        if plugins.is_empty() {
+            "none".to_string()
+        } else {
+            plugins
+                .iter()
+                .map(|plugin| {
+                    format!(
+                        "{} ({}) -> {}",
+                        plugin.manifest.id, plugin.manifest.name, plugin.manifest.api
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+    );
     report
 }
 

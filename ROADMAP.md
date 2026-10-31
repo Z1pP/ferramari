@@ -24,7 +24,25 @@ bundle uses host media tools.
 
 ## After 1.0
 
-### 1.2 — Eco Engine foundation (current)
+### 1.7 — Ecosystem foundation (current)
+
+- [x] Declarative catalogue-source plugin manifests
+- [x] First-party Catalog API v1 client and `--catalog` inspection command
+- [x] Plugin/API documentation and validation tests
+- [ ] Executable renderer plugin protocol (process-isolated)
+- [ ] Hosted catalogue, author profiles, publishing and sync
+- [ ] Plugin installer in the UI
+
+### 1.6 — Creator Engine foundation
+
+- [x] `.ferramari` manifest format and strict validation
+- [x] Import/export from the Local Video page
+- [x] Generated preview frame on export
+- [x] Path traversal, symlink, file-count and 2 GiB limits
+- [ ] Standalone package manager and metadata editor
+- [ ] Web-package asset isolation beyond the WebKit policy
+
+### 1.2 — Eco Engine foundation
 
 - [x] Per-monitor Active/Idle/Occluded/Suspended policy
 - [x] Quality/Balanced/Eco profiles and idle detection

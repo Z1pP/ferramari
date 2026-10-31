@@ -130,6 +130,8 @@ struct VideoPage {
     empty_clear: gtk::Button,
     search: gtk::Entry,
     view: gtk::ComboBoxText,
+    import_button: gtk::Button,
+    export_button: gtk::Button,
     view_syncing: Rc<Cell<bool>>,
     new_collection: gtk::Button,
     rename_collection: gtk::Button,
@@ -732,6 +734,15 @@ impl ControlWindow {
         );
     }
 
+    pub fn show_info(&self, message: &str) {
+        show_message(
+            Some(self.window.upcast_ref::<gtk::Window>()),
+            gtk::MessageType::Info,
+            &tr("Done"),
+            message,
+        );
+    }
+
     pub fn show_welcome(&self) {
         show_message(
             Some(self.window.upcast_ref::<gtk::Window>()),
@@ -1258,6 +1269,28 @@ fn build_settings_page(
     native_wayland.set_line_wrap(true);
     content.pack_start(&native_wayland, false, false, 0);
 
+    content.pack_start(&section_label(&tr("Community sources")), false, false, 0);
+    let plugins = crate::plugin::list();
+    let plugin_summary = if plugins.is_empty() {
+        tr("No catalogue plugins installed")
+    } else {
+        plugins
+            .iter()
+            .map(|plugin| {
+                format!(
+                    "{} ({}) → {}",
+                    plugin.manifest.name, plugin.manifest.id, plugin.manifest.api
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let plugin_label = label(&plugin_summary, "field-hint");
+    plugin_label.set_xalign(0.0);
+    plugin_label.set_line_wrap(true);
+    plugin_label.set_max_width_chars(72);
+    content.pack_start(&plugin_label, false, false, 0);
+
     content.pack_start(&section_label(&tr("Monitors")), false, false, 0);
     let monitors_summary = label("", "field-hint");
     monitors_summary.set_line_wrap(true);
@@ -1611,12 +1644,18 @@ fn build_video_page() -> VideoPage {
     );
     let refresh_button =
         labeled_icon_button("view-refresh-symbolic", &tr("Refresh"), &tr("Refresh"));
+    let import_button = labeled_icon_button(
+        "document-open-symbolic",
+        &tr("Import…"),
+        &tr("Import a .ferramari package"),
+    );
     let new_collection = labeled_icon_button(
         "list-add-symbolic",
         &tr("New collection"),
         &tr("Create a collection"),
     );
     actions.pack_start(&new_collection, false, false, 0);
+    actions.pack_start(&import_button, false, false, 0);
     actions.pack_start(&folder_button, false, false, 0);
     actions.pack_start(&refresh_button, false, false, 0);
     header.pack_start(&titles, true, true, 0);
@@ -1741,6 +1780,10 @@ fn build_video_page() -> VideoPage {
     let apply_button = primary_button(&tr("Apply"));
     apply_button.set_sensitive(false);
     apply_button.set_tooltip_text(Some(&tr("Apply to wallpaper")));
+    let export_button = gtk::Button::with_label(&tr("Export .ferramari"));
+    export_button.style_context().add_class("secondary");
+    export_button.set_sensitive(false);
+    export_button.set_tooltip_text(Some(&tr("Export the selected video as a package")));
     let add_to_collection = gtk::Button::with_label(&tr("Add to collection"));
     add_to_collection.style_context().add_class("secondary");
     add_to_collection.set_sensitive(false);
@@ -1755,6 +1798,7 @@ fn build_video_page() -> VideoPage {
     selection_bar.pack_end(&apply_button, false, false, 0);
     selection_bar.pack_end(&remove_from_collection, false, false, 0);
     selection_bar.pack_end(&add_to_collection, false, false, 0);
+    selection_bar.pack_end(&export_button, false, false, 0);
     root.pack_start(&selection_bar, false, false, 0);
 
     folder_button.connect_clicked(|_| xdg_open(&paths::video_wallpaper_dir()));
@@ -1773,6 +1817,8 @@ fn build_video_page() -> VideoPage {
         empty_clear,
         search,
         view,
+        import_button,
+        export_button,
         view_syncing: Rc::new(Cell::new(false)),
         new_collection,
         rename_collection,
@@ -1868,6 +1914,25 @@ fn set_star(button: &gtk::ToggleButton, active: bool) {
     } else {
         "Add to favorites"
     })));
+}
+
+fn choose_folder(parent: Option<&gtk::Window>, title: &str) -> Option<PathBuf> {
+    let dialog = gtk::FileChooserDialog::with_buttons(
+        Some(title),
+        parent,
+        gtk::FileChooserAction::SelectFolder,
+        &[
+            (&tr("Cancel"), gtk::ResponseType::Cancel),
+            (&tr("Select"), gtk::ResponseType::Accept),
+        ],
+    );
+    dialog.set_modal(true);
+    let response = dialog.run();
+    let path = (response == gtk::ResponseType::Accept)
+        .then(|| dialog.filename())
+        .flatten();
+    dialog.close();
+    path
 }
 
 fn prompt_text(
@@ -2020,6 +2085,42 @@ fn wire_video_page(page: &VideoPage, shared: &Rc<Shared>, library: &Rc<RefCell<L
             if let Some(path) = selected_video(&flow, &shared) {
                 show_monitor_menu(&shared, button, None, path);
             }
+        });
+    }
+    {
+        let shared = Rc::clone(shared);
+        let button_widget = page.import_button.clone();
+        button_widget.connect_clicked(move |button| {
+            let parent = button
+                .toplevel()
+                .and_then(|top| top.downcast::<gtk::Window>().ok());
+            let Some(path) = choose_folder(parent.as_ref(), &tr("Choose a .ferramari package"))
+            else {
+                return;
+            };
+            let _ = shared.tx.send(Command::ImportPackage(path));
+        });
+    }
+    {
+        let shared = Rc::clone(shared);
+        let flow = page.flow.clone();
+        let button_widget = page.export_button.clone();
+        button_widget.connect_clicked(move |button| {
+            let Some(video) = selected_video(&flow, &shared) else {
+                return;
+            };
+            let parent = button
+                .toplevel()
+                .and_then(|top| top.downcast::<gtk::Window>().ok());
+            let Some(destination) =
+                choose_folder(parent.as_ref(), &tr("Choose a folder for the package"))
+            else {
+                return;
+            };
+            let _ = shared.tx.send(Command::ExportPackage {
+                video: PathBuf::from(video),
+                parent: destination,
+            });
         });
     }
 
@@ -3596,6 +3697,7 @@ fn update_selection(flow: &gtk::FlowBox, shared: &Shared, page: &VideoPage) {
             page.selection_label.set_text(&name);
             page.selection_label.set_tooltip_text(Some(&name));
             page.apply_button.set_sensitive(true);
+            page.export_button.set_sensitive(true);
             page.add_to_collection.set_sensitive(true);
             page.remove_from_collection.set_sensitive(collection);
         }
@@ -3604,6 +3706,7 @@ fn update_selection(flow: &gtk::FlowBox, shared: &Shared, page: &VideoPage) {
                 .set_text(&tr("Select a video to apply"));
             page.selection_label.set_tooltip_text(None);
             page.apply_button.set_sensitive(false);
+            page.export_button.set_sensitive(false);
             page.add_to_collection.set_sensitive(false);
             page.remove_from_collection.set_sensitive(false);
         }

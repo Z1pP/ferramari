@@ -41,6 +41,10 @@ The interface has a hand-tuned dark palette as well as the light one:
 - `--doctor` diagnostics for session/backend, desktop, media tools, DRM nodes,
   idle and lock services
 - Logind lock/unlock fallback, aggregated with screensaver lock state
+- `.ferramari` package import/export with strict metadata, path, symlink, file
+  count and size validation
+- Declarative catalogue-source plugins (no plugin code execution) and a
+  first-party Catalog API v1 client (`--catalog`)
 - Browse a catalogue of live wallpapers with categories, search, sorting,
   resolution filters and a six-frame preview before installing
 - Streaming URLs through `yt-dlp` (YouTube and many other sites)
@@ -149,6 +153,7 @@ ferramari -b -p 5     # wait 5 seconds before starting (autostart delay)
 ferramari -d          # debug logging
 ferramari -r          # reset the configuration
 ferramari --doctor    # print session/backend/tool diagnostics and exit
+ferramari --catalog https://catalog.example.org/v1  # inspect a Catalog API
 ```
 
 A second `ferramari` invocation does not start another server: it asks the
@@ -157,6 +162,15 @@ running instance to show its control window and exits.
 Local videos are read from `$XDG_VIDEOS_DIR/Ferramari` (usually
 `~/Videos/Ferramari`). The control window can open that folder, refresh the
 thumbnail grid, and apply a video to one monitor or all of them.
+
+### Packages
+
+Local Video → **Import…** accepts a `.ferramari` directory. A video package is
+installed under `$XDG_DATA_HOME/ferramari/packages`, applied to all monitors
+and shown in the library progress; a web package is applied as the current web
+wallpaper. Select a video and use **Export .ferramari** to create a package in
+a folder of your choice. The format, manifest fields and security limits are
+documented in [`docs/FERRAMARI_FORMAT.md`](docs/FERRAMARI_FORMAT.md).
 
 ### Wallpaper catalogue
 
@@ -273,6 +287,9 @@ WallpaperWindow   Config/D-Bus    GNOME background
 | `src/eco.rs` | pure per-monitor Eco Engine policy and profiles |
 | `src/metrics.rs` | `/proc` + sysfs process-tree metrics for the Performance page |
 | `src/desktop.rs` | session/desktop detection and `--doctor` diagnostics |
+| `src/package.rs` | `.ferramari` manifest validation, import and export |
+| `src/plugin.rs` | declarative catalogue-source plugin discovery |
+| `src/catalog_api.rs` | first-party Catalog API v1 client |
 | `src/power.rs` | battery/AC state from `/sys/class/power_supply` |
 | `src/ui/control.rs` | control window (videos, streaming, web page, toggles) |
 | `src/util.rs` | gettext helpers, video discovery, string utilities |
@@ -354,6 +371,12 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
   unavailable.
 - Multi-monitor, 4K, Web-wallpaper and locked-screen benchmarks are not yet
   measured on the single-display test machine; see `docs/BENCHMARKS.md`.
+- `.ferramari` packages can be imported and exported, but there is no separate
+  package manager/metadata editor yet: imported packages are applied on import
+  and video entries appear in the library.
+- The plugin API is declarative catalogue sources only. Executable renderer
+  plugins, a plugin installer and a hosted first-party catalogue/server are not
+  implemented.
 
 ## Implementation notes
 
@@ -387,8 +410,10 @@ atomic saves and backup recovery, the player restart policy, yt-dlp and ffmpeg
 timeouts, per-monitor EWMH coverage, Eco Engine decisions, mpv IPC framing and
 the worker command order, process-tree metric parsing, session/desktop
 classification, monitor naming/scaling, the fade maths, path handling, URI
-safety and the catalogue parsers (cards, categories, search, signed download
-links, archive extraction, video probing and frame sheets).
+safety, `.ferramari` validation/import/export, plugin manifest validation,
+Catalog API parsing/client validation and the catalogue parsers (cards,
+categories, search, signed download links, archive extraction, video probing
+and frame sheets).
 The GUI, video embedding, streaming, webpage, catalogue and library modes were
 smoke-tested on Ubuntu 26.04 / GNOME Wayland (XWayland). The full environment
 matrix and smoke checklist live in [`docs/TESTING.md`](docs/TESTING.md). To exercise the
@@ -403,7 +428,10 @@ GSETTINGS_BACKEND=memory ferramari -b -d
 See [`CONTRIBUTING.md`](CONTRIBUTING.md), [`ROADMAP.md`](ROADMAP.md) and the
 [`docs/TESTING.md`](docs/TESTING.md) matrix. The 2026-11-01 architecture audit
 and its open findings live in [`docs/AUDIT.md`](docs/AUDIT.md); reproducible
-measurements are in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
+measurements are in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md), the package
+format in [`docs/FERRAMARI_FORMAT.md`](docs/FERRAMARI_FORMAT.md), and the
+ecosystem contracts in [`docs/PLUGIN_API.md`](docs/PLUGIN_API.md) and
+[`docs/CATALOG_API.md`](docs/CATALOG_API.md).
 
 ## License
 

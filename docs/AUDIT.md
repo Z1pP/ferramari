@@ -136,10 +136,15 @@ monitor (pause/mute).
 - **Eco Engine**: the state model, per-monitor occlusion, idle detection and
   profile semantics are now present. Dynamic FPS reduction, decoder release on
   long pause and a measured performance page remain open.
-- **`.ferramari` format**: not implemented. There is no package reader,
-  validator, metadata editor, import/export or asset isolation.
-- **Creator / Plugin API**: not implemented. The catalogue is a third-party
-  scrape; there is no first-party catalogue API or server.
+- **`.ferramari` format**: reader, strict validator, import and export are
+  implemented (`src/package.rs`, `docs/FERRAMARI_FORMAT.md`). A standalone
+  package manager, metadata editor and per-package asset isolation are still
+  open.
+- **Creator / Plugin API**: the package format is the first Creator Engine
+  piece. A declarative catalogue-source plugin API and a Catalog API v1 client
+  exist; executable renderer plugins, a plugin installer and a hosted
+  first-party catalogue/server are still open. The legacy winzoro scraper
+  remains separate.
 - **Desktop environments**: only GNOME/XWayland is tested. KDE, XFCE and
   Hyprland are untested; XFCE/KDE have partial EWMH compatibility by design.
 - **Resource UI**: Settings exposes profiles and battery state, but there is no
@@ -174,7 +179,7 @@ After the first stabilisation step:
 ```sh
 cargo fmt --check                                      # clean
 cargo clippy --all-targets -- -D warnings              # clean
-cargo test --all-targets                               # 110 passed
+cargo test --all-targets                               # 123 passed
 ```
 
 Live smoke checks on the single 1080p XWayland display, with an isolated

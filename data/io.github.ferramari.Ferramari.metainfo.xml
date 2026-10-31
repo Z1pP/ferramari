@@ -16,6 +16,29 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="1.7.0" date="2026-11-01" type="stable">
+      <description>
+        <p>Ecosystem foundation: declarative plugins and the first-party catalog API.</p>
+        <ul>
+          <li>Discover declarative catalogue-source plugins under XDG data; invalid or future-version manifests are skipped safely.</li>
+          <li>No plugin code is executed: plugins only provide an HTTP API endpoint.</li>
+          <li>Add the Ferramari Catalog API v1 client with size/URL validation and a --catalog inspection command.</li>
+          <li>Show installed community sources in Settings and --doctor.</li>
+          <li>Document the plugin manifest and the catalogue API contract.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.6.0" date="2026-11-01" type="stable">
+      <description>
+        <p>Creator Engine: the .ferramari package format.</p>
+        <ul>
+          <li>Import packages from the Local Video page; video entries join the library, web entries become the wallpaper.</li>
+          <li>Export the selected local video as a .ferramari package with a manifest and optional preview frame.</li>
+          <li>Strict validation: manifest schema/format/engine version, path traversal, symlinks, extension, file-count and 2 GiB size limits.</li>
+          <li>Installed packages live under XDG data; generated packages are re-validated before success.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.5.0" date="2026-11-01" type="stable">
       <description>
         <p>Cross-desktop diagnostics and session integration:</p>

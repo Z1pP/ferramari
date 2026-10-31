@@ -24,4 +24,8 @@ pub struct Args {
     /// Print desktop/session/tool diagnostics and exit
     #[arg(long = "doctor")]
     pub doctor: bool,
+
+    /// Fetch page 1 from a Ferramari Catalog API and print its items
+    #[arg(long = "catalog", value_name = "URL")]
+    pub catalog: Option<String>,
 }

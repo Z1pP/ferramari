@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Local Video action bar: the two new package buttons made the bar wider than
+  the window, so it clipped the grid and the label. Replaced with a single
+  **Package…** menu that appears only for installed packages.
+
 ## 1.9.0 — 2026-11-01
 
 Package integrity and authorship.

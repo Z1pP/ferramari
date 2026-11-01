@@ -135,8 +135,9 @@ struct VideoPage {
     view: gtk::ComboBoxText,
     import_button: gtk::Button,
     export_button: gtk::Button,
-    sign_button: gtk::Button,
-    verify_button: gtk::Button,
+    package_button: gtk::MenuButton,
+    verify_item: gtk::MenuItem,
+    sign_item: gtk::MenuItem,
     view_syncing: Rc<Cell<bool>>,
     new_collection: gtk::Button,
     rename_collection: gtk::Button,
@@ -1926,14 +1927,20 @@ fn build_video_page() -> VideoPage {
     export_button.style_context().add_class("secondary");
     export_button.set_sensitive(false);
     export_button.set_tooltip_text(Some(&tr("Export the selected video as a package")));
-    let sign_button = gtk::Button::with_label(&tr("Sign"));
-    sign_button.style_context().add_class("secondary");
-    sign_button.set_sensitive(false);
-    sign_button.set_tooltip_text(Some(&tr("Checksum and sign this package with your key")));
-    let verify_button = gtk::Button::with_label(&tr("Verify"));
-    verify_button.style_context().add_class("secondary");
-    verify_button.set_sensitive(false);
-    verify_button.set_tooltip_text(Some(&tr("Check the package checksums and signature")));
+    // One menu instead of two buttons: the bar is already tight and these
+    // actions only exist for installed packages.
+    let package_button = gtk::MenuButton::builder().label(tr("Package…")).build();
+    package_button.style_context().add_class("secondary");
+    package_button.set_tooltip_text(Some(&tr("Verify or sign this package")));
+    package_button.set_no_show_all(true);
+    package_button.hide();
+    let package_menu = gtk::Menu::new();
+    let verify_item = gtk::MenuItem::with_label(&tr("Verify package…"));
+    let sign_item = gtk::MenuItem::with_label(&tr("Sign package…"));
+    package_menu.append(&verify_item);
+    package_menu.append(&sign_item);
+    package_menu.show_all();
+    package_button.set_popup(Some(&package_menu));
     let add_to_collection = gtk::Button::with_label(&tr("Add to collection"));
     add_to_collection.style_context().add_class("secondary");
     add_to_collection.set_sensitive(false);
@@ -1949,8 +1956,7 @@ fn build_video_page() -> VideoPage {
     selection_bar.pack_end(&remove_from_collection, false, false, 0);
     selection_bar.pack_end(&add_to_collection, false, false, 0);
     selection_bar.pack_end(&export_button, false, false, 0);
-    selection_bar.pack_end(&verify_button, false, false, 0);
-    selection_bar.pack_end(&sign_button, false, false, 0);
+    selection_bar.pack_end(&package_button, false, false, 0);
     root.pack_start(&selection_bar, false, false, 0);
 
     folder_button.connect_clicked(|_| xdg_open(&paths::video_wallpaper_dir()));
@@ -1971,8 +1977,9 @@ fn build_video_page() -> VideoPage {
         view,
         import_button,
         export_button,
-        sign_button,
-        verify_button,
+        package_button,
+        verify_item,
+        sign_item,
         view_syncing: Rc::new(Cell::new(false)),
         new_collection,
         rename_collection,
@@ -2336,38 +2343,41 @@ fn wire_video_page(page: &VideoPage, shared: &Rc<Shared>, library: &Rc<RefCell<L
         });
     }
     {
-        let shared = Rc::clone(shared);
+        let verify_shared = Rc::clone(shared);
+        let sign_shared = Rc::clone(shared);
         let flow = page.flow.clone();
-        let button_widget = page.sign_button.clone();
-        button_widget.connect_clicked(move |button| {
-            let Some(video) = selected_video(&flow, &shared) else {
-                return;
-            };
-            let Some(dir) = package::package_dir_for_entry(Path::new(&video)) else {
-                return;
-            };
-            let parent = button
-                .toplevel()
-                .and_then(|top| top.downcast::<gtk::Window>().ok());
-            if !confirm_dialog(
-                parent.as_ref(),
-                &tr("Sign this package?"),
-                &tr("Ferramari creates a signing key on first use and stores it in your config folder."),
-            ) {
-                return;
-            }
-            let _ = shared.tx.send(Command::SignPackage(dir));
-        });
-    }
-    {
-        let shared = Rc::clone(shared);
-        let flow = page.flow.clone();
-        page.verify_button.connect_clicked(move |_| {
-            let Some(video) = selected_video(&flow, &shared) else {
+        page.verify_item.connect_activate(move |_| {
+            let Some(video) = selected_video(&flow, &verify_shared) else {
                 return;
             };
             if let Some(dir) = package::package_dir_for_entry(Path::new(&video)) {
-                let _ = shared.tx.send(Command::VerifyPackage(dir));
+                let _ = verify_shared.tx.send(Command::VerifyPackage(dir));
+            }
+        });
+        page.sign_item.connect_activate({
+            let shared = sign_shared;
+            let flow = page.flow.clone();
+            let root = page.root.clone();
+            move |_| {
+                let Some(video) = selected_video(&flow, &shared) else {
+                    return;
+                };
+                let Some(dir) = package::package_dir_for_entry(Path::new(&video)) else {
+                    return;
+                };
+                // Resolved lazily: the page is built before it is packed into a
+                // window, so the toplevel does not exist yet at wire time.
+                let parent = root
+                    .toplevel()
+                    .and_then(|w| w.downcast::<gtk::Window>().ok());
+                if !confirm_dialog(
+                    parent.as_ref(),
+                    &tr("Sign this package?"),
+                    &tr("Ferramari creates a signing key on first use and stores it in your config folder."),
+                ) {
+                    return;
+                }
+                let _ = shared.tx.send(Command::SignPackage(dir));
             }
         });
     }
@@ -3947,8 +3957,9 @@ fn update_selection(flow: &gtk::FlowBox, shared: &Shared, page: &VideoPage) {
             page.selection_label.set_tooltip_text(Some(&name));
             page.apply_button.set_sensitive(true);
             page.export_button.set_sensitive(true);
-            page.sign_button.set_sensitive(is_package);
-            page.verify_button.set_sensitive(is_package);
+            // Only installed packages can be verified or signed; the button
+            // takes itself out of the bar otherwise so nothing is clipped.
+            page.package_button.set_visible(is_package);
             page.add_to_collection.set_sensitive(true);
             page.remove_from_collection.set_sensitive(collection);
         }
@@ -3958,8 +3969,7 @@ fn update_selection(flow: &gtk::FlowBox, shared: &Shared, page: &VideoPage) {
             page.selection_label.set_tooltip_text(None);
             page.apply_button.set_sensitive(false);
             page.export_button.set_sensitive(false);
-            page.sign_button.set_sensitive(false);
-            page.verify_button.set_sensitive(false);
+            page.package_button.set_visible(false);
             page.add_to_collection.set_sensitive(false);
             page.remove_from_collection.set_sensitive(false);
         }

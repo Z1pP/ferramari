@@ -3482,7 +3482,6 @@ fn install_header_wrap(header: &gtk::Box, titles: &gtk::Box, actions: &gtk::Box)
             + h.margin_start()
             + h.margin_end();
         let want = needed > available;
-        log::trace!("[UI] header wrap available={available} needed={needed} want={want}");
         if want == vertical.get() {
             return;
         }

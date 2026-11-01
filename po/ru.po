@@ -1057,4 +1057,9 @@ msgstr "Выберите файл открытого ключа"
 
 msgid "Could not export the key"
 msgstr "Не удалось экспортировать ключ"
+msgid "Package…"
+msgstr "Пакет…"
+
+msgid "Verify or sign this package"
+msgstr "Проверить или подписать этот пакет"
 

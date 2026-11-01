@@ -708,4 +708,9 @@ msgstr "公開鍵ファイルを選択"
 
 msgid "Could not export the key"
 msgstr "鍵をエクスポートできませんでした"
+msgid "Package…"
+msgstr "パッケージ…"
+
+msgid "Verify or sign this package"
+msgstr "パッケージを検証または署名"
 

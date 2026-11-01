@@ -4,6 +4,16 @@
 
 ### Fixed
 
+- Gray desktop after a restart with the static wallpaper enabled. Frames moved
+  to `$XDG_CACHE_HOME/ferramari/static/` in 1.0.1, but the "original" background
+  captured at startup could itself be one of those frames. The cache is capped,
+  so pruning deleted the file GNOME was still pointing at and the desktop went
+  gray. The original is now persisted to `background-original.json` outside the
+  cache, cache files still referenced by GNOME or by that record are never
+  pruned, and a background we cannot restore is never overwritten blindly.
+  Applying a frame also repairs a dangling URI left by an older build.
+- `prune_static_cache` off-by-one: protected and kept files were not counted
+  against the limit, so the cache could exceed it.
 - Local Video action bar: the two new package buttons made the bar wider than
   the window, so it clipped the grid and the label. Replaced with a single
   **Package…** menu that appears only for installed packages.

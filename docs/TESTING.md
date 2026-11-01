@@ -46,6 +46,17 @@ Run from a checkout with `cargo build --release`, or from an installed build.
 - [ ] Repeat the kill until the give-up limit; no endless restart loop and a
       visible error is shown.
 
+### Static wallpaper and desktop background
+- [ ] Enable static wallpaper; a blurred frame appears and
+      `background-original.json` records the previous background.
+- [ ] Disable it; the recorded original is restored by name in the log.
+- [ ] Delete the recorded original file, restart, disable the static wallpaper:
+      the app must not point GNOME at a missing file.
+- [ ] Point `picture-uri` at a frame in `$XDG_CACHE_HOME/ferramari/static`,
+      restart: the app treats it as its own and heals it with a real frame.
+- [ ] Restart twice with the static wallpaper on; the background URI must name
+      a file that exists both times.
+
 ### Static wallpaper
 - [ ] Enable static wallpaper in Settings; a blurred frame appears in GNOME.
 - [ ] Change the blur radius; the frame is regenerated off the UI thread.

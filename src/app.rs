@@ -234,6 +234,9 @@ pub struct App {
     idle_threshold: Arc<AtomicU64>,
     static_job: Option<(String, i64)>,
     static_generation: u64,
+    /// Set when a wallpaper window is newly mapped: only then do the desktop
+    /// icons need to be redrawn on top of it.
+    pending_icon_refresh: bool,
     /// Desktop dark preference captured before the in-app override.
     system_prefers_dark: bool,
     /// Pending debounced config save; volume and blur sliders change fast.
@@ -306,6 +309,7 @@ impl App {
             idle_threshold,
             static_job: None,
             static_generation: 0,
+            pending_icon_refresh: false,
             system_prefers_dark,
             config_dirty_at: None,
             policies: HashMap::new(),
@@ -1214,6 +1218,7 @@ impl App {
             match self.create_window(&key, &monitor) {
                 Ok(window) => {
                     self.windows.push(window);
+                    self.pending_icon_refresh = true;
                     // A new window starts paused. Drop the cached decision so
                     // `apply_playback_states` applies it even when the monitor
                     // already had the same play/pause state.
@@ -1299,9 +1304,11 @@ impl App {
 
     fn finish_rebuild(&mut self) {
         self.update_static_wallpaper();
-        // The extension reload exists to uncover an existing wallpaper window.
-        // Null mode (and a failed window) must not pay for it.
-        if !self.windows.is_empty() {
+        // The extension reload exists to uncover a *newly mapped* wallpaper
+        // window. Running it on every source switch made the desktop icons
+        // blink several times a minute; a reused player needs nothing.
+        if self.pending_icon_refresh && !self.windows.is_empty() {
+            self.pending_icon_refresh = false;
             util::gnome_desktop_icon_workaround();
         }
         self.sync_snapshot();

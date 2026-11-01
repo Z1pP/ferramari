@@ -16,6 +16,17 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="1.9.1" date="2026-11-01" type="stable">
+      <description>
+        <p>Fixes a gray desktop after a restart.</p>
+        <ul>
+          <li>The original background is stored outside the pruned frame cache</li>
+          <li>A background we cannot restore is never overwritten blindly</li>
+          <li>Desktop icons no longer blink when switching wallpapers</li>
+          <li>Local Video action bar no longer clips the grid</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.9.0" date="2026-11-01" type="stable">
       <description>
         <p>Package integrity and authorship.</p>

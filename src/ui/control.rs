@@ -3468,6 +3468,21 @@ fn page_scroller(content: &gtk::Box) -> gtk::ScrolledWindow {
 /// side. Measuring the widgets keeps a long translation (Russian) from being
 /// ellipsized at the default window size; the ellipsis stays as the last
 /// resort for widths where even two rows would not fit.
+/// Does a title/actions row stop fitting side by side?
+///
+/// Pure so the 1.9.1 regression (Russian captions wider than the window) has a
+/// test that runs without a display.
+fn header_needs_wrap(
+    available: i32,
+    title_natural: i32,
+    actions_natural: i32,
+    spacing: i32,
+    margins: i32,
+) -> bool {
+    let needed = title_natural + actions_natural + spacing.max(0) + margins.max(0);
+    needed > available
+}
+
 fn install_header_wrap(header: &gtk::Box, titles: &gtk::Box, actions: &gtk::Box) {
     let vertical = Rc::new(Cell::new(false));
     let (h, t, a) = (header.clone(), titles.clone(), actions.clone());
@@ -3476,12 +3491,17 @@ fn install_header_wrap(header: &gtk::Box, titles: &gtk::Box, actions: &gtk::Box)
         if available <= 1 {
             return;
         }
-        let needed = t.preferred_width().1
-            + a.preferred_width().1
-            + h.spacing().max(0)
-            + h.margin_start()
-            + h.margin_end();
-        let want = needed > available;
+        // The natural width, not the minimum: an ellipsizing label reports a
+        // tiny minimum, and wrapping on that would never trigger.
+        let (_, title_natural) = t.preferred_width();
+        let (_, actions_natural) = a.preferred_width();
+        let want = header_needs_wrap(
+            available,
+            title_natural,
+            actions_natural,
+            h.spacing(),
+            h.margin_start() + h.margin_end(),
+        );
         if want == vertical.get() {
             return;
         }
@@ -4275,5 +4295,76 @@ fn show_about(parent: &gtk::Window, version: &str) {
 fn xdg_open(path: &Path) {
     if let Err(err) = std::process::Command::new("xdg-open").arg(path).spawn() {
         log::warn!("[GUI] xdg-open {} failed: {err}", path.display());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::header_needs_wrap;
+
+    // From the live trace log at a 1152px window: needed=886, available=756.
+    // The split between title and actions is not measured separately, only
+    // their sum (870 + 16 spacing) is.
+    const RU_TITLE: i32 = 300;
+    const RU_ACTIONS: i32 = 570;
+    const SPACING: i32 = 16;
+    const MARGINS: i32 = 0;
+
+    fn needed(title: i32, actions: i32) -> i32 {
+        title + actions + SPACING + MARGINS
+    }
+
+    #[test]
+    fn a_russian_header_that_does_not_fit_wraps() {
+        let available = 756;
+        assert!(header_needs_wrap(
+            available, RU_TITLE, RU_ACTIONS, SPACING, MARGINS
+        ));
+    }
+
+    #[test]
+    fn the_same_header_stays_on_one_line_when_it_fits() {
+        let available = 904;
+        assert!(!header_needs_wrap(
+            available, RU_TITLE, RU_ACTIONS, SPACING, MARGINS
+        ));
+    }
+
+    #[test]
+    fn the_boundary_is_exact_and_not_oscillating() {
+        let threshold = needed(RU_TITLE, RU_ACTIONS);
+        assert!(!header_needs_wrap(
+            threshold, RU_TITLE, RU_ACTIONS, SPACING, MARGINS
+        ));
+        assert!(header_needs_wrap(
+            threshold - 1,
+            RU_TITLE,
+            RU_ACTIONS,
+            SPACING,
+            MARGINS
+        ));
+        // A hysteresis band here was suspected during the investigation; the
+        // decision must depend on the width alone, or resizing would latch.
+        assert_eq!(
+            header_needs_wrap(threshold - 1, RU_TITLE, RU_ACTIONS, SPACING, MARGINS),
+            header_needs_wrap(threshold - 1, RU_TITLE, RU_ACTIONS, SPACING, MARGINS)
+        );
+    }
+
+    #[test]
+    fn a_shorter_caption_stays_on_one_line_at_the_same_width() {
+        // Synthetic, not a measurement: the point is that the decision is a
+        // function of the widths alone, so a shorter translation never wraps
+        // where a longer one does.
+        let (title, actions) = (140, 420);
+        assert!(!header_needs_wrap(756, title, actions, SPACING, MARGINS));
+        assert!(header_needs_wrap(
+            756, RU_TITLE, RU_ACTIONS, SPACING, MARGINS
+        ));
+    }
+
+    #[test]
+    fn negative_spacing_and_margins_cannot_inflate_the_requirement() {
+        assert!(!header_needs_wrap(500, 200, 200, -40, -40));
     }
 }

@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.8.0 — 2026-11-01
+
+Eco Engine completion: decoder parking and broader measurements.
+
+- Release the mpv decoder after a local video has been paused out of sight for
+  five minutes. The worker captures `time-pos`, switches mpv to idle and sends
+  `stop`; the process and IPC socket stay alive. Resuming reloads the same
+  source at the saved position, so the cold-start cost is not paid again.
+- Parking is deliberately conservative: only local video windows, only while
+  the monitor is covered by a fullscreen/maximised window, locked or suspended,
+  and never for an explicit user pause or a visible Eco idle. A black frame
+  cannot be left in front of the user.
+- The park/unpark sequence runs on the existing mpv IPC worker; the GTK main
+  loop never waits for `get_property` or `loadfile`.
+- Benchmark harness gains web-wallpaper mode (`--mode web --web`), `--label`
+  and `--app-log`; `make bench` accepts `MODE`, `WEB` and `LABEL`.
+- Measure and document 1080p, synthetic 4K and local-canvas web wallpapers.
+  The Power profile reduced GPU load but not CPU on the tested clip; the
+  documentation no longer claims a CPU saving.
+- Tests: 126 passing.
+
 ## 1.7.0 — 2026-11-01
 
 Ecosystem foundation.

@@ -39,6 +39,11 @@ use crate::wallpaper::GnomeBackground;
 use crate::x11::{self, WindowState};
 use crate::ytdlp;
 
+/// How long a hidden local video must stay paused before its decoder is
+/// released. Five minutes keeps short game alt-tabs and lock-screen blips from
+/// paying a reload; the mpv process itself is kept alive.
+const DECODER_PARK_AFTER: Duration = Duration::from_secs(5 * 60);
+
 #[derive(Debug, Clone)]
 pub enum Command {
     ShowGui,
@@ -1291,6 +1296,19 @@ impl App {
             }
         }
 
+        // Free decoders that have been paused out of sight for a while. The
+        // decision is checked every second so a monitor that becomes visible
+        // again is resumed through `play_fade` before its decoder is released.
+        let allowed: Vec<bool> = self
+            .windows
+            .iter()
+            .map(|window| self.parking_allowed(&window.key().monitor))
+            .collect();
+        for (window, allowed) in self.windows.iter_mut().zip(allowed) {
+            window.set_park_allowed(allowed);
+            window.park_if_due(now, DECODER_PARK_AFTER);
+        }
+
         let desired = self.desired_windows();
         let pending_stream = self.config.mode == Mode::Stream && self.stream.is_none();
         if !pending_stream {
@@ -1390,20 +1408,39 @@ impl App {
         )
     }
 
+    /// Parking releases the decoder by unloading the file. That is only safe
+    /// while nobody can see the monitor: a lock screen, system suspend, or a
+    /// window covering the wallpaper. A user pause leaves the last frame on
+    /// screen, so it must keep the file loaded.
+    fn parking_allowed(&self, monitor: &str) -> bool {
+        if self.paused_by_user {
+            return false;
+        }
+        if self.screen_locked || self.suspended {
+            return true;
+        }
+        let visibility = self.monitor_visibility(monitor);
+        visibility.covered || visibility.fullscreen
+    }
+
     fn apply_playback_states(&mut self) {
-        let plans: Vec<(String, eco::Plan)> = self
+        let plans: Vec<(String, eco::Plan, bool)> = self
             .windows
             .iter()
             .map(|window| {
                 let monitor = window.key().monitor.clone();
                 let plan = self.eco_plan_for(&monitor);
-                (monitor, plan)
+                let park_allowed = self.parking_allowed(&monitor);
+                (monitor, plan, park_allowed)
             })
             .collect();
         let target = self.config.volume;
         let duration = self.config.fade_duration_sec;
         let interval = self.config.fade_interval;
-        for (window, (monitor, plan)) in self.windows.iter_mut().zip(plans) {
+        for (window, (monitor, plan, park_allowed)) in self.windows.iter_mut().zip(plans) {
+            // A monitor that becomes visible must reload a parked file even
+            // when the plan stays `Idle` (Eco still paused).
+            window.set_park_allowed(park_allowed);
             if self.last_plans.get(&monitor) == Some(&plan) {
                 continue;
             }

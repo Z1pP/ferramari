@@ -33,13 +33,19 @@ run:
 	$(CARGO) run -- -d
 
 # Usage: make bench VIDEO=/path/to/video.mp4 [PROFILE=balanced] [SECONDS=10]
+#        make bench MODE=web WEB=/path/to/page.html [SECONDS=10]
 VIDEO ?=
+WEB ?=
+MODE ?= video
+LABEL ?=
 PROFILE ?= balanced
 SECONDS ?= 10
 bench: release
-	@test -n "$(VIDEO)" || (echo "usage: make bench VIDEO=/path/to/video.mp4"; exit 2)
+	@test -n "$(VIDEO)$(WEB)" || (echo "usage: make bench VIDEO=/path/to/video.mp4"; exit 2)
 	python3 scripts/benchmark.py --binary "$(TARGET_DIR)/release/ferramari" \
-		--video "$(VIDEO)" --profile "$(PROFILE)" --seconds "$(SECONDS)"
+		--mode "$(MODE)" --profile "$(PROFILE)" --seconds "$(SECONDS)" \
+		$(if $(VIDEO),--video "$(VIDEO)") $(if $(WEB),--web "$(WEB)") \
+		$(if $(LABEL),--label "$(LABEL)")
 
 translations:
 	@for po in po/*.po; do \

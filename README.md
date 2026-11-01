@@ -28,6 +28,8 @@ The interface has a hand-tuned dark palette as well as the light one:
 - Eco Engine: per-monitor `Active`/`Idle`/`Occluded`/`Suspended` state,
   automatic pause when a monitor is covered or fullscreen, configurable idle
   handling and the Quality/Balanced/Eco profiles; optional pause on battery
+- Decoder parking: a local video paused out of sight for five minutes releases
+  mpv's file and decoder, then resumes at the same position
 - Per-monitor Eco state on Home cards and in the D-Bus `monitor_states`
   property
 - Event-driven X11 window watcher (no 300 ms polling)
@@ -246,6 +248,14 @@ monitors, lower the frame rate when idle) and **Eco** (also stop when idle).
 The idle delay is configurable in Settings. The on-disk identifiers stay
 `performance`, `balanced` and `power` so older configs keep working.
 
+When a local video has been paused for five minutes while its monitor is
+invisible (occluded, locked or suspending), Ferramari unloads the file and
+releases the decoder. The mpv process and its IPC socket stay alive; resuming
+reloads the same source at the saved position. Parking never runs for an
+explicit user pause or a visible Eco idle, so the desktop cannot show a black
+frame. Streams are excluded because their separate audio track and expiring
+URLs make a reload unreliable.
+
 ### Theme
 
 Ferramari follows the desktop colour scheme by default and also ships a
@@ -365,12 +375,14 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 - Streaming and web wallpapers use one shared source for all monitors; only
   local video sources are assigned independently.
 - WebKitGTK has no public freeze API, so a hidden web wallpaper is muted but
-  its JavaScript timers and animations are only throttled, not stopped.
-- The Performance page reports GPU usage only where the driver exposes
+  its JavaScript timers and animations are only throttled, not stopped.- The Performance page reports GPU usage only where the driver exposes
   `gpu_busy_percent` (currently AMDGPU). NVIDIA/Intel utilisation is shown as
   unavailable.
-- Multi-monitor, 4K, Web-wallpaper and locked-screen benchmarks are not yet
-  measured on the single-display test machine; see `docs/BENCHMARKS.md`.
+- Multi-monitor, 4K/60, locked-screen and long-idle benchmarks are not yet
+  measured on the single-display test machine. Single-monitor 1080p, synthetic
+  4K and local-canvas web results are in `docs/BENCHMARKS.md`.
+- Decoder parking is limited to local videos; streams keep their process alive
+  because their separate audio track and expiring URLs make a reload fragile.
 - `.ferramari` packages can be imported and exported, but there is no separate
   package manager/metadata editor yet: imported packages are applied on import
   and video entries appear in the library.

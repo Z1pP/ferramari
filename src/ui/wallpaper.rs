@@ -2,7 +2,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gtk::gdk;
 use gtk::glib;
@@ -31,6 +31,16 @@ pub struct WallpaperWindow {
     muted: bool,
     /// The profile's default `vf` chain, restored when an idle FPS cap ends.
     base_filter: String,
+    /// When this wallpaper started its current pause, if it is paused.
+    /// `park_if_due` uses it to release the decoder only after a long pause.
+    paused_at: Option<Instant>,
+    /// True once the embedded player released its file. The next `play_fade`
+    /// reloads from the saved position instead of just clearing `pause`.
+    parked: bool,
+    /// Whether the current pause is invisible to the user. Parking is only
+    /// attempted while this is true, and switching it off reloads a parked
+    /// file so a visible monitor never shows an empty surface.
+    park_allowed: bool,
     key: WindowKey,
     // Kept alive for the lifetime of the window.
     _menu: gtk::Menu,
@@ -99,6 +109,9 @@ impl WallpaperWindow {
             primary,
             muted,
             base_filter: crate::mpv::profile_video_filter(profile).to_string(),
+            paused_at: None,
+            parked: false,
+            park_allowed: false,
             key: WindowKey {
                 kind: WindowKind::Video,
                 monitor: monitor.name.clone(),
@@ -149,6 +162,9 @@ impl WallpaperWindow {
             primary,
             muted,
             base_filter: crate::mpv::profile_video_filter(profile).to_string(),
+            paused_at: None,
+            parked: false,
+            park_allowed: false,
             key: WindowKey {
                 kind: WindowKind::Stream,
                 monitor: monitor.name.clone(),
@@ -268,6 +284,9 @@ impl WallpaperWindow {
             primary,
             muted,
             base_filter: String::new(),
+            paused_at: None,
+            parked: false,
+            park_allowed: false,
             key: WindowKey {
                 kind: WindowKind::Web,
                 monitor: monitor.name.clone(),
@@ -296,6 +315,10 @@ impl WallpaperWindow {
         mpv.set_mute(muted)?;
         mpv.load_file(source)?;
         drop(mpv);
+        // The new source starts from its own beginning; any state from a
+        // parked decoder belongs to the old file.
+        self.parked = false;
+        self.paused_at = None;
         self.key.source = source.to_string();
         Ok(())
     }
@@ -319,6 +342,8 @@ impl WallpaperWindow {
     }
 
     pub fn play_fade(&mut self, target: i64, duration: f64, interval: f64) {
+        self.paused_at = None;
+        self.unpark(false);
         match &self.content {
             Content::Video { mpv } => {
                 let _ = mpv.borrow_mut().set_pause(false);
@@ -345,7 +370,37 @@ impl WallpaperWindow {
         }
     }
 
+    /// Reload a parked file at the position captured by the worker. `paused`
+    /// keeps the restored frame on screen without starting playback, which is
+    /// what a monitor returning while Eco is still idle needs.
+    fn unpark(&mut self, paused: bool) {
+        if !std::mem::take(&mut self.parked) {
+            return;
+        }
+        let Content::Video { mpv } = &self.content else {
+            return;
+        };
+        if let Err(err) = mpv.borrow_mut().unpark(&self.key.source) {
+            log::warn!("[Eco] could not unpark {}: {err}", self.key.monitor);
+            return;
+        }
+        let _ = mpv.borrow_mut().set_pause(paused);
+    }
+
+    /// Tell the window whether its monitor is currently invisible. Switching
+    /// this off while parked reloads the file immediately so a monitor that
+    /// becomes visible does not show an empty surface.
+    pub fn set_park_allowed(&mut self, allowed: bool) {
+        if needs_unpark(self.parked, allowed) {
+            self.unpark(true);
+        }
+        self.park_allowed = allowed;
+    }
+
     pub fn pause_fade(&mut self, duration: f64, interval: f64) {
+        if self.paused_at.is_none() {
+            self.paused_at = Some(Instant::now());
+        }
         match &self.content {
             Content::Video { mpv } => {
                 if self.primary {
@@ -370,6 +425,37 @@ impl WallpaperWindow {
             }
             Content::Web { webview } => webview.set_is_muted(true),
         }
+    }
+
+    /// Release the decoder after a long pause, but only while the monitor is
+    /// invisible. This is deliberately restricted to local video windows:
+    /// streams have an extra audio track and expiring URLs, and a black frame
+    /// on a visible monitor is never acceptable. Returns true when a park
+    /// request was sent.
+    pub fn park_if_due(&mut self, now: Instant, threshold: Duration) -> bool {
+        if self.parked || !self.park_allowed || self.key.kind != WindowKind::Video {
+            return false;
+        }
+        if !crate::eco::should_park(self.paused_at, now, threshold) {
+            return false;
+        }
+        let Content::Video { mpv } = &self.content else {
+            return false;
+        };
+        if let Err(err) = mpv.borrow_mut().park() {
+            log::warn!(
+                "[Eco] could not park the decoder on {}: {err}",
+                self.key.monitor
+            );
+            return false;
+        }
+        self.parked = true;
+        log::debug!(
+            "[Eco] parked the decoder on {} ({})",
+            self.key.monitor,
+            self.key.source
+        );
+        true
     }
 
     pub fn volume_fade(&mut self, target: i64, duration: f64, interval: f64) {
@@ -423,6 +509,12 @@ impl Drop for WallpaperWindow {
         self.fade.cancel();
         self.window.close();
     }
+}
+
+/// A parked player must be reloaded as soon as its monitor stops qualifying
+/// for parking, even when the Eco plan keeps it paused (idle Eco after unlock).
+fn needs_unpark(parked: bool, allowed: bool) -> bool {
+    parked && !allowed
 }
 
 fn base_window(
@@ -503,6 +595,14 @@ mod tests {
             monitor: monitor.to_string(),
             source: source.to_string(),
         }
+    }
+
+    #[test]
+    fn parking_permission_revocation_requires_a_reload_only_while_parked() {
+        assert!(!needs_unpark(false, false));
+        assert!(!needs_unpark(false, true));
+        assert!(!needs_unpark(true, true));
+        assert!(needs_unpark(true, false));
     }
 
     #[test]

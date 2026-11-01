@@ -24,7 +24,22 @@ bundle uses host media tools.
 
 ## After 1.0
 
-### 1.7 — Ecosystem foundation (current)
+### 1.8 — Eco Engine completion (current)
+
+- [x] Decoder resource release after a long hidden pause
+- [x] Position-preserving unpark without restarting mpv
+- [x] Parking restricted to covered/locked/suspended local videos
+- [x] 4K and Web-wallpaper benchmark modes and measured results
+- [ ] Multi-monitor and locked-screen measurements on real hardware
+- [ ] Per-monitor stream/web sources
+
+### 1.9 — Creator Engine completion
+
+- [ ] Standalone package manager and metadata editor
+- [ ] SHA-256 verification and package signatures
+- [ ] Web-package asset isolation beyond the WebKit policy
+
+### 1.7 — Ecosystem foundation
 
 - [x] Declarative catalogue-source plugin manifests
 - [x] First-party Catalog API v1 client and `--catalog` inspection command
@@ -39,8 +54,6 @@ bundle uses host media tools.
 - [x] Import/export from the Local Video page
 - [x] Generated preview frame on export
 - [x] Path traversal, symlink, file-count and 2 GiB limits
-- [ ] Standalone package manager and metadata editor
-- [ ] Web-package asset isolation beyond the WebKit policy
 
 ### 1.2 — Eco Engine foundation
 
@@ -55,9 +68,6 @@ bundle uses host media tools.
 - [x] Event-driven X11 window watcher
 - [x] Live Performance page and benchmark harness
 - [x] Hardware decoding selector and WebKit hardening
-- [ ] Decoder resource release after a long pause
-- [ ] Per-monitor stream/web sources
-- [ ] 4K / multi-monitor / Web-wallpaper benchmarks
 
 ### 1.1 — distribution and desktop coverage
 

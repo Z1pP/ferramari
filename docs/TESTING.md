@@ -8,7 +8,7 @@ what is still unverified.
 
 | Environment | Status | Notes |
 | --- | --- | --- |
-| GNOME 50, Wayland session, running through XWayland | **tested** 2026-10-31, 1.0.1 | Main development environment |
+| GNOME 50, Wayland session, running through XWayland | **tested** 2026-11-01, 1.8.0 | Main development environment |
 | GNOME 50, X11 session | not tested | The same X11 backend is used, but the session has not been exercised |
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |
@@ -104,6 +104,16 @@ Run from a checkout with `cargo build --release`, or from an installed build.
 - [ ] Home monitor cards show Playing / Idle / Paused (covered) / Paused for the matching state.
 - [ ] In `-d` logs, check `[Eco] <monitor>: Active/Occluded/Idle/Suspended` transitions and the fps value.
 - [ ] `gdbus ... Properties.Get ... monitor_states` returns one entry per monitor.
+- [ ] Cover the monitor (or lock it) with a local video paused for five minutes: the log shows `parked the decoder`, the mpv PID stays the same and its RSS drops.
+- [ ] Uncover/unlock: playback resumes at the saved position and the log shows `decoder unparked`.
+- [ ] Pause playback explicitly (tray/D-Bus) with the desktop visible for five minutes: no parking happens and the last frame remains.
+- [ ] Change the video while the monitor is parked: the new file starts normally, not at the old position.
+
+Recorded 2026-11-01 on GNOME/XWayland: with the threshold temporarily set to
+10 s, a fullscreen X11 window produced `Occluded`, the decoder parked at
+`time-pos=12.766667`, the mpv PID stayed the same, closing the window produced
+`Active` + `decoder unparked`, and a visible user pause did not park again.
+The shipped threshold is five minutes; the test only shortened the timer.
 
 ### `.ferramari` packages
 - [ ] Export a selected video; a `<name>.ferramari/` directory appears with `manifest.json` and `wallpaper.<ext>`.
@@ -126,6 +136,8 @@ Run from a checkout with `cargo build --release`, or from an installed build.
 - [ ] Disable network for web wallpapers and apply a remote URL: a clear error appears instead of a blank page.
 - [ ] Apply a local HTML file with network disabled: it loads, and no pop-up window opens.
 - [ ] `make bench VIDEO=... SECONDS=5` prints startup/CPU/RAM/process/GPU rows.
+- [ ] `make bench MODE=web WEB=... SECONDS=5` measures a web wallpaper with no mpv process.
+- [ ] `make bench VIDEO=/path/to/4k.mp4 LABEL=4k SECONDS=5` records the 4K row.
 
 ### Cross-desktop diagnostics
 - [ ] `ferramari --doctor` prints the session, backend, desktop and tool versions without starting the UI.

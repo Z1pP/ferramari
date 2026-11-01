@@ -16,6 +16,17 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="1.8.0" date="2026-11-01" type="stable">
+      <description>
+        <p>Eco Engine completion: decoder parking and broader measurements.</p>
+        <ul>
+          <li>Release the mpv decoder after a local video is paused out of sight for five minutes; resume reloads the same position.</li>
+          <li>Parking is limited to covered, locked or suspended monitors and never happens for a visible pause.</li>
+          <li>Park and unpark work on the mpv IPC thread, so the interface never blocks.</li>
+          <li>Benchmark web wallpapers in addition to video and record 1080p, 4K and web results.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.7.0" date="2026-11-01" type="stable">
       <description>
         <p>Ecosystem foundation: declarative plugins and the first-party catalog API.</p>

@@ -133,9 +133,10 @@ monitor (pause/mute).
 - **Per-monitor content**: video is per monitor, but streaming and web
   wallpapers are global default sources. Independent web/stream per monitor is
   not implemented.
-- **Eco Engine**: the state model, per-monitor occlusion, idle detection and
-  profile semantics are now present. Dynamic FPS reduction, decoder release on
-  long pause and a measured performance page remain open.
+- **Eco Engine**: the state model, per-monitor occlusion, idle detection, profile
+  semantics, dynamic FPS reduction and decoder parking on long hidden pauses
+  are implemented. The remaining gap is per-monitor stream/web content and
+  live multi-monitor/locked-screen measurement.
 - **`.ferramari` format**: reader, strict validator, import and export are
   implemented (`src/package.rs`, `docs/FERRAMARI_FORMAT.md`). A standalone
   package manager, metadata editor and per-package asset isolation are still
@@ -147,8 +148,9 @@ monitor (pause/mute).
   remains separate.
 - **Desktop environments**: only GNOME/XWayland is tested. KDE, XFCE and
   Hyprland are untested; XFCE/KDE have partial EWMH compatibility by design.
-- **Resource UI**: Settings exposes profiles and battery state, but there is no
-  live CPU/RAM/GPU monitor and no dedicated Performance page.
+- **Resource UI**: Settings exposes profiles and battery state; a dedicated
+  Performance page shows live CPU, RSS, threads, processes and AMDGPU usage
+  while it is open.
 
 ### 3.5 Security and untrusted content
 
@@ -182,6 +184,14 @@ cargo clippy --all-targets -- -D warnings              # clean
 cargo test --all-targets                               # 123 passed
 ```
 
+At 1.8.0:
+
+```sh
+cargo fmt --check                                      # clean
+cargo clippy --all-targets -- -D warnings              # clean
+cargo test --all-targets                               # 126 passed
+```
+
 Live smoke checks on the single 1080p XWayland display, with an isolated
 config/cache and a private D-Bus session:
 
@@ -191,24 +201,34 @@ config/cache and a private D-Bus session:
   Eco state changed to `Occluded` and playback paused; closing it restored
   `Active` and playback.
 - No leftover mpv child from the tested instance after quit.
+- mpv 0.41 IPC parking sequence verified directly: runtime `set_property idle
+  yes`, `stop`, then `loadfile <file> replace -1 start=<pos>` returns success
+  and `time-pos` continues from the requested position. A fullscreen X11 window
+  on the test display produced `Occluded`; with a temporary 10 s threshold the
+  decoder parked at `time-pos=12.77`, the mpv PID stayed alive, and closing the
+  window reloaded the same player. A visible user pause did not park.
+- Release benchmarks: 1080p Balanced 4.40 % CPU / 251 MiB / 25 % GPU; synthetic
+  4K Balanced 6.01 % / 317.6 MiB / 49–69 %; local canvas web 37.35 % /
+  473.9 MiB / 72–78 %. See `docs/BENCHMARKS.md` for caveats.
 
-No multi-monitor, native Wayland, KDE/XFCE or WebView-resource measurements
-were made. Do not extrapolate the single-display numbers to those scenarios.
+No multi-monitor, native Wayland, KDE/XFCE or live locked-screen measurements
+were made. The shipped five-minute threshold was not observed end-to-end
+during a real lock; the test shortened it to 10 s. Do not extrapolate the
+single-display numbers to those scenarios.
 
 ## 5. Recommended next steps
 
-1. **Phase 1 remainder** — debounce monitor hotplug; observe `loadfile` results
-   and surface a user error; make `Mpv::Drop` non-blocking (or bounded off the
-   GTK thread); cache the video directory listing used by the Home page.
-2. **Phase 2** — add dynamic FPS reduction for `Idle` (Balanced/Eco), optional
-   decoder release on long pause, a visible per-monitor Eco state in Home, and
-   a measured before/after energy/CPU table.
-3. **Phase 3** — event-driven X11 watcher; VA-API probe/override; WebKit
-   security settings and a page-suspension strategy; resource page.
-4. **Phase 4** — investigate `wlr-layer-shell`, GNOME and KDE integrations as
-   separate backends behind the same `DesktopBackend` seam. Do not claim
-   native Wayland until a compositor-specific path is implemented and tested.
-5. **Phase 5** — `.ferramari` package reader/validator/importer/exporter with
-   path traversal checks, size limits and manifest versioning.
-6. **Phase 6** — plugin API and online catalogue API only after the local
-   engine and format are stable.
+As of 1.8.0, the stability, Eco Engine, diagnostics, package format, plugin
+manifest and catalogue-client recommendations below are complete. The next
+stages are:
+
+1. **Creator Engine completion** — standalone package manager and metadata
+   editor, SHA-256 verification, and web-package asset isolation.
+2. **Ecosystem completion** — a process-isolated renderer plugin protocol, a
+   hosted catalogue, author profiles, publishing and sync.
+3. **Multi-monitor and locked-screen measurement** on real hardware before
+   making energy claims.
+4. **Phase 4 research** — investigate `wlr-layer-shell`, GNOME and KDE
+   integrations as separate backends behind the same `DesktopBackend` seam.
+   Do not claim native Wayland until a compositor-specific path is implemented
+   and tested.

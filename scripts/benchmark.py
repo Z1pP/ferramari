@@ -2,10 +2,13 @@
 """Measure Ferramari's process tree on a real desktop.
 
 The script starts an isolated instance on a private D-Bus session, applies a
-local video, samples /proc for a few seconds, optionally kills mpv and measures
-recovery, then quits. It does not touch the user's config, cache or D-Bus name.
+local video or web wallpaper, samples /proc for a few seconds, optionally kills
+mpv and measures recovery, then quits. It does not touch the user's config,
+cache or D-Bus name. Use --label to record the source resolution; a 4K run is
+just a video file with 3840x2160 frames.
 
-Requires: Python 3, gdbus, dbus-daemon, a running X11/XWayland display, mpv.
+Requires: Python 3, gdbus, dbus-daemon, a running X11/XWayland display, mpv,
+and WebKitGTK for web mode.
 """
 
 from __future__ import annotations
@@ -151,15 +154,34 @@ def main() -> int:
         default="target/release/ferramari",
         help="Ferramari binary (default: target/release/ferramari)",
     )
-    parser.add_argument("--video", required=True, help="local video to play")
+    parser.add_argument(
+        "--mode",
+        choices=["video", "web"],
+        default="video",
+        help="wallpaper kind to measure (default: video)",
+    )
+    parser.add_argument("--video", help="local video to play in video mode")
+    parser.add_argument(
+        "--web",
+        help="local HTML file or http(s) URL to show in web mode",
+    )
+    parser.add_argument(
+        "--label",
+        default="",
+        help="free-form label printed with the result (for example 1080p or 4k)",
+    )
     parser.add_argument(
         "--profile",
         default="balanced",
-        choices=["performance", "balanced", "power"],
+        choices=["performance", "quality", "balanced", "power", "eco"],
         help="playback profile written to the isolated config",
     )
     parser.add_argument("--seconds", type=float, default=10.0)
     parser.add_argument("--csv", help="optional CSV output path")
+    parser.add_argument(
+        "--app-log",
+        help="write the measured instance's stderr to this file instead of discarding it",
+    )
     parser.add_argument(
         "--recover",
         action="store_true",
@@ -168,16 +190,36 @@ def main() -> int:
     args = parser.parse_args()
 
     binary = Path(args.binary).resolve()
-    video = Path(args.video).resolve()
     if not binary.is_file():
         print(f"binary not found: {binary}", file=sys.stderr)
         return 2
-    if not video.is_file():
-        print(f"video not found: {video}", file=sys.stderr)
-        return 2
     if not os.environ.get("DISPLAY"):
-        print("DISPLAY is not set; video playback needs X11/XWayland", file=sys.stderr)
+        print("DISPLAY is not set; playback needs X11/XWayland", file=sys.stderr)
         return 2
+
+    if args.mode == "video":
+        if not args.video:
+            print("--video is required in video mode", file=sys.stderr)
+            return 2
+        target = Path(args.video).expanduser().resolve()
+        if not target.is_file():
+            print(f"video not found: {target}", file=sys.stderr)
+            return 2
+        method = f"{INTERFACE}.video"
+        method_args = (str(target), "all")
+    else:
+        if not args.web:
+            print("--web is required in web mode", file=sys.stderr)
+            return 2
+        if args.web.startswith(("http://", "https://")):
+            method_args = (args.web,)
+        else:
+            target = Path(args.web).expanduser().resolve()
+            if not target.is_file():
+                print(f"web page not found: {target}", file=sys.stderr)
+                return 2
+            method_args = (str(target),)
+        method = f"{INTERFACE}.webpage"
 
     root = Path(tempfile.mkdtemp(prefix="ferramari-bench-"))
     config = root / "config"
@@ -219,11 +261,12 @@ def main() -> int:
         }
     )
     started = time.time()
+    app_log = open(args.app_log, "w", encoding="utf-8") if args.app_log else None
     app = subprocess.Popen(
         [str(binary), "-b", "-d"],
         env=env,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=app_log or subprocess.DEVNULL,
         start_new_session=True,
     )
     rows = []
@@ -232,16 +275,14 @@ def main() -> int:
             print("Ferramari did not claim its D-Bus name", file=sys.stderr)
             return 3
         startup_ms = (time.time() - started) * 1000
-        result = call(
-            address,
-            f"{INTERFACE}.video",
-            str(video),
-            "all",
-        )
+        result = call(address, method, *method_args)
         if result.returncode != 0:
-            print(f"could not apply video: {result.stderr}", file=sys.stderr)
+            print(f"could not apply wallpaper: {result.stderr}", file=sys.stderr)
             return 4
-        time.sleep(2.5)
+        # Local pages are rebuilt synchronously; remote pages first run their
+        # URL check on a worker. Three seconds covers both without skewing the
+        # steady-state samples that follow.
+        time.sleep(3.0)
 
         previous = process_tree(app.pid)
         previous_at = time.time()
@@ -275,6 +316,10 @@ def main() -> int:
                     recovered_ms = (now - killed_at) * 1000
             previous, previous_at = tree, now
 
+        print(f"mode={args.mode}")
+        print(f"profile={args.profile}")
+        if args.label:
+            print(f"label={args.label}")
         print(f"startup_ms={startup_ms:.0f}")
         if recovered_ms is not None:
             print(f"mpv_recovery_ms={recovered_ms:.0f}")
@@ -314,6 +359,8 @@ def main() -> int:
             app.wait(timeout=5)
         except subprocess.TimeoutExpired:
             os.killpg(app.pid, signal.SIGKILL)
+        if app_log is not None:
+            app_log.close()
         try:
             os.kill(bus_pid, signal.SIGTERM)
         except ProcessLookupError:

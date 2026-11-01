@@ -13,6 +13,17 @@
 //! A monitor that is not covered is never paused because *another* monitor is
 //! covered. That is the whole point of per-monitor evaluation.
 
+use std::time::{Duration, Instant};
+
+/// Whether a paused video has been hidden long enough to release its decoder.
+///
+/// Parking is only offered while the monitor is not visible, so a black frame
+/// can never appear in front of the user. The position is preserved by the
+/// caller and restored when playback resumes.
+pub fn should_park(paused_since: Option<Instant>, now: Instant, threshold: Duration) -> bool {
+    paused_since.is_some_and(|since| now.saturating_duration_since(since) >= threshold)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Profile {
     Quality,
@@ -173,6 +184,25 @@ mod tests {
         let result = plan(Profile::Balanced, true, fullscreen);
         assert_eq!(result.state, State::Occluded);
         assert!(!result.play);
+    }
+
+    #[test]
+    fn parking_requires_a_start_time_and_the_full_threshold() {
+        let threshold = Duration::from_secs(600);
+        let now = Instant::now();
+        assert!(!should_park(None, now, threshold));
+        assert!(!should_park(Some(now), now, threshold));
+        assert!(!should_park(
+            Some(now),
+            now + threshold - Duration::from_secs(1),
+            threshold
+        ));
+        assert!(should_park(Some(now), now + threshold, threshold));
+        assert!(should_park(
+            Some(now),
+            now + threshold + Duration::from_secs(30),
+            threshold
+        ));
     }
 
     #[test]

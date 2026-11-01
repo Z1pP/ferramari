@@ -104,6 +104,10 @@ struct Shared {
     /// `loadfile` of a corrupt file). The UI polls this on the supervision
     /// tick instead of blocking on the reply.
     last_error: Mutex<Option<String>>,
+    /// Playback position captured before a parked decoder released the file.
+    parked_position: Mutex<Option<f64>>,
+    /// True between a successful `stop` and the next `unpark`.
+    parked: AtomicBool,
 }
 
 /// Commands for the dedicated IPC thread. Keeping them here means a wedged
@@ -111,6 +115,12 @@ struct Shared {
 enum Request {
     Execute(Value),
     LoadFile(String),
+    /// Remember `time-pos`, switch mpv to idle and unload the file. This frees
+    /// the decoder and its buffers while keeping the process and IPC socket.
+    Park,
+    /// Reload the source at the remembered position. Falls back to the start
+    /// when no position was captured.
+    Unpark(String),
     Quit,
 }
 
@@ -212,6 +222,8 @@ impl Mpv {
             paused: AtomicBool::new(options.paused),
             ipc_dead: AtomicBool::new(false),
             last_error: Mutex::new(None),
+            parked_position: Mutex::new(None),
+            parked: AtomicBool::new(false),
         });
         let stop = Arc::new(AtomicBool::new(false));
         let (requests, receiver) = mpsc::channel();
@@ -303,7 +315,23 @@ impl Mpv {
     /// thread. This keeps the UI responsive even when the decoder needs a
     /// moment to open the new file.
     pub fn load_file(&mut self, source: &str) -> anyhow::Result<()> {
+        self.shared.parked.store(false, Ordering::Relaxed);
+        if let Ok(mut position) = self.shared.parked_position.lock() {
+            *position = None;
+        }
         self.enqueue(Request::LoadFile(source.to_string()))
+    }
+
+    /// Release the decoder after a long hidden pause. The IPC worker reads
+    /// `time-pos`, enables idle mode and sends `stop`; the process and socket
+    /// stay alive, so resuming does not pay the cold-start cost.
+    pub fn park(&mut self) -> anyhow::Result<()> {
+        self.enqueue(Request::Park)
+    }
+
+    /// Reload the parked source and seek to the position captured by `park`.
+    pub fn unpark(&mut self, source: &str) -> anyhow::Result<()> {
+        self.enqueue(Request::Unpark(source.to_string()))
     }
 
     /// Reap the child without blocking. A missing status means mpv exited or
@@ -377,31 +405,126 @@ fn run_ipc_worker(
 
 fn serve_ipc(mut ipc: Ipc, receiver: Receiver<Request>, shared: &Shared, _stop: &AtomicBool) {
     while let Ok(request) = receiver.recv() {
-        let (args, report_error) = match request {
-            Request::Execute(args) => (args, false),
-            Request::LoadFile(source) => (json!(["loadfile", source, "replace"]), true),
+        match request {
+            Request::Execute(args) => {
+                if let Err(err) = exchange(&mut ipc, args) {
+                    if record_failure(&err, false, shared) {
+                        break;
+                    }
+                }
+            }
+            Request::LoadFile(source) => {
+                if let Err(err) = exchange(&mut ipc, json!(["loadfile", source, "replace"])) {
+                    if record_failure(&err, true, shared) {
+                        break;
+                    }
+                }
+                // A park request enqueued just before this load may have left
+                // mpv in idle mode with a saved position. The new file must
+                // start from its own beginning and keep normal end of file.
+                if let Ok(mut slot) = shared.parked_position.lock() {
+                    *slot = None;
+                }
+                shared.parked.store(false, Ordering::Relaxed);
+                if let Err(err) = exchange(&mut ipc, json!(["set_property", "idle", "no"])) {
+                    if record_failure(&err, false, shared) {
+                        break;
+                    }
+                }
+            }
+            Request::Park => {
+                let position = match exchange(&mut ipc, json!(["get_property", "time-pos"])) {
+                    Ok(reply) => reply.get("data").and_then(Value::as_f64),
+                    Err(err) => {
+                        if record_failure(&err, false, shared) {
+                            break;
+                        }
+                        None
+                    }
+                };
+                if let Ok(mut slot) = shared.parked_position.lock() {
+                    *slot = position.filter(|position| position.is_finite() && *position >= 0.0);
+                }
+                // `stop` quits mpv unless idle mode is on, and the option can
+                // be changed at runtime. Unpark switches it off again so a
+                // later end of file still behaves like a normal player.
+                if let Err(err) = exchange(&mut ipc, json!(["set_property", "idle", "yes"])) {
+                    if record_failure(&err, false, shared) {
+                        break;
+                    }
+                }
+                match exchange(&mut ipc, json!(["stop"])) {
+                    Ok(_) => {
+                        shared.parked.store(true, Ordering::Relaxed);
+                        log::debug!(
+                            "[mpv] decoder parked at {:?}",
+                            shared.parked_position.lock().ok().and_then(|slot| *slot)
+                        );
+                    }
+                    Err(err) => {
+                        if record_failure(&err, false, shared) {
+                            break;
+                        }
+                    }
+                }
+            }
+            Request::Unpark(source) => {
+                let position = shared
+                    .parked_position
+                    .lock()
+                    .ok()
+                    .and_then(|mut slot| slot.take());
+                let args = match position {
+                    Some(position) => {
+                        json!([
+                            "loadfile",
+                            source,
+                            "replace",
+                            -1,
+                            format!("start={position}")
+                        ])
+                    }
+                    None => json!(["loadfile", source, "replace"]),
+                };
+                if let Err(err) = exchange(&mut ipc, args) {
+                    if record_failure(&err, true, shared) {
+                        break;
+                    }
+                }
+                if let Err(err) = exchange(&mut ipc, json!(["set_property", "idle", "no"])) {
+                    if record_failure(&err, false, shared) {
+                        break;
+                    }
+                }
+                shared.parked.store(false, Ordering::Relaxed);
+                log::debug!("[mpv] decoder unparked");
+            }
             Request::Quit => {
                 log::debug!("[mpv] IPC quit requested");
                 let _ = exchange(&mut ipc, json!(["quit"]));
                 break;
             }
-        };
-        if let Err(err) = exchange(&mut ipc, args) {
-            if is_fatal(&err) {
-                log::warn!("[mpv] IPC connection failed: {err}");
-                shared.ipc_dead.store(true, Ordering::Relaxed);
-                break;
-            }
-            // A rejected property or a missing file is not a transport
-            // failure; keep the connection for the next command.
-            log::warn!("[mpv] command failed: {err}");
-            if report_error {
-                if let Ok(mut slot) = shared.last_error.lock() {
-                    *slot = Some(err.to_string());
-                }
-            }
         }
     }
+}
+
+/// Log a command failure and update the shared error slot. Returns true when
+/// the connection is unusable and the worker must stop.
+fn record_failure(error: &anyhow::Error, report: bool, shared: &Shared) -> bool {
+    if is_fatal(error) {
+        log::warn!("[mpv] IPC connection failed: {error}");
+        shared.ipc_dead.store(true, Ordering::Relaxed);
+        return true;
+    }
+    // A rejected property or a missing file is not a transport failure; keep
+    // the connection for the next command.
+    log::warn!("[mpv] command failed: {error}");
+    if report {
+        if let Ok(mut slot) = shared.last_error.lock() {
+            *slot = Some(error.to_string());
+        }
+    }
+    false
 }
 
 fn connect_ipc(socket: &std::path::Path, stop: &AtomicBool) -> Option<Ipc> {
@@ -593,6 +716,8 @@ mod tests {
             paused: AtomicBool::new(true),
             ipc_dead: AtomicBool::new(false),
             last_error: Mutex::new(None),
+            parked_position: Mutex::new(None),
+            parked: AtomicBool::new(false),
         }
     }
 
@@ -610,7 +735,9 @@ mod tests {
             for (expected, error) in [
                 ("set_property", "property unavailable"),
                 ("loadfile", "loading failed"),
+                ("set_property", "success"),
                 ("loadfile", "success"),
+                ("set_property", "success"),
                 ("set_property", "success"),
                 ("quit", "success"),
             ] {
@@ -650,6 +777,68 @@ mod tests {
         assert!(!shared.ipc_dead.load(Ordering::Relaxed));
         let error = shared.last_error.lock().unwrap().take().unwrap();
         assert!(error.contains("loading failed"), "{error}");
+    }
+
+    #[test]
+    fn worker_parks_and_unparks_at_the_saved_position() {
+        let (client, mut server) = UnixStream::pair().unwrap();
+        let ipc = test_ipc(client);
+        let shared = Arc::new(test_shared());
+        let stop = Arc::new(AtomicBool::new(false));
+        let (requests, receiver) = mpsc::channel();
+
+        let peer = std::thread::spawn(move || {
+            let mut reader = BufReader::new(server.try_clone().unwrap());
+            // (expected substring, reply data, error)
+            let replies = [
+                ("\"time-pos\"", Some(json!(42.5)), "success"),
+                ("\"set_property\",\"idle\",\"yes\"", None, "success"),
+                ("\"stop\"", None, "success"),
+                (
+                    "\"loadfile\",\"/tmp/a.mp4\",\"replace\",-1,\"start=42.5\"",
+                    None,
+                    "success",
+                ),
+                ("\"set_property\",\"idle\",\"no\"", None, "success"),
+                ("\"quit\"", None, "success"),
+            ];
+            for (expected, data, error) in replies {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                assert!(line.contains(expected), "{line}");
+                let request: Value = serde_json::from_str(&line).unwrap();
+                let request_id = request["request_id"].as_u64().unwrap();
+                let mut reply = json!({ "request_id": request_id, "error": error });
+                if let Some(data) = data {
+                    reply["data"] = data;
+                }
+                writeln!(server, "{reply}").unwrap();
+                server.flush().unwrap();
+            }
+        });
+
+        let worker = {
+            let shared = Arc::clone(&shared);
+            let stop = Arc::clone(&stop);
+            std::thread::spawn(move || serve_ipc(ipc, receiver, &shared, &stop))
+        };
+        requests.send(Request::Park).unwrap();
+        // Wait for the worker to finish `Park` before checking its state.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !shared.parked.load(Ordering::Relaxed) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(shared.parked.load(Ordering::Relaxed));
+        assert_eq!(*shared.parked_position.lock().unwrap(), Some(42.5));
+        assert!(requests.send(Request::Unpark("/tmp/a.mp4".into())).is_ok());
+        requests.send(Request::Quit).unwrap();
+        drop(requests);
+
+        worker.join().unwrap();
+        peer.join().unwrap();
+        assert!(!shared.parked.load(Ordering::Relaxed));
+        assert_eq!(*shared.parked_position.lock().unwrap(), None);
+        assert!(!shared.ipc_dead.load(Ordering::Relaxed));
     }
 
     #[test]

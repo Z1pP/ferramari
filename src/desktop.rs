@@ -176,6 +176,11 @@ pub fn doctor() -> String {
         "GNOME static wallpaper: {}",
         yes_no(environment.capabilities.static_wallpaper)
     );
+    let _ = writeln!(
+        report,
+        "background: {}",
+        crate::wallpaper::background_diagnostic()
+    );
     let _ = writeln!(report, "X11 screens: {}", x11_screen_count());
     let _ = writeln!(report, "mpv: {}", tool_version("mpv", &["--version"]));
     let _ = writeln!(report, "ffmpeg: {}", tool_version("ffmpeg", &["-version"]));

@@ -12,6 +12,9 @@
   cache, cache files still referenced by GNOME or by that record are never
   pruned, and a background we cannot restore is never overwritten blindly.
   Applying a frame also repairs a dangling URI left by an older build.
+- `ferramari --doctor` now reports the desktop background as `user background`,
+  `Ferramari frame` or `DANGLING … (this is a gray desktop)`, so this state is
+  visible without reading a log from the last restart.
 - `prune_static_cache` off-by-one: protected and kept files were not counted
   against the limit, so the cache could exceed it.
 - Local Video action bar: the two new package buttons made the bar wider than

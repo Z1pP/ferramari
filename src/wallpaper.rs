@@ -242,6 +242,47 @@ fn classify_background(
     }
 }
 
+/// One-line description of the desktop background for `--doctor`. A dangling
+/// URI is exactly the gray-desktop symptom, so it has to be visible without
+/// reading a log from the last restart.
+pub fn background_diagnostic() -> String {
+    if !paths::is_gnome() {
+        return "not GNOME, background left alone".to_string();
+    }
+    let Some(settings) = schema_available().then(|| gio::Settings::new(BACKGROUND_SCHEMA)) else {
+        return "background schema unavailable".to_string();
+    };
+    let current = (
+        settings.string("picture-uri").to_string(),
+        settings.string("picture-uri-dark").to_string(),
+    );
+    describe_background(
+        &current,
+        read_original_state().as_ref(),
+        &paths::static_cache_dir(),
+    )
+}
+
+fn describe_background(
+    current: &(String, String),
+    saved: Option<&OriginalBackground>,
+    cache_dir: &Path,
+) -> String {
+    match classify_background(current, saved, cache_dir) {
+        Background::Original((light, _)) => format!("user background {light}"),
+        Background::Ours => format!(
+            "Ferramari frame {} (a previous run took over; the next frame replaces it)",
+            path_from_uri(&current.0)
+        ),
+        Background::Missing => {
+            format!(
+                "DANGLING {} does not exist (this is a gray desktop)",
+                path_from_uri(&current.0)
+            )
+        }
+    }
+}
+
 pub struct GnomeBackground {
     settings: Option<gio::Settings>,
     background: Background,
@@ -559,6 +600,37 @@ mod tests {
         assert!(
             remaining <= STATIC_CACHE_LIMIT,
             "cache not bounded: {remaining} files"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn the_diagnostic_names_a_dangling_uri() {
+        let root = temp_dir("diag-dangling");
+        let cache = root.join("static");
+        fs::create_dir_all(&cache).unwrap();
+        let gone = format!("file://{}/gone.png", root.display());
+        let text = describe_background(&(gone.clone(), gone), None, &cache);
+        assert!(text.contains("DANGLING"), "unexpected: {text}");
+        assert!(text.contains("gone.png"), "must name the file: {text}");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn the_diagnostic_distinguishes_our_frame_from_a_user_background() {
+        let root = temp_dir("diag-kinds");
+        let cache = root.join("static");
+        fs::create_dir_all(&cache).unwrap();
+        let frame = make(&cache, "frame.png");
+        let ours = describe_background(&(frame.clone(), frame), None, &cache);
+        assert!(ours.contains("Ferramari frame"), "unexpected: {ours}");
+
+        let desktop = make(&root, "ubuntu.png");
+        let theirs = describe_background(&(desktop.clone(), desktop.clone()), None, &cache);
+        assert!(theirs.contains("user background"), "unexpected: {theirs}");
+        assert!(
+            theirs.contains("ubuntu.png"),
+            "must name the file: {theirs}"
         );
         let _ = fs::remove_dir_all(root);
     }

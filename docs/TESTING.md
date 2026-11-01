@@ -8,7 +8,7 @@ what is still unverified.
 
 | Environment | Status | Notes |
 | --- | --- | --- |
-| GNOME 50, Wayland session, running through XWayland | **tested** 2026-11-01, 1.9.1 | Main development environment |
+| GNOME 50, Wayland session, running through XWayland | **tested** 2026-11-02, 1.9.2 | Main development environment |
 | GNOME 50, X11 session | not tested | The same X11 backend is used, but the session has not been exercised |
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |
@@ -83,6 +83,15 @@ Run from a checkout with `cargo build --release`, or from an installed build.
       same and the new file plays.
 - [ ] Switch to a missing or corrupt file; an error is shown or the old file
       keeps playing, and the app stays responsive.
+
+### Layout and localization
+- [ ] With the interface language set to Russian, every page fits the window:
+      no caption, switch or combo is cut off at the right edge.
+- [ ] Resize the window from its minimum to a wide size; the Local Video header
+      moves its buttons to a second row and back without jitter.
+- [ ] Repeat in English. Japanese was not exercised: the `ja` locale is not
+      installed on the test machine, so `setlocale` falls back to `C` and the
+      app renders English.
 
 ### Package integrity and signing
 - [ ] `ferramari package key` creates `signing-key.json` (mode 600) once and

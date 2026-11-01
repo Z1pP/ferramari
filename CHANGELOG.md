@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.9.2 — 2026-11-02
+
+Layout regression from 1.9.1: content was clipped at the right edge.
+
+- The content stack reserved the widest page's minimum width; long Russian
+  captions (Settings rows, the Local Video header and action bar) made that
+  minimum larger than the window, so every page lost its right edge.
+- Text now shrinks instead of pushing the layout: titles, button captions and
+  descriptions ellipsize or wrap, and the page header stacks its action row
+  below the title when the two no longer fit side by side.
+- Verified by measuring every widget against the window's client edge in
+  Russian and English at 680–1300 px: zero overflowing widgets.
+
 ## 1.9.1 — 2026-11-01
 
 ### Fixed

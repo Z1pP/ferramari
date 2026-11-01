@@ -16,6 +16,15 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="1.9.2" date="2026-11-02" type="stable">
+      <description>
+        <p>Fixes content clipped at the right edge in Russian.</p>
+        <ul>
+          <li>Long titles, buttons and descriptions shrink instead of widening the layout</li>
+          <li>The page header moves its action row below the title when it no longer fits</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.9.1" date="2026-11-01" type="stable">
       <description>
         <p>Fixes a gray desktop after a restart.</p>

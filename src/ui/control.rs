@@ -300,6 +300,10 @@ impl ControlWindow {
         });
 
         let stack = gtk::Stack::new();
+        // Homogeneous sizing makes every page reserve the widest page's
+        // minimum width; with a long Russian label that overflowed the window
+        // and clipped content on all pages.
+        stack.set_hhomogeneous(false);
         stack.set_transition_type(gtk::StackTransitionType::Crossfade);
         stack.set_transition_duration(180);
         stack.set_hexpand(true);
@@ -1768,6 +1772,7 @@ fn build_video_page() -> VideoPage {
     let titles = gtk::Box::new(gtk::Orientation::Vertical, 3);
     let title_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let title = label(&tr("Local Video"), "page-title");
+    ellipsize_label(&title);
     let count = label("", "count-pill");
     count.set_valign(gtk::Align::Center);
     title_row.pack_start(&title, false, false, 0);
@@ -1803,6 +1808,7 @@ fn build_video_page() -> VideoPage {
     actions.pack_start(&refresh_button, false, false, 0);
     header.pack_start(&titles, true, true, 0);
     header.pack_end(&actions, false, false, 0);
+    install_header_wrap(&header, &titles, &actions);
     root.pack_start(&header, false, false, 0);
 
     let toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 10);
@@ -3440,6 +3446,7 @@ pub(crate) fn page_heading(title: &str, subtitle: &str) -> gtk::Box {
     let box_ = gtk::Box::new(gtk::Orientation::Vertical, 3);
     let title = label(title, "page-title");
     let subtitle = label(subtitle, "page-subtitle");
+    ellipsize_label(&title);
     subtitle.set_ellipsize(pango::EllipsizeMode::End);
     box_.pack_start(&title, false, false, 0);
     box_.pack_start(&subtitle, false, false, 0);
@@ -3455,6 +3462,42 @@ fn page_scroller(content: &gtk::Box) -> gtk::ScrolledWindow {
         .build();
     scroller.add(content);
     scroller
+}
+
+/// Stack a title/actions row vertically when the two no longer fit side by
+/// side. Measuring the widgets keeps a long translation (Russian) from being
+/// ellipsized at the default window size; the ellipsis stays as the last
+/// resort for widths where even two rows would not fit.
+fn install_header_wrap(header: &gtk::Box, titles: &gtk::Box, actions: &gtk::Box) {
+    let vertical = Rc::new(Cell::new(false));
+    let (h, t, a) = (header.clone(), titles.clone(), actions.clone());
+    header.connect_size_allocate(move |_, allocation| {
+        let available = allocation.width().max(0);
+        if available <= 1 {
+            return;
+        }
+        let needed = t.preferred_width().1
+            + a.preferred_width().1
+            + h.spacing().max(0)
+            + h.margin_start()
+            + h.margin_end();
+        let want = needed > available;
+        log::trace!("[UI] header wrap available={available} needed={needed} want={want}");
+        if want == vertical.get() {
+            return;
+        }
+        vertical.set(want);
+        h.set_orientation(if want {
+            gtk::Orientation::Vertical
+        } else {
+            gtk::Orientation::Horizontal
+        });
+        a.set_halign(if want {
+            gtk::Align::End
+        } else {
+            gtk::Align::Fill
+        });
+    });
 }
 
 fn glass_card(spacing: i32) -> (gtk::Box, gtk::Box) {
@@ -3474,6 +3517,7 @@ fn switch_row(title: &str, description: &str, switch: &gtk::Switch) -> gtk::Box 
     row.style_context().add_class("setting-row");
     let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
     let title_label = label(title, "setting-title");
+    ellipsize_label(&title_label);
     let description = if description.is_empty() {
         None
     } else {
@@ -3493,12 +3537,31 @@ fn switch_row(title: &str, description: &str, switch: &gtk::Switch) -> gtk::Box 
     row
 }
 
+/// Let a label shrink below its full text width. Without this a button's
+/// minimum size is the whole (Russian) caption, which pushed pages past the
+/// window edge and clipped their content.
+fn ellipsize_label(label: &gtk::Label) {
+    label.set_ellipsize(pango::EllipsizeMode::End);
+    label.set_lines(1);
+}
+
+/// Same for a button built with `Button::with_label`.
+fn ellipsize_button_text(button: &gtk::Button) {
+    if let Some(label) = button
+        .child()
+        .and_then(|child| child.downcast::<gtk::Label>().ok())
+    {
+        ellipsize_label(&label);
+    }
+}
+
 pub(crate) fn labeled_icon_button(icon: &str, text: &str, tooltip: &str) -> gtk::Button {
     let button = gtk::Button::new();
     button.style_context().add_class("secondary");
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 7);
     row.pack_start(&icon_image(icon, 16), false, false, 0);
     let text_label = label(text, "button-label");
+    ellipsize_label(&text_label);
     row.pack_start(&text_label, false, false, 0);
     button.add(&row);
     button.set_tooltip_text(Some(tooltip));
@@ -3521,6 +3584,7 @@ fn menu_action_button(icon: &str, text: &str) -> gtk::Button {
 
 pub(crate) fn primary_button(text: &str) -> gtk::Button {
     let button = gtk::Button::with_label(text);
+    ellipsize_button_text(&button);
     button.style_context().add_class("primary");
     set_a11y_name(&button, text);
     button
@@ -4055,6 +4119,20 @@ pub(crate) fn label(text: &str, class: &str) -> gtk::Label {
     let label = gtk::Label::new(Some(text));
     label.style_context().add_class(class);
     label.set_xalign(0.0);
+    // A label's minimum width is its full text unless it can ellipsize or
+    // wrap. Russian strings are long enough to push a whole page past the
+    // window edge, so the text-heavy classes decide that here once.
+    match class {
+        "setting-title" | "page-title" | "empty-title" | "button-label" | "nav-title" => {
+            label.set_ellipsize(pango::EllipsizeMode::End);
+            label.set_lines(1);
+        }
+        "setting-description" | "page-subtitle" | "form-copy" | "empty-body" | "nav-desc" => {
+            label.set_line_wrap(true);
+            label.set_max_width_chars(48);
+        }
+        _ => {}
+    }
     label
 }
 

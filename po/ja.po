@@ -622,3 +622,90 @@ msgstr "コミュニティソース"
 
 msgid "No catalogue plugins installed"
 msgstr "カタログプラグインがインストールされていません"
+
+msgid "Sign"
+msgstr "署名"
+
+msgid "Verify"
+msgstr "検証"
+
+msgid "Sign package…"
+msgstr "パッケージに署名…"
+
+msgid "Verify package…"
+msgstr "パッケージを検証…"
+
+msgid "Checksum and sign this package with your key"
+msgstr "チェックサムを計算し、自分の鍵でパッケージに署名します"
+
+msgid "Check the package checksums and signature"
+msgstr "パッケージのチェックサムと署名を確認します"
+
+msgid "Sign this package?"
+msgstr "このパッケージに署名しますか?"
+
+msgid "Ferramari creates a signing key on first use and stores it in your config folder."
+msgstr "初回使用時に Ferramari が署名鍵を作成し、設定フォルダーに保存します。"
+
+msgid "Package integrity"
+msgstr "パッケージの完全性"
+
+msgid "All files match their recorded SHA-256"
+msgstr "すべてのファイルが記録された SHA-256 と一致します"
+
+msgid "The package carries no checksums"
+msgstr "パッケージにチェックサムがありません"
+
+msgid "Unsigned"
+msgstr "未署名"
+
+msgid "Signed by"
+msgstr "署名者:"
+
+msgid "The signature is not valid"
+msgstr "署名が不正です"
+
+msgid "Trust this author and remember the key for future packages?"
+msgstr "この作者を信頼し、今後のパッケージ用にこの鍵を記憶しますか?"
+
+msgid "Trusted key"
+msgstr "信頼する鍵"
+
+msgid "Signed"
+msgstr "署名済み"
+msgid "Package signing"
+msgstr "パッケージ署名"
+
+msgid "My key"
+msgstr "自分の鍵"
+
+msgid "No signing key yet"
+msgstr "署名鍵はまだありません"
+
+msgid "No trusted keys"
+msgstr "信頼する鍵はありません"
+
+msgid "Trusted keys"
+msgstr "信頼する鍵"
+
+msgid "Export my public key…"
+msgstr "公開鍵をエクスポート…"
+
+msgid "Share this file so others can trust your packages"
+msgstr "このファイルを共有すると他の人があなたのパッケージを信頼できます"
+
+msgid "Trust a key…"
+msgstr "鍵を信頼…"
+
+msgid "Open a public key file shared by another creator"
+msgstr "他の作者が共有した公開鍵ファイルを開きます"
+
+msgid "Save your public key"
+msgstr "公開鍵を保存"
+
+msgid "Choose a public key file"
+msgstr "公開鍵ファイルを選択"
+
+msgid "Could not export the key"
+msgstr "鍵をエクスポートできませんでした"
+

@@ -20,6 +20,7 @@ mod package;
 mod paths;
 mod plugin;
 mod power;
+mod signing;
 mod supervisor;
 mod thumbnails;
 mod tray;
@@ -39,6 +40,7 @@ use clap::Parser;
 use gtk::prelude::*;
 
 use app::{App, Command, CommandSender, Snapshot};
+use cli::PackageCommand;
 
 fn main() {
     paths::prepare_env();
@@ -51,6 +53,9 @@ fn main() {
     }
     init_i18n();
 
+    if let Some(cli::Command::Package(command)) = args.command.clone() {
+        std::process::exit(run_package_command(command));
+    }
     if args.doctor {
         println!("{}", desktop::doctor());
         return;
@@ -201,4 +206,113 @@ fn locale_dir() -> std::path::PathBuf {
         }
     }
     std::path::PathBuf::from("/usr/share/locale")
+}
+
+/// `ferramari package …`: creator-facing tooling for `.ferramari` packages.
+/// Runs before GTK starts, so it works over SSH and in a headless session.
+fn run_package_command(command: PackageCommand) -> i32 {
+    match command {
+        PackageCommand::Key { name, export } => {
+            let name = author_name(&name);
+            match signing::load_or_create_key(&name) {
+                Ok(key) => {
+                    println!("key id: {}", key.key_id);
+                    println!("name:   {}", key.name);
+                    println!("public: {}", key.public);
+                    println!("store:  {}", signing::key_path().display());
+                    if let Some(path) = export {
+                        if let Err(err) = std::fs::write(&path, signing::public_key_document(&key))
+                        {
+                            eprintln!("could not write {}: {err}", path.display());
+                            return 2;
+                        }
+                        println!("wrote public key: {}", path.display());
+                    }
+                    0
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    2
+                }
+            }
+        }
+        PackageCommand::Sign { dir, name } => {
+            let name = author_name(&name);
+            match signing::load_or_create_key(&name)
+                .and_then(|key| package::write_checksums(&dir).map(|()| key))
+                .and_then(|key| signing::sign_package(&dir, &key))
+            {
+                Ok(()) => {
+                    println!("signed {}", dir.display());
+                    0
+                }
+                Err(err) => {
+                    eprintln!("could not sign {}: {err}", dir.display());
+                    2
+                }
+            }
+        }
+        PackageCommand::Verify { dir } => {
+            let package = match package::load(&dir) {
+                Ok(package) => package,
+                Err(err) => {
+                    eprintln!("INVALID {}: {err}", dir.display());
+                    return cli::VERIFY_INVALID;
+                }
+            };
+            let integrity = if package.checksummed {
+                "checksums ok"
+            } else {
+                "no checksums.json"
+            };
+            match signing::verify_package(&package.root) {
+                Ok(status) => {
+                    let code = match &status {
+                        signing::SignatureStatus::Trusted { .. } => cli::VERIFY_OK,
+                        signing::SignatureStatus::Unsigned
+                        | signing::SignatureStatus::Unknown { .. } => cli::VERIFY_NOT_TRUSTED,
+                        signing::SignatureStatus::Invalid { .. } => cli::VERIFY_INVALID,
+                    };
+                    println!("{}: {integrity}; {}", dir.display(), status.label());
+                    code
+                }
+                Err(err) => {
+                    eprintln!("INVALID {}: {err}", dir.display());
+                    cli::VERIFY_INVALID
+                }
+            }
+        }
+        PackageCommand::Trust { source } => match signing::trust_source(&source) {
+            Ok(Some(key_id)) => {
+                println!("trusted key {key_id}");
+                0
+            }
+            Ok(None) => {
+                eprintln!("{} carries no key to trust", source.display());
+                2
+            }
+            Err(err) => {
+                eprintln!("could not trust {}: {err}", source.display());
+                2
+            }
+        },
+        PackageCommand::Keys => {
+            let keys = signing::trusted_keys();
+            if keys.is_empty() {
+                println!("no trusted keys");
+                return 0;
+            }
+            for key in keys {
+                println!("{}\t{}", key.key_id, key.name);
+            }
+            0
+        }
+    }
+}
+
+fn author_name(requested: &str) -> String {
+    if !requested.trim().is_empty() {
+        return requested.trim().to_string();
+    }
+    signing::default_author_name()
 }

@@ -29,6 +29,7 @@ use crate::monitors::{self, MonitorInfo};
 use crate::package;
 use crate::paths;
 use crate::power;
+use crate::signing;
 use crate::supervisor::{RestartPolicy, Retry, MAX_RETRIES};
 use crate::tray;
 use crate::ui::control::{ControlWindow, RefreshState};
@@ -109,12 +110,17 @@ pub enum Command {
     Suspend(bool),
     LibraryChanged,
     ImportPackage(PathBuf),
-    PackageImported(Result<package::ImportedPackage, String>),
+    PackageImported(Result<Box<package::ImportedPackage>, String>),
     ExportPackage {
         video: PathBuf,
         parent: PathBuf,
     },
     PackageExported(Result<PathBuf, String>),
+    SignPackage(PathBuf),
+    PackageSigned(Result<PathBuf, String>),
+    VerifyPackage(PathBuf),
+    PackageVerified(Box<PackageReport>),
+    TrustKey(PathBuf),
     WebError {
         monitor: String,
         message: String,
@@ -125,6 +131,14 @@ pub enum Command {
         generation: u64,
         file: Option<PathBuf>,
     },
+}
+
+/// Integrity and authorship of one package, for the library dialog.
+#[derive(Debug, Clone)]
+pub struct PackageReport {
+    pub dir: PathBuf,
+    pub checksummed: bool,
+    pub signature: signing::SignatureStatus,
 }
 
 /// Read-only view of the current state for the D-Bus interfaces.
@@ -697,7 +711,7 @@ impl App {
                 std::thread::Builder::new()
                     .name("ferramari-package-import".to_string())
                     .spawn(move || {
-                        let result = package::import(&source, &destination);
+                        let result = package::import(&source, &destination).map(Box::new);
                         let _ = tx.send(Command::PackageImported(result));
                     })
                     .ok();
@@ -705,12 +719,13 @@ impl App {
             Command::PackageImported(result) => match result {
                 Ok(imported) => {
                     log::info!(
-                        "[Package] Imported {} ({}, {} bytes, preview={}) from {}",
+                        "[Package] Imported {} ({}, {} bytes, preview={}, checksums={}, {})",
                         imported.name,
                         imported.kind.as_str(),
                         imported.size_bytes,
                         imported.preview.is_some(),
-                        imported.package_dir.display()
+                        imported.checksummed,
+                        imported.signature.label()
                     );
                     match imported.kind {
                         package::PackageType::Video => {
@@ -735,9 +750,14 @@ impl App {
                     }
                     if let Some(control) = &self.control {
                         control.show_info(&format!(
-                            "{}: {}",
-                            imported.name,
-                            imported.package_dir.display()
+                            "{}\n{}\n{}",
+                            imported.package_dir.display(),
+                            imported.signature.label(),
+                            if imported.checksummed {
+                                util::tr("All files match their recorded SHA-256")
+                            } else {
+                                util::tr("The package carries no checksums")
+                            }
                         ));
                     }
                 }
@@ -766,6 +786,93 @@ impl App {
                 Err(err) => self.notify_user_error(UserError::new(
                     ErrorKind::FileSystem,
                     format!("Could not export the package: {err}"),
+                )),
+            },
+            Command::SignPackage(dir) => {
+                let tx = self.tx.clone();
+                std::thread::Builder::new()
+                    .name("ferramari-package-sign".to_string())
+                    .spawn(move || {
+                        let result = (|| {
+                            let key = signing::load_or_create_key(&signing::default_author_name())?;
+                            package::write_checksums(&dir)?;
+                            signing::sign_package(&dir, &key)?;
+                            package::load(&dir).map(|package| package.root)
+                        })();
+                        let _ = tx.send(Command::PackageSigned(result));
+                    })
+                    .ok();
+            }
+            Command::PackageSigned(result) => match result {
+                Ok(dir) => {
+                    log::info!("[Package] Signed {}", dir.display());
+                    if let Some(control) = &self.control {
+                        control.refresh_signing_summary();
+                        control.show_info(&format!("{}: {}", dir.display(), util::tr("Signed")));
+                    }
+                }
+                Err(err) => self.notify_user_error(UserError::new(
+                    ErrorKind::FileSystem,
+                    format!("Could not sign the package: {err}"),
+                )),
+            },
+            Command::VerifyPackage(dir) => {
+                let tx = self.tx.clone();
+                std::thread::Builder::new()
+                    .name("ferramari-package-verify".to_string())
+                    .spawn(move || {
+                        let result = (|| -> Result<PackageReport, String> {
+                            let package = package::load(&dir)?;
+                            Ok(PackageReport {
+                                checksummed: package.checksummed,
+                                signature: package.signature,
+                                dir: package.root,
+                            })
+                        })();
+                        match result {
+                            Ok(report) => {
+                                let _ = tx.send(Command::PackageVerified(Box::new(report)));
+                            }
+                            Err(err) => {
+                                let _ =
+                                    tx.send(Command::PackageVerified(Box::new(PackageReport {
+                                        dir,
+                                        checksummed: false,
+                                        signature: signing::SignatureStatus::Invalid {
+                                            key_id: None,
+                                            reason: err,
+                                        },
+                                    })));
+                            }
+                        }
+                    })
+                    .ok();
+            }
+            Command::PackageVerified(report) => {
+                log::info!(
+                    "[Package] {} checksums={} {}",
+                    report.dir.display(),
+                    report.checksummed,
+                    report.signature.label()
+                );
+                if let Some(control) = &self.control {
+                    control.show_package_report(&report);
+                }
+            }
+            Command::TrustKey(path) => match signing::trust_source(&path) {
+                Ok(Some(key_id)) => {
+                    if let Some(control) = &self.control {
+                        control.refresh_signing_summary();
+                        control.show_info(&format!("{} ({})", util::tr("Trusted key"), key_id));
+                    }
+                }
+                Ok(None) => self.notify_user_error(UserError::new(
+                    ErrorKind::FileSystem,
+                    format!("{} carries no key to trust", path.display()),
+                )),
+                Err(err) => self.notify_user_error(UserError::new(
+                    ErrorKind::FileSystem,
+                    format!("Could not trust the key: {err}"),
                 )),
             },
             Command::SetMonitorRotation {
@@ -1681,6 +1788,8 @@ impl App {
         let eco_states = self.monitor_states();
         if let Some(control) = self.control.as_ref() {
             control.present();
+            // The key and trust store can change from the CLI between windows.
+            control.refresh_signing_summary();
             control.refresh(RefreshState {
                 config: &self.config,
                 monitors: &self.monitors,

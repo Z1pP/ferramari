@@ -5,6 +5,8 @@ A package is a directory named `MyWallpaper.ferramari/`:
 ```text
 MyWallpaper.ferramari/
 ├── manifest.json
+├── checksums.json       (optional, added by 1.9+)
+├── signature.json       (optional, added by 1.9+)
 ├── preview.jpg          (optional)
 ├── wallpaper.mp4        (video)
 │   or index.html        (web)
@@ -87,6 +89,81 @@ success message.
 Packages are plain files. Removing a package directory and reloading the
 library removes it from the grid; the current monitor assignment then points
 to a missing file and is reported by the normal playback error path.
+
+## Integrity and authorship
+
+`checksums.json` maps every other file in the package to its SHA-256:
+
+```json
+{
+  "manifest.json": "3f2b…",
+  "wallpaper.mp4": "9ac1…"
+}
+```
+
+The two integrity files never hash themselves. Loading a package that carries
+`checksums.json` verifies every entry, so a modified or an extra file is
+rejected with a clear message. A package without checksums still loads — the
+format predates them and creators must not be locked out of their own library.
+
+`signature.json` is an Ed25519 signature over the raw bytes of
+`checksums.json`, so one signature covers every hash and every hash covers every
+file:
+
+```json
+{
+  "format": 1,
+  "algorithm": "ed25519",
+  "key_id": "bd65de61cc23adc9",
+  "signature": "…base64…",
+  "name": "Alice",
+  "public_key": "…base64, 32 bytes…"
+}
+```
+
+`key_id` is the first 16 hex characters of SHA-256 over the raw public key.
+Verification has four outcomes: **Trusted** (the key is in the local trust
+store), **Unknown** (the signature verifies against the embedded key, but that
+key is not trusted yet), **Unsigned** and **Invalid**. An invalid signature or a
+checksum mismatch rejects the package; an unknown author is reported and the
+user decides whether to trust the key.
+
+There is no web of trust and no network validation. Trusting is always an
+explicit user action, in Local Video → Verify, in Settings → Package signing, or
+with `ferramari package trust`.
+
+### Keys
+
+- `~/.config/ferramari/signing-key.json` — the local key pair, mode `0600`,
+  created on first use.
+- `~/.config/ferramari/trusted-keys.json` — public keys the user chose to trust.
+
+Exporting a package signs it when a key exists, so a creator's own packages
+verify as trusted on their machine.
+
+### Command line
+
+```sh
+ferramari package key --name "Alice" --export alice.json
+ferramari package sign MyWallpaper.ferramari
+ferramari package verify MyWallpaper.ferramari   # 0 trusted, 1 untrusted, 2 invalid
+ferramari package trust alice.json               # or a signed package directory
+ferramari package keys
+```
+
+These commands run before GTK starts, so they work over SSH and headless.
+
+### When integrity is checked
+
+- **On import** — always, before the package is copied into the library;
+- **on export** — the freshly written package is re-read and re-verified;
+- **on demand** — Local Video → Verify, or `ferramari package verify`.
+
+Playback deliberately does not re-hash the video: a 2 GiB package would cost
+seconds on every monitor assignment. A file changed after import is therefore
+detected by verification, not silently at play time; the library shows the
+package as it was imported, and Verify is the check to run after downloading or
+copying a package by hand.
 
 ## Version compatibility
 

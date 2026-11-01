@@ -563,9 +563,10 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "ferramari"
-version = "1.8.0"
+version = "1.9.0"
 dependencies = [
  "anyhow",
+ "base64",
  "clap",
  "env_logger",
  "gdk-pixbuf",
@@ -579,6 +580,7 @@ dependencies = [
  "log",
  "rand",
  "regex",
+ "ring",
  "serde",
  "serde_json",
  "ureq",

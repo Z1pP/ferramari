@@ -16,6 +16,17 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="1.9.0" date="2026-11-01" type="stable">
+      <description>
+        <p>Package integrity and authorship.</p>
+        <ul>
+          <li>SHA-256 checksums for every file in a .ferramari package</li>
+          <li>Ed25519 signatures with a local trust store</li>
+          <li>Sign and Verify in the library, Package signing in Settings</li>
+          <li>Headless CLI: ferramari package key, sign, verify, trust, keys</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.8.0" date="2026-11-01" type="stable">
       <description>
         <p>Eco Engine completion: decoder parking and broader measurements.</p>

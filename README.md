@@ -44,7 +44,8 @@ The interface has a hand-tuned dark palette as well as the light one:
   idle and lock services
 - Logind lock/unlock fallback, aggregated with screensaver lock state
 - `.ferramari` package import/export with strict metadata, path, symlink, file
-  count and size validation
+  count and size validation, plus SHA-256 checksums and Ed25519 signatures
+  with a local trust store
 - Declarative catalogue-source plugins (no plugin code execution) and a
   first-party Catalog API v1 client (`--catalog`)
 - Browse a catalogue of live wallpapers with categories, search, sorting,
@@ -156,6 +157,7 @@ ferramari -d          # debug logging
 ferramari -r          # reset the configuration
 ferramari --doctor    # print session/backend/tool diagnostics and exit
 ferramari --catalog https://catalog.example.org/v1  # inspect a Catalog API
+ferramari package --help    # checksum, sign and verify .ferramari packages
 ```
 
 A second `ferramari` invocation does not start another server: it asks the
@@ -173,6 +175,17 @@ and shown in the library progress; a web package is applied as the current web
 wallpaper. Select a video and use **Export .ferramari** to create a package in
 a folder of your choice. The format, manifest fields and security limits are
 documented in [`docs/FERRAMARI_FORMAT.md`](docs/FERRAMARI_FORMAT.md).
+
+Exported and imported packages can carry integrity data. `checksums.json`
+records the SHA-256 of every file, and `signature.json` holds an Ed25519
+signature over those checksums, so one signature covers the whole package.
+Ferramari creates a signing key on first use
+(`~/.config/ferramari/signing-key.json`, mode `0600`) and signs exports
+automatically. Verification distinguishes four states — trusted, signed by an
+unknown author, unsigned and invalid — and trusting a key is always an explicit
+choice in **Local Video → Verify**, **Settings → Package signing** or
+`ferramari package trust`. Packages without checksums or signatures stay
+usable.
 
 ### Wallpaper catalogue
 

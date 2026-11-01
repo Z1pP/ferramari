@@ -27,7 +27,9 @@ use crate::config::{Config, Mode};
 use crate::eco;
 use crate::library::Library;
 use crate::monitors::MonitorInfo;
+use crate::package;
 use crate::paths;
+use crate::signing;
 use crate::thumbnails;
 use crate::ui::online;
 use crate::ui::theme::Theme;
@@ -88,6 +90,7 @@ struct VolumeParts {
 struct SettingsPage {
     root: gtk::ScrolledWindow,
     monitors_summary: gtk::Label,
+    signing_summary: gtk::Label,
     combo_theme: gtk::ComboBoxText,
     combo_language: gtk::ComboBoxText,
     rotation_mode: gtk::ComboBoxText,
@@ -132,6 +135,8 @@ struct VideoPage {
     view: gtk::ComboBoxText,
     import_button: gtk::Button,
     export_button: gtk::Button,
+    sign_button: gtk::Button,
+    verify_button: gtk::Button,
     view_syncing: Rc<Cell<bool>>,
     new_collection: gtk::Button,
     rename_collection: gtk::Button,
@@ -247,6 +252,7 @@ pub struct ControlWindow {
     switch_pause_battery: gtk::Switch,
     battery_status: gtk::Label,
     settings_monitors: gtk::Label,
+    signing_summary: gtk::Label,
     play_button: gtk::Button,
     stack: gtk::Stack,
     video_search: gtk::Entry,
@@ -470,6 +476,7 @@ impl ControlWindow {
             switch_pause_battery: settings_page.switch_pause_battery,
             battery_status: settings_page.battery_status,
             settings_monitors: settings_page.monitors_summary,
+            signing_summary: settings_page.signing_summary,
             play_button: header_parts.play_button,
             stack: stack.clone(),
             video_search: video_page.search.clone(),
@@ -732,6 +739,72 @@ impl ControlWindow {
             &tr("Oops!"),
             message,
         );
+    }
+
+    /// Integrity and authorship report for one installed package. When the
+    /// signature is valid but the author is unknown, the dialog offers to trust
+    /// the key the package already carries.
+    /// Integrity and authorship report for one installed package. When the
+    /// signature is valid but the author is unknown, the dialog offers to trust
+    /// the key the package already carries.
+    pub fn show_package_report(&self, report: &crate::app::PackageReport) {
+        let unknown = matches!(report.signature, signing::SignatureStatus::Unknown { .. });
+        // GTK picks the dialog icon from the message type; `Other` renders as a
+        // "no entry" sign, which reads as a failure for a neutral report.
+        let kind = match report.signature {
+            signing::SignatureStatus::Trusted { .. } => gtk::MessageType::Info,
+            signing::SignatureStatus::Invalid { .. } => gtk::MessageType::Error,
+            signing::SignatureStatus::Unknown { .. } => gtk::MessageType::Question,
+            signing::SignatureStatus::Unsigned => gtk::MessageType::Warning,
+        };
+        let dialog = gtk::MessageDialog::new(
+            Some(self.window.upcast_ref::<gtk::Window>()),
+            gtk::DialogFlags::MODAL,
+            kind,
+            if unknown {
+                gtk::ButtonsType::YesNo
+            } else {
+                gtk::ButtonsType::Ok
+            },
+            &tr("Package integrity"),
+        );
+        let integrity = if report.checksummed {
+            tr("All files match their recorded SHA-256")
+        } else {
+            tr("The package carries no checksums")
+        };
+        let author = match &report.signature {
+            signing::SignatureStatus::Unsigned => tr("Unsigned"),
+            signing::SignatureStatus::Trusted { key_id, name }
+            | signing::SignatureStatus::Unknown { key_id, name } => {
+                format!("{} {} ({key_id})", tr("Signed by"), name)
+            }
+            signing::SignatureStatus::Invalid { reason, .. } => {
+                format!("{}: {reason}", tr("The signature is not valid"))
+            }
+        };
+        let mut body = format!("{}\n{}\n{}", report.dir.display(), integrity, author);
+        if unknown {
+            body.push_str(&format!(
+                "\n{}",
+                tr("Trust this author and remember the key for future packages?")
+            ));
+        }
+        dialog.set_secondary_text(Some(&body));
+        let tx = self.shared.tx.clone();
+        let dir = report.dir.clone();
+        dialog.connect_response(move |dialog, response| {
+            if response == gtk::ResponseType::Yes {
+                let _ = tx.send(Command::TrustKey(dir.clone()));
+            }
+            dialog.close();
+        });
+        dialog.show_all();
+    }
+
+    /// Re-read the key and trust store after signing or trusting.
+    pub fn refresh_signing_summary(&self) {
+        self.signing_summary.set_text(&signing_summary_text());
     }
 
     pub fn show_info(&self, message: &str) {
@@ -1291,6 +1364,27 @@ fn build_settings_page(
     plugin_label.set_max_width_chars(72);
     content.pack_start(&plugin_label, false, false, 0);
 
+    content.pack_start(&section_label(&tr("Package signing")), false, false, 0);
+    let signing_summary = label(&signing_summary_text(), "field-hint");
+    signing_summary.set_xalign(0.0);
+    signing_summary.set_line_wrap(true);
+    signing_summary.set_max_width_chars(72);
+    content.pack_start(&signing_summary, false, false, 0);
+    let export_key = gtk::Button::with_label(&tr("Export my public key…"));
+    export_key.style_context().add_class("secondary");
+    export_key.set_halign(gtk::Align::Start);
+    export_key.set_tooltip_text(Some(&tr(
+        "Share this file so others can trust your packages",
+    )));
+    content.pack_start(&export_key, false, false, 0);
+    let trust_key = gtk::Button::with_label(&tr("Trust a key…"));
+    trust_key.style_context().add_class("secondary");
+    trust_key.set_halign(gtk::Align::Start);
+    trust_key.set_tooltip_text(Some(&tr(
+        "Open a public key file shared by another creator",
+    )));
+    content.pack_start(&trust_key, false, false, 0);
+
     content.pack_start(&section_label(&tr("Monitors")), false, false, 0);
     let monitors_summary = label("", "field-hint");
     monitors_summary.set_line_wrap(true);
@@ -1434,6 +1528,53 @@ fn build_settings_page(
         });
     }
     {
+        let button = export_key.clone();
+        button.connect_clicked(move |button| {
+            let parent = button
+                .toplevel()
+                .and_then(|top| top.downcast::<gtk::Window>().ok());
+            let Some(path) = save_file(
+                parent.as_ref(),
+                &tr("Save your public key"),
+                "ferramari-key.json",
+            ) else {
+                return;
+            };
+            match signing::load_key().and_then(|key| match key {
+                Some(key) => std::fs::write(&path, signing::public_key_document(&key))
+                    .map_err(|err| format!("cannot write {}: {err}", path.display()))
+                    .map(|()| key.key_id),
+                None => Err("no signing key yet; sign a package first".to_string()),
+            }) {
+                Ok(key_id) => show_message(
+                    parent.as_ref(),
+                    gtk::MessageType::Info,
+                    &tr("Done"),
+                    &format!("{}\n{key_id}", path.display()),
+                ),
+                Err(err) => show_message(
+                    parent.as_ref(),
+                    gtk::MessageType::Error,
+                    &tr("Could not export the key"),
+                    &err,
+                ),
+            }
+        });
+    }
+    {
+        let tx = tx.clone();
+        let button = trust_key.clone();
+        button.connect_clicked(move |widget| {
+            let parent = widget
+                .toplevel()
+                .and_then(|top| top.downcast::<gtk::Window>().ok());
+            let Some(path) = choose_file(parent.as_ref(), &tr("Choose a public key file")) else {
+                return;
+            };
+            let _ = tx.send(Command::TrustKey(path));
+        });
+    }
+    {
         let tx = tx.clone();
         let syncing = Rc::clone(syncing);
         combo_theme.connect_changed(move |combo| {
@@ -1519,6 +1660,7 @@ fn build_settings_page(
     SettingsPage {
         root,
         monitors_summary,
+        signing_summary,
         combo_theme,
         combo_language,
         rotation_mode,
@@ -1784,6 +1926,14 @@ fn build_video_page() -> VideoPage {
     export_button.style_context().add_class("secondary");
     export_button.set_sensitive(false);
     export_button.set_tooltip_text(Some(&tr("Export the selected video as a package")));
+    let sign_button = gtk::Button::with_label(&tr("Sign"));
+    sign_button.style_context().add_class("secondary");
+    sign_button.set_sensitive(false);
+    sign_button.set_tooltip_text(Some(&tr("Checksum and sign this package with your key")));
+    let verify_button = gtk::Button::with_label(&tr("Verify"));
+    verify_button.style_context().add_class("secondary");
+    verify_button.set_sensitive(false);
+    verify_button.set_tooltip_text(Some(&tr("Check the package checksums and signature")));
     let add_to_collection = gtk::Button::with_label(&tr("Add to collection"));
     add_to_collection.style_context().add_class("secondary");
     add_to_collection.set_sensitive(false);
@@ -1799,6 +1949,8 @@ fn build_video_page() -> VideoPage {
     selection_bar.pack_end(&remove_from_collection, false, false, 0);
     selection_bar.pack_end(&add_to_collection, false, false, 0);
     selection_bar.pack_end(&export_button, false, false, 0);
+    selection_bar.pack_end(&verify_button, false, false, 0);
+    selection_bar.pack_end(&sign_button, false, false, 0);
     root.pack_start(&selection_bar, false, false, 0);
 
     folder_button.connect_clicked(|_| xdg_open(&paths::video_wallpaper_dir()));
@@ -1819,6 +1971,8 @@ fn build_video_page() -> VideoPage {
         view,
         import_button,
         export_button,
+        sign_button,
+        verify_button,
         view_syncing: Rc::new(Cell::new(false)),
         new_collection,
         rename_collection,
@@ -1914,6 +2068,64 @@ fn set_star(button: &gtk::ToggleButton, active: bool) {
     } else {
         "Add to favorites"
     })));
+}
+
+fn signing_summary_text() -> String {
+    let key = signing::load_key().ok().flatten();
+    let mine = match &key {
+        Some(key) => format!("{}: {} ({})", tr("My key"), key.name, key.key_id),
+        None => tr("No signing key yet"),
+    };
+    let trusted = signing::trusted_keys();
+    if trusted.is_empty() {
+        return format!("{mine}\n{}", tr("No trusted keys"));
+    }
+    let list = trusted
+        .iter()
+        .map(|key| format!("{} ({})", key.name, key.key_id))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("{mine}\n{}\n{}", tr("Trusted keys"), list)
+}
+
+fn choose_file(parent: Option<&gtk::Window>, title: &str) -> Option<PathBuf> {
+    let dialog = gtk::FileChooserDialog::with_buttons(
+        Some(title),
+        parent,
+        gtk::FileChooserAction::Open,
+        &[
+            (&tr("Cancel"), gtk::ResponseType::Cancel),
+            (&tr("Select"), gtk::ResponseType::Accept),
+        ],
+    );
+    dialog.set_modal(true);
+    dialog.set_select_multiple(false);
+    let response = dialog.run();
+    let path = (response == gtk::ResponseType::Accept)
+        .then(|| dialog.filename())
+        .flatten();
+    dialog.close();
+    path
+}
+
+fn save_file(parent: Option<&gtk::Window>, title: &str, name: &str) -> Option<PathBuf> {
+    let dialog = gtk::FileChooserDialog::with_buttons(
+        Some(title),
+        parent,
+        gtk::FileChooserAction::Save,
+        &[
+            (&tr("Cancel"), gtk::ResponseType::Cancel),
+            (&tr("Save"), gtk::ResponseType::Accept),
+        ],
+    );
+    dialog.set_modal(true);
+    dialog.set_current_name(name);
+    let response = dialog.run();
+    let path = (response == gtk::ResponseType::Accept)
+        .then(|| dialog.filename())
+        .flatten();
+    dialog.close();
+    path
 }
 
 fn choose_folder(parent: Option<&gtk::Window>, title: &str) -> Option<PathBuf> {
@@ -2121,6 +2333,42 @@ fn wire_video_page(page: &VideoPage, shared: &Rc<Shared>, library: &Rc<RefCell<L
                 video: PathBuf::from(video),
                 parent: destination,
             });
+        });
+    }
+    {
+        let shared = Rc::clone(shared);
+        let flow = page.flow.clone();
+        let button_widget = page.sign_button.clone();
+        button_widget.connect_clicked(move |button| {
+            let Some(video) = selected_video(&flow, &shared) else {
+                return;
+            };
+            let Some(dir) = package::package_dir_for_entry(Path::new(&video)) else {
+                return;
+            };
+            let parent = button
+                .toplevel()
+                .and_then(|top| top.downcast::<gtk::Window>().ok());
+            if !confirm_dialog(
+                parent.as_ref(),
+                &tr("Sign this package?"),
+                &tr("Ferramari creates a signing key on first use and stores it in your config folder."),
+            ) {
+                return;
+            }
+            let _ = shared.tx.send(Command::SignPackage(dir));
+        });
+    }
+    {
+        let shared = Rc::clone(shared);
+        let flow = page.flow.clone();
+        page.verify_button.connect_clicked(move |_| {
+            let Some(video) = selected_video(&flow, &shared) else {
+                return;
+            };
+            if let Some(dir) = package::package_dir_for_entry(Path::new(&video)) {
+                let _ = shared.tx.send(Command::VerifyPackage(dir));
+            }
         });
     }
 
@@ -3690,6 +3938,7 @@ fn update_selection(flow: &gtk::FlowBox, shared: &Shared, page: &VideoPage) {
     let collection = matches!(view_from_page(page), LibraryView::Collection(_));
     match selected {
         Some(path) => {
+            let is_package = package::package_dir_for_entry(Path::new(&path)).is_some();
             let name = Path::new(&path)
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
@@ -3698,6 +3947,8 @@ fn update_selection(flow: &gtk::FlowBox, shared: &Shared, page: &VideoPage) {
             page.selection_label.set_tooltip_text(Some(&name));
             page.apply_button.set_sensitive(true);
             page.export_button.set_sensitive(true);
+            page.sign_button.set_sensitive(is_package);
+            page.verify_button.set_sensitive(is_package);
             page.add_to_collection.set_sensitive(true);
             page.remove_from_collection.set_sensitive(collection);
         }
@@ -3707,6 +3958,8 @@ fn update_selection(flow: &gtk::FlowBox, shared: &Shared, page: &VideoPage) {
             page.selection_label.set_tooltip_text(None);
             page.apply_button.set_sensitive(false);
             page.export_button.set_sensitive(false);
+            page.sign_button.set_sensitive(false);
+            page.verify_button.set_sensitive(false);
             page.add_to_collection.set_sensitive(false);
             page.remove_from_collection.set_sensitive(false);
         }
@@ -3853,6 +4106,27 @@ fn show_monitor_menu(
         menu.append(&item);
     }
     menu.append(&gtk::SeparatorMenuItem::new());
+    if let Some(dir) = package::package_dir_for_entry(Path::new(&video_path)) {
+        let verify = gtk::MenuItem::with_label(&tr("Verify package…"));
+        {
+            let tx = shared.tx.clone();
+            let dir = dir.clone();
+            verify.connect_activate(move |_| {
+                let _ = tx.send(Command::VerifyPackage(dir.clone()));
+            });
+        }
+        menu.append(&verify);
+        let sign = gtk::MenuItem::with_label(&tr("Sign package…"));
+        {
+            let tx = shared.tx.clone();
+            let dir = dir.clone();
+            sign.connect_activate(move |_| {
+                let _ = tx.send(Command::SignPackage(dir.clone()));
+            });
+        }
+        menu.append(&sign);
+        menu.append(&gtk::SeparatorMenuItem::new());
+    }
     let all = gtk::MenuItem::with_label(&tr("Set For All"));
     {
         let tx = shared.tx.clone();

@@ -24,7 +24,16 @@ bundle uses host media tools.
 
 ## After 1.0
 
-### 1.8 — Eco Engine completion (current)
+### 1.9 — Creator Engine completion (current)
+
+- [x] SHA-256 checksums per package file, verified on import and on demand
+- [x] Ed25519 package signatures with a local trust store
+- [x] `ferramari package key|sign|verify|trust|keys` headless CLI
+- [x] Verify/Sign in the library and a Package signing section in Settings
+- [ ] Standalone package manager and metadata editor
+- [ ] Web-package asset isolation beyond the WebKit policy
+
+### 1.8 — Eco Engine completion
 
 - [x] Decoder resource release after a long hidden pause
 - [x] Position-preserving unpark without restarting mpv
@@ -32,12 +41,6 @@ bundle uses host media tools.
 - [x] 4K and Web-wallpaper benchmark modes and measured results
 - [ ] Multi-monitor and locked-screen measurements on real hardware
 - [ ] Per-monitor stream/web sources
-
-### 1.9 — Creator Engine completion
-
-- [ ] Standalone package manager and metadata editor
-- [ ] SHA-256 verification and package signatures
-- [ ] Web-package asset isolation beyond the WebKit policy
 
 ### 1.7 — Ecosystem foundation
 

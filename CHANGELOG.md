@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.9.0 — 2026-11-01
+
+Package integrity and authorship.
+
+- `checksums.json` records the SHA-256 of every package file. Loading a package
+  that carries it verifies each entry, so a modified or extra file is rejected
+  with a message naming the file. Packages without checksums still load.
+- `signature.json` is an Ed25519 signature over those checksums, so one
+  signature covers the whole package. Verification reports **Trusted**,
+  **Unknown author**, **Unsigned** or **Invalid**.
+- Ferramari creates a local signing key on first use
+  (`~/.config/ferramari/signing-key.json`, mode `0600`) and signs exports
+  automatically. Trusted keys live in `trusted-keys.json`; trusting is always
+  an explicit choice, and there is no network validation.
+- New headless CLI: `ferramari package key|sign|verify|trust|keys`, with exit
+  codes for scripting (0 trusted, 1 untrusted, 2 invalid).
+- Local Video gains **Sign** and **Verify** for package entries, with a report
+  dialog that offers to trust an unknown author. Settings gains a
+  **Package signing** section showing the key, the trust store and an export
+  button.
+- `ring` and `base64` become direct dependencies; `ring` was already in the
+  tree through `ureq`, so no new native library is introduced.
+- Tests: 140 passing.
+
 ## 1.8.0 — 2026-11-01
 
 Eco Engine completion: decoder parking and broader measurements.

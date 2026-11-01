@@ -971,3 +971,90 @@ msgstr "Источники сообщества"
 
 msgid "No catalogue plugins installed"
 msgstr "Плагины каталога не установлены"
+
+msgid "Sign"
+msgstr "Подписать"
+
+msgid "Verify"
+msgstr "Проверить"
+
+msgid "Sign package…"
+msgstr "Подписать пакет…"
+
+msgid "Verify package…"
+msgstr "Проверить пакет…"
+
+msgid "Checksum and sign this package with your key"
+msgstr "Вычислить контрольные суммы и подписать пакет вашим ключом"
+
+msgid "Check the package checksums and signature"
+msgstr "Проверить контрольные суммы и подпись пакета"
+
+msgid "Sign this package?"
+msgstr "Подписать этот пакет?"
+
+msgid "Ferramari creates a signing key on first use and stores it in your config folder."
+msgstr "При первом использовании Ferramari создаст ключ подписи и сохранит его в папке конфигурации."
+
+msgid "Package integrity"
+msgstr "Целостность пакета"
+
+msgid "All files match their recorded SHA-256"
+msgstr "Все файлы совпадают с записанными SHA-256"
+
+msgid "The package carries no checksums"
+msgstr "В пакете нет контрольных сумм"
+
+msgid "Unsigned"
+msgstr "Без подписи"
+
+msgid "Signed by"
+msgstr "Подписан"
+
+msgid "The signature is not valid"
+msgstr "Подпись недействительна"
+
+msgid "Trust this author and remember the key for future packages?"
+msgstr "Доверять этому автору и запомнить ключ для будущих пакетов?"
+
+msgid "Trusted key"
+msgstr "Ключ добавлен в доверенные"
+
+msgid "Signed"
+msgstr "Подписан"
+msgid "Package signing"
+msgstr "Подпись пакетов"
+
+msgid "My key"
+msgstr "Мой ключ"
+
+msgid "No signing key yet"
+msgstr "Ключ подписи ещё не создан"
+
+msgid "No trusted keys"
+msgstr "Нет доверенных ключей"
+
+msgid "Trusted keys"
+msgstr "Доверенные ключи"
+
+msgid "Export my public key…"
+msgstr "Экспортировать мой открытый ключ…"
+
+msgid "Share this file so others can trust your packages"
+msgstr "Передайте этот файл, чтобы другие доверяли вашим пакетам"
+
+msgid "Trust a key…"
+msgstr "Добавить ключ в доверенные…"
+
+msgid "Open a public key file shared by another creator"
+msgstr "Открыть файл открытого ключа другого автора"
+
+msgid "Save your public key"
+msgstr "Сохранить ваш открытый ключ"
+
+msgid "Choose a public key file"
+msgstr "Выберите файл открытого ключа"
+
+msgid "Could not export the key"
+msgstr "Не удалось экспортировать ключ"
+

@@ -8,7 +8,7 @@ what is still unverified.
 
 | Environment | Status | Notes |
 | --- | --- | --- |
-| GNOME 50, Wayland session, running through XWayland | **tested** 2026-11-01, 1.8.0 | Main development environment |
+| GNOME 50, Wayland session, running through XWayland | **tested** 2026-11-01, 1.9.0 | Main development environment |
 | GNOME 50, X11 session | not tested | The same X11 backend is used, but the session has not been exercised |
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |
@@ -72,6 +72,25 @@ Run from a checkout with `cargo build --release`, or from an installed build.
       same and the new file plays.
 - [ ] Switch to a missing or corrupt file; an error is shown or the old file
       keeps playing, and the app stays responsive.
+
+### Package integrity and signing
+- [ ] `ferramari package key` creates `signing-key.json` (mode 600) once and
+      reuses it on the next call.
+- [ ] `ferramari package sign` writes `checksums.json` and `signature.json`.
+- [ ] `ferramari package verify` exits 0 for a trusted package, 1 for unsigned
+      or unknown author, 2 for a tampered file or a broken signature.
+- [ ] Editing any file after signing makes verify report the SHA-256 mismatch.
+- [ ] Editing `checksums.json` makes the signature invalid.
+- [ ] Replacing the embedded `public_key` is reported as invalid, not trusted.
+- [ ] `ferramari package trust <package>` and `… trust <key.json>` both add the
+      key; `ferramari package keys` lists it.
+- [ ] A second user sees "not trusted" until they trust the key, then "trusted".
+- [ ] Export signs automatically when a key exists; unsigned export still works.
+- [ ] Local Video → Select a package video → Verify shows the report dialog;
+      an unknown author offers to trust the key.
+- [ ] Settings → Package signing shows the key id, trusted keys, and can export
+      a public key and trust a key file.
+- [ ] A package without `checksums.json` still imports and plays.
 
 ### Catalogue
 - [ ] Switch categories, search and Show more.

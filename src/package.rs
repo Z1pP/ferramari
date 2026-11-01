@@ -6,8 +6,9 @@
 //! file count and a 2 GiB size limit. Import copies the package into the
 //! user's data directory; export builds one from a local video.
 
-use std::fs;
-use std::io::Write;
+use std::collections::BTreeMap;
+use std::fs::{self, File};
+use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -16,8 +17,13 @@ const FORMAT_VERSION: u32 = 1;
 const MAX_PACKAGE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_FILES: usize = 10_000;
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
+const MAX_CHECKSUMS_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_NAME_CHARS: usize = 100;
 const MAX_AUTHOR_CHARS: usize = 120;
+/// Name of the integrity manifest inside a package. It is never hashed itself.
+pub const CHECKSUMS_FILE: &str = "checksums.json";
+/// Package signature; like the checksums it is never hashed itself.
+pub const SIGNATURE_FILE: &str = crate::signing::SIGNATURE_FILE;
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "webm", "gif", "mkv", "mov", "m4v"];
 const WEB_EXTENSIONS: &[&str] = &["html", "htm"];
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
@@ -86,6 +92,10 @@ pub struct ValidatedPackage {
     pub entry: PathBuf,
     pub preview: Option<PathBuf>,
     pub size_bytes: u64,
+    /// True when `checksums.json` covered every file in the package.
+    pub checksummed: bool,
+    /// Result of the Ed25519 signature check, if `signature.json` exists.
+    pub signature: crate::signing::SignatureStatus,
 }
 
 #[derive(Debug, Clone)]
@@ -96,6 +106,8 @@ pub struct ImportedPackage {
     pub preview: Option<PathBuf>,
     pub package_dir: PathBuf,
     pub size_bytes: u64,
+    pub checksummed: bool,
+    pub signature: crate::signing::SignatureStatus,
 }
 
 pub fn load(root: &Path) -> Result<ValidatedPackage, String> {
@@ -140,13 +152,108 @@ pub fn load(root: &Path) -> Result<ValidatedPackage, String> {
         }
     };
 
+    // Integrity is checked last: a tampered package must not be applied even
+    // when every structural rule above still passes.
+    let checksummed = verify_checksums(&root)?;
+    let signature = crate::signing::verify_package(&root)?;
+
     Ok(ValidatedPackage {
         root,
         manifest,
         entry,
         preview,
         size_bytes: total,
+        checksummed,
+        signature,
     })
+}
+
+/// SHA-256 of every regular file in the package, keyed by its relative path.
+/// `checksums.json` itself is never hashed.
+pub fn checksums(root: &Path) -> Result<BTreeMap<String, String>, String> {
+    let root =
+        fs::canonicalize(root).map_err(|err| format!("cannot open {}: {err}", root.display()))?;
+    let mut files = Vec::new();
+    let mut total = 0u64;
+    walk(&root, &root, 0, &mut files, &mut total)?;
+    let mut digests = BTreeMap::new();
+    for path in files {
+        let relative = path
+            .strip_prefix(&root)
+            .map_err(|_| "file outside the package".to_string())?
+            .to_string_lossy()
+            .into_owned();
+        // The integrity files describe the package; hashing them would make
+        // signing impossible.
+        if relative == CHECKSUMS_FILE || relative == SIGNATURE_FILE {
+            continue;
+        }
+        digests.insert(relative, file_digest(&path)?);
+    }
+    Ok(digests)
+}
+
+/// Write `checksums.json` for the package. Export calls this after the manifest
+/// exists, so the manifest itself is covered.
+pub fn write_checksums(root: &Path) -> Result<(), String> {
+    let digests = checksums(root)?;
+    let text = serde_json::to_string_pretty(&digests)
+        .map_err(|err| format!("cannot serialize checksums: {err}"))?;
+    write_text(&root.join(CHECKSUMS_FILE), &text)
+}
+
+/// Compare `checksums.json` with the files on disk. `Ok(false)` means the
+/// package carries no checksums; a mismatch or a missing file is an error.
+fn verify_checksums(root: &Path) -> Result<bool, String> {
+    let path = root.join(CHECKSUMS_FILE);
+    if !path.is_file() {
+        return Ok(false);
+    }
+    let metadata =
+        fs::metadata(&path).map_err(|err| format!("cannot stat {}: {err}", path.display()))?;
+    if metadata.len() > MAX_CHECKSUMS_BYTES {
+        return Err("checksums.json is too large".to_string());
+    }
+    let text = fs::read_to_string(&path)
+        .map_err(|err| format!("cannot read {}: {err}", path.display()))?;
+    let expected: BTreeMap<String, String> =
+        serde_json::from_str(&text).map_err(|err| format!("invalid checksums.json: {err}"))?;
+    let actual = checksums(root)?;
+    if expected.len() != actual.len() {
+        return Err(format!(
+            "checksums.json lists {} files, the package has {}",
+            expected.len(),
+            actual.len()
+        ));
+    }
+    for (name, digest) in &expected {
+        match actual.get(name) {
+            Some(found) if found == digest => {}
+            Some(_) => return Err(format!("{name} does not match its recorded SHA-256")),
+            None => return Err(format!("{name} is listed in checksums.json but missing")),
+        }
+    }
+    Ok(true)
+}
+
+fn file_digest(path: &Path) -> Result<String, String> {
+    let mut file =
+        File::open(path).map_err(|err| format!("cannot open {}: {err}", path.display()))?;
+    let mut checksum = glib::Checksum::new(glib::ChecksumType::Sha256)
+        .ok_or_else(|| "GLib has no SHA-256 support".to_string())?;
+    let mut buffer = vec![0u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|err| format!("cannot read {}: {err}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        checksum.update(&buffer[..read]);
+    }
+    checksum
+        .string()
+        .ok_or_else(|| format!("could not hash {}", path.display()))
 }
 
 fn validate_manifest(root: &Path, manifest: &Manifest, total: u64) -> Result<(), String> {
@@ -331,6 +438,8 @@ pub fn import(source: &Path, destination: &Path) -> Result<ImportedPackage, Stri
             preview: installed.preview,
             package_dir: target,
             size_bytes: installed.size_bytes,
+            checksummed: installed.checksummed,
+            signature: installed.signature,
         }),
         Err(err) => {
             let _ = fs::remove_dir_all(&target);
@@ -378,6 +487,17 @@ fn read_manifest(root: &Path) -> Option<Manifest> {
         return None;
     }
     serde_json::from_str(&fs::read_to_string(path).ok()?).ok()
+}
+
+/// The package directory a video entry came from, when it came from one. Used
+/// by the library UI to offer authorship actions on installed packages.
+pub fn package_dir_for_entry(entry: &Path) -> Option<PathBuf> {
+    let entry = fs::canonicalize(entry).ok()?;
+    let dir = entry.parent()?.to_path_buf();
+    if !dir.join("manifest.json").is_file() {
+        return None;
+    }
+    Some(dir)
 }
 
 /// Build a video package from a local file. `parent` is the directory that
@@ -451,6 +571,20 @@ pub fn export_video(video: &Path, parent: &Path) -> Result<PathBuf, String> {
         let _ = fs::remove_dir_all(&target);
         return Err(err);
     }
+    if let Err(err) = write_checksums(&target) {
+        let _ = fs::remove_dir_all(&target);
+        return Err(err);
+    }
+    // Sign with the user's key when they have one; an unsigned export is still
+    // a valid package, just without authorship.
+    match crate::signing::sign_if_available(&target) {
+        Ok(true) => log::info!("[Package] Signed {}", target.display()),
+        Ok(false) => log::debug!("[Package] No signing key; exported unsigned"),
+        Err(err) => {
+            let _ = fs::remove_dir_all(&target);
+            return Err(err);
+        }
+    }
     if let Err(err) = load(&target) {
         let _ = fs::remove_dir_all(&target);
         return Err(format!("exported package failed validation: {err}"));
@@ -459,6 +593,10 @@ pub fn export_video(video: &Path, parent: &Path) -> Result<PathBuf, String> {
 }
 
 fn write_manifest(path: &Path, text: &str) -> Result<(), String> {
+    write_text(path, text)
+}
+
+fn write_text(path: &Path, text: &str) -> Result<(), String> {
     let mut file =
         fs::File::create(path).map_err(|err| format!("cannot write {}: {err}", path.display()))?;
     file.write_all(format!("{text}\n").as_bytes())
@@ -666,8 +804,83 @@ mod tests {
         assert_eq!(loaded.manifest.name, "Sample Clip");
         assert_eq!(loaded.manifest.kind, PackageType::Video);
         assert!(loaded.entry.ends_with("wallpaper.mp4"));
+        assert!(loaded.checksummed);
+        assert!(package.join(CHECKSUMS_FILE).is_file());
         let _ = fs::remove_dir_all(source);
         let _ = fs::remove_dir_all(parent);
+    }
+
+    #[test]
+    fn a_tampered_file_is_rejected() {
+        let source = temp_dir("tamper-src");
+        let video = source.join("Clip.mp4");
+        fs::write(&video, b"original bytes").unwrap();
+        let parent = temp_dir("tamper-dst");
+        let package = export_video(&video, &parent).unwrap();
+        fs::write(package.join("wallpaper.mp4"), b"replaced bytes").unwrap();
+        let error = load(&package).unwrap_err();
+        assert!(error.contains("SHA-256"), "unexpected error: {error}");
+        let _ = fs::remove_dir_all(source);
+        let _ = fs::remove_dir_all(parent);
+    }
+
+    #[test]
+    fn an_unlisted_file_is_rejected_and_import_keeps_checksums() {
+        let source = temp_dir("extra-src");
+        write_package(
+            &source,
+            r#"{"name":"My Wallpaper","author":"A","version":"1.0","type":"video"}"#,
+            "wallpaper.mp4",
+            b"video",
+        );
+        write_checksums(&source).unwrap();
+        fs::write(source.join("surprise.txt"), b"payload").unwrap();
+        assert!(load(&source).unwrap_err().contains("checksums.json"));
+
+        let _ = fs::remove_file(source.join("surprise.txt"));
+        let destination = temp_dir("extra-dst");
+        let imported = import(&source, &destination).unwrap();
+        assert!(imported.checksummed);
+        assert!(imported.package_dir.join(CHECKSUMS_FILE).is_file());
+        let _ = fs::remove_dir_all(source);
+        let _ = fs::remove_dir_all(destination);
+    }
+
+    #[test]
+    fn a_package_without_checksums_still_loads() {
+        let dir = temp_dir("unsigned");
+        write_package(
+            &dir,
+            r#"{"name":"Old","author":"A","version":"1.0","type":"video"}"#,
+            "wallpaper.mp4",
+            b"x",
+        );
+        let package = load(&dir).unwrap();
+        assert!(!package.checksummed);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_package_entry_reports_its_package_dir_and_a_plain_video_does_not() {
+        let dir = temp_dir("entry");
+        write_package(
+            &dir,
+            r#"{"name":"My Wallpaper","author":"A","version":"1.0","type":"video"}"#,
+            "wallpaper.mp4",
+            b"video",
+        );
+        let entry = dir.join("wallpaper.mp4");
+        let package = package_dir_for_entry(&entry).unwrap();
+        assert!(package.join("manifest.json").is_file());
+
+        let plain = temp_dir("plain");
+        let video = plain.join("clip.mp4");
+        fs::write(&video, b"video").unwrap();
+        assert!(package_dir_for_entry(&video).is_none());
+        assert!(package_dir_for_entry(Path::new("/does/not/exist.mp4")).is_none());
+
+        let _ = fs::remove_dir_all(dir);
+        let _ = fs::remove_dir_all(plain);
     }
 
     #[test]

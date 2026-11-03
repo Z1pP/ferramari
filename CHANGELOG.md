@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.9.3 — 2026-11-03
+
+Streaming no longer re-runs yt-dlp on every reload.
+
+- A resolved stream is cached per page URL and screen height for 15 minutes.
+  `Reload` and `Apply` adopt it on the GTK thread, so the wallpaper comes back
+  in tens of milliseconds instead of 2.6 s, and the desktop is not blanked
+  while yt-dlp works.
+- A playback error drops the cached entry and the resolved stream, so the next
+  `Apply` or `Reload` asks the site for a fresh link instead of replaying a
+  dead one.
+- `scripts/benchmark.py --mode stream --url … --reloads N` reports reload
+  latency and the number of yt-dlp runs, so the numbers below are reproducible.
+
+Measured on one 1080p YouTube URL: reload 2.6 s → under 0.3 s (usually 30–50 ms
+after the window rebuild), with one yt-dlp run per URL per 15 minutes instead
+of one per reload.
+
 ## 1.9.2 — 2026-11-02
 
 Layout regression from 1.9.1: content was clipped at the right edge.

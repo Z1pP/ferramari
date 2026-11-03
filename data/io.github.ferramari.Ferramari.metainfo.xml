@@ -16,6 +16,17 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="1.9.3" date="2026-11-03" type="stable">
+      <description>
+        <p>Streaming reloads are nearly instant.</p>
+        <ul>
+          <li>Resolved streams are reused for 15 minutes, so Reload skips yt-dlp</li>
+          <li>The desktop is no longer blanked while a reload resolves</li>
+          <li>A playback error forces a fresh resolution</li>
+          <li>The benchmark can measure stream reload latency</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.9.2" date="2026-11-02" type="stable">
       <description>
         <p>Fixes content clipped at the right edge in Russian.</p>

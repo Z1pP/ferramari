@@ -253,19 +253,36 @@ blocks the UI for the full timeout.
 
 ### 7. Streaming re-resolves on every reload; mpv memory is untuned
 
-`ytdlp::resolve` starts `yt-dlp -J` (~1.5–2.4 s, 592 KiB JSON) on every
+`ytdlp::resolve` starts `yt-dlp -J` (~1.5–2.7 s, 592 KiB JSON) on every
 stream start and every `Reload` in stream mode. mpv PSS is 159 MiB for one
 1080p video (gpu-next + libplacebo + decoders).
 
 **Paths**
 
-1. Cache `StreamInfo` per URL for a short TTL (e.g. 10–30 min); invalidate on
-   playback error. Restart/Reload then skips yt-dlp.
+1. ~~Cache `StreamInfo` per URL for a short TTL (e.g. 10–30 min); invalidate
+   on playback error.~~ Done in 1.9.3: an in-process cache keyed by
+   `(page URL, screen height)` with a 15 min TTL. `Reload` adopts the entry on
+   the GTK thread, so no worker runs and the desktop is not blanked while
+   yt-dlp works. A playback error drops the entry (and the resolved stream),
+   so the next Apply or Reload really re-resolves.
 2. Expose a low-power profile: 30 fps cap, `--demuxer-max-bytes` /
    `--cache=no` for local files, hardware-decoder selection. Measure PSS/CPU
    per profile before making it the default.
 3. Add `hwdec-current` to the planned `ferramari doctor` output; software
    decode at 4K is the real CPU cliff.
+
+**Measured** (`scripts/benchmark.py --mode stream --url <page> --reloads 3`,
+one YouTube URL, 1080p, isolated instance, three reloads each):
+
+| Build | Reload → resolved | Reload → playing | `yt-dlp` runs |
+| --- | --- | --- | --- |
+| 1.9.2 | 2608 / 2710 / 2608 ms | 2614 / 2714 / 2626 ms | 4 (1 cold + 3) |
+| 1.9.3 | 186 / 27 / 27 ms | 193 / 33 / 33 ms | 1 (cold only) |
+
+Cold resolve was 2.5–3.1 s in the same runs. The first cached reload also
+rebuilds the player window; later ones reuse the entry in well under 50 ms.
+The cache is per process: a restart still resolves once, a one-off cost at
+login.
 
 ### 8. WebKit is a hard dependency
 
@@ -292,7 +309,7 @@ library at startup.
 | Done | Event-driven command loop | 1.1: 26/s → 1.2/s idle wakeups; no 40 ms command latency | — |
 | Done | Conditional DING toggle | 1.1: skipped when there is no wallpaper window | — |
 | Done | Reuse mpv for video→video | 1.1: `loadfile` keeps the PID; ~0.2 ms app time instead of ~120 ms | — |
-| P2 | Stream resolution cache | 1.5–2.4 s saved per reload | S |
+| Done | Stream resolution cache | 1.9.3: reload 2.6 s → 27–186 ms; one yt-dlp run per URL per 15 min | — |
 | P2 | mpv low-power/memory profile | lower CPU/GPU on 4K/60 and idle | M |
 | P3 | X11 event watcher | 3.3 wakeups/s on X11 sessions | M |
 | P3 | Optional WebKit feature | lighter builds/packaging | S–M |

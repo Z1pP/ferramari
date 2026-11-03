@@ -7,6 +7,10 @@ mpv and measures recovery, then quits. It does not touch the user's config,
 cache or D-Bus name. Use --label to record the source resolution; a 4K run is
 just a video file with 3840x2160 frames.
 
+Stream mode also reports how long `Reload` takes, which is where a cached
+resolution saves the most: the app logs the resolved stream, and the script
+times the gap between the reload request and that line.
+
 Requires: Python 3, gdbus, dbus-daemon, a running X11/XWayland display, mpv,
 and WebKitGTK for web mode.
 """
@@ -79,6 +83,46 @@ def call(address: str, method: str, *args: str) -> subprocess.CompletedProcess[s
         method,
         *args,
     )
+
+
+def is_playing(address: str) -> bool:
+    result = call(
+        address, "org.freedesktop.DBus.Properties.Get", INTERFACE, "is_playing"
+    )
+    return result.returncode == 0 and "(<true>,)" in result.stdout
+
+
+class LogTail:
+    """Reads complete new lines from the measured instance's log file."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        self.offset = 0
+        self.pending = ""
+
+    def read(self) -> list[str]:
+        try:
+            with self.path.open(encoding="utf-8", errors="replace") as handle:
+                handle.seek(self.offset)
+                chunk = handle.read()
+                self.offset = handle.tell()
+        except FileNotFoundError:
+            return []
+        lines = (self.pending + chunk).split("\n")
+        self.pending = lines.pop()
+        return lines
+
+    def wait_stream(self, deadline: float) -> str | None:
+        """A finished resolution, cached or fresh, but not the 'Resolving'
+        line printed before the worker starts."""
+        while time.time() < deadline:
+            for line in self.read():
+                if "[Stream] " in line and (
+                    " from " in line or "Reusing the cached" in line
+                ):
+                    return line
+            time.sleep(0.02)
+        return None
 
 
 def read_proc(pid: int) -> tuple[int, int, int, str, int] | None:
@@ -156,7 +200,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--mode",
-        choices=["video", "web"],
+        choices=["video", "web", "stream"],
         default="video",
         help="wallpaper kind to measure (default: video)",
     )
@@ -164,6 +208,16 @@ def main() -> int:
     parser.add_argument(
         "--web",
         help="local HTML file or http(s) URL to show in web mode",
+    )
+    parser.add_argument(
+        "--url",
+        help="page URL to resolve in stream mode (YouTube, Vimeo, ...)",
+    )
+    parser.add_argument(
+        "--reloads",
+        type=int,
+        default=3,
+        help="how many Reload latencies to measure in stream mode (default: 3)",
     )
     parser.add_argument(
         "--label",
@@ -207,6 +261,12 @@ def main() -> int:
             return 2
         method = f"{INTERFACE}.video"
         method_args = (str(target), "all")
+    elif args.mode == "stream":
+        if not args.url:
+            print("--url is required in stream mode", file=sys.stderr)
+            return 2
+        method = f"{INTERFACE}.stream"
+        method_args = (args.url,)
     else:
         if not args.web:
             print("--web is required in web mode", file=sys.stderr)
@@ -261,12 +321,16 @@ def main() -> int:
         }
     )
     started = time.time()
-    app_log = open(args.app_log, "w", encoding="utf-8") if args.app_log else None
+    # Keep a log even when the caller did not ask for one: stream mode reads
+    # the resolved-stream marker from it. The file lives in the throwaway root
+    # and disappears with it.
+    log_path = Path(args.app_log) if args.app_log else root / "app.log"
+    app_log = open(log_path, "w", encoding="utf-8")
     app = subprocess.Popen(
         [str(binary), "-b", "-d"],
         env=env,
         stdout=subprocess.DEVNULL,
-        stderr=app_log or subprocess.DEVNULL,
+        stderr=app_log,
         start_new_session=True,
     )
     rows = []
@@ -279,10 +343,19 @@ def main() -> int:
         if result.returncode != 0:
             print(f"could not apply wallpaper: {result.stderr}", file=sys.stderr)
             return 4
-        # Local pages are rebuilt synchronously; remote pages first run their
-        # URL check on a worker. Three seconds covers both without skewing the
-        # steady-state samples that follow.
-        time.sleep(3.0)
+        tail = LogTail(log_path)
+        if args.mode == "stream":
+            if tail.wait_stream(time.time() + 90) is None:
+                print("stream was not resolved", file=sys.stderr)
+                return 5
+            deadline = time.time() + 60
+            while not is_playing(address) and time.time() < deadline:
+                time.sleep(0.1)
+        else:
+            # Local pages are rebuilt synchronously; remote pages first run
+            # their URL check on a worker. Three seconds covers both without
+            # skewing the steady-state samples that follow.
+            time.sleep(3.0)
 
         previous = process_tree(app.pid)
         previous_at = time.time()
@@ -316,6 +389,23 @@ def main() -> int:
                     recovered_ms = (now - killed_at) * 1000
             previous, previous_at = tree, now
 
+        reloads: list[tuple[float, float]] = []
+        if args.mode == "stream":
+            for _ in range(max(0, args.reloads)):
+                moment = time.time()
+                if call(address, f"{INTERFACE}.reload").returncode != 0:
+                    break
+                if tail.wait_stream(time.time() + 60) is None:
+                    print("reload did not resolve", file=sys.stderr)
+                    break
+                resolved_ms = (time.time() - moment) * 1000
+                deadline = time.time() + 60
+                while not is_playing(address) and time.time() < deadline:
+                    time.sleep(0.02)
+                reloads.append((resolved_ms, (time.time() - moment) * 1000))
+                # Let the player settle before the next measurement.
+                time.sleep(1.0)
+
         print(f"mode={args.mode}")
         print(f"profile={args.profile}")
         if args.label:
@@ -323,6 +413,19 @@ def main() -> int:
         print(f"startup_ms={startup_ms:.0f}")
         if recovered_ms is not None:
             print(f"mpv_recovery_ms={recovered_ms:.0f}")
+        if reloads:
+            print(
+                "reload_resolved_ms="
+                + ",".join(f"{resolved:.0f}" for resolved, _ in reloads)
+            )
+            print(
+                "reload_playing_ms="
+                + ",".join(f"{playing:.0f}" for _, playing in reloads)
+            )
+            runs = log_path.read_text(encoding="utf-8", errors="replace").count(
+                "[yt-dlp] Resolving"
+            )
+            print(f"ytdlp_runs={runs}")
         print("sample,cpu_percent,rss_mib,threads,processes,gpu_percent,mpv")
         for index, row in enumerate(rows, 1):
             print(
@@ -359,8 +462,7 @@ def main() -> int:
             app.wait(timeout=5)
         except subprocess.TimeoutExpired:
             os.killpg(app.pid, signal.SIGKILL)
-        if app_log is not None:
-            app_log.close()
+        app_log.close()
         try:
             os.kill(bus_pid, signal.SIGTERM)
         except ProcessLookupError:

@@ -5,9 +5,11 @@
 //! is plain Rust so it can be unit-tested without network access.
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::io::Read;
 use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -15,6 +17,17 @@ use serde_json::Value;
 /// Upper bound for `yt-dlp -J`. Without it a hung extractor leaves the UI
 /// spinner running forever, because the resolve result never comes back.
 const RESOLVE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// How long a resolved stream is reused. `Reload` and every re-apply would
+/// otherwise start `yt-dlp -J` again, which costs 1.5–2.7 s and blanks the
+/// wallpaper in the meantime. Signed URLs stay valid for hours, but a short
+/// window keeps a re-signed or revoked link from being replayed for long; a
+/// playback error drops the entry immediately.
+const RESOLUTION_TTL: Duration = Duration::from_secs(15 * 60);
+
+/// A session only ever watches a handful of streams; the cap stops a long
+/// run that keeps trying new links from growing the map forever.
+const RESOLUTION_CACHE_LIMIT: usize = 32;
 
 #[derive(Debug, Clone)]
 pub struct Format {
@@ -147,8 +160,82 @@ fn u32_field(value: &Value, key: &str) -> Option<u32> {
         .or_else(|| value.as_str().and_then(|text| text.trim().parse().ok()))
 }
 
+/// Resolved streams keyed by the page URL and the screen height they were
+/// chosen for. The height is part of the key because format selection depends
+/// on it: moving the wallpaper to a taller monitor must pick a sharper stream,
+/// not replay the previous choice.
+#[derive(Debug, Default)]
+struct ResolutionCache {
+    entries: Mutex<HashMap<(String, u32), (StreamInfo, Instant)>>,
+}
+
+impl ResolutionCache {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<(String, u32), (StreamInfo, Instant)>> {
+        // A panic elsewhere while the map was borrowed must not disable
+        // streaming for the rest of the session.
+        self.entries.lock().unwrap_or_else(|err| err.into_inner())
+    }
+
+    fn get(&self, url: &str, screen_height: u32, now: Instant) -> Option<StreamInfo> {
+        let mut entries = self.lock();
+        let key = (url.to_string(), screen_height);
+        let (info, stored) = entries.get(&key)?;
+        if now.saturating_duration_since(*stored) < RESOLUTION_TTL {
+            return Some(info.clone());
+        }
+        entries.remove(&key);
+        None
+    }
+
+    fn insert(&self, url: &str, screen_height: u32, info: StreamInfo, now: Instant) {
+        let mut entries = self.lock();
+        entries.retain(|_, (_, stored)| now.saturating_duration_since(*stored) < RESOLUTION_TTL);
+        if entries.len() >= RESOLUTION_CACHE_LIMIT {
+            if let Some(oldest) = entries
+                .iter()
+                .min_by_key(|(_, (_, stored))| *stored)
+                .map(|(key, _)| key.clone())
+            {
+                entries.remove(&oldest);
+            }
+        }
+        entries.insert((url.to_string(), screen_height), (info, now));
+    }
+
+    /// Drop every height variant of one page URL. Called when playback fails,
+    /// so the next attempt asks the site for a fresh link instead of retrying
+    /// the same dead one until the TTL expires.
+    fn invalidate(&self, url: &str) {
+        self.lock().retain(|(cached, _), _| cached != url);
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.lock().len()
+    }
+}
+
+fn resolution_cache() -> &'static ResolutionCache {
+    static CACHE: OnceLock<ResolutionCache> = OnceLock::new();
+    CACHE.get_or_init(ResolutionCache::default)
+}
+
+/// Look up a stream resolved earlier in this process.
+pub fn cached(url: &str, screen_height: u32) -> Option<StreamInfo> {
+    resolution_cache().get(url, screen_height, Instant::now())
+}
+
+/// Forget a page URL after its stream proved unplayable.
+pub fn invalidate(url: &str) {
+    resolution_cache().invalidate(url);
+}
+
 /// Resolve a streaming URL to a playable video (+ separate audio) stream.
 pub fn resolve(url: &str, screen_height: u32) -> Result<StreamInfo, String> {
+    if let Some(info) = cached(url, screen_height) {
+        log::info!("[yt-dlp] Reusing cached stream for {url}");
+        return Ok(info);
+    }
     log::info!("[yt-dlp] Resolving {url}");
     let mut command = Command::new(crate::paths::tool("yt-dlp"));
     // `--` keeps a URL supplied over D-Bus from being parsed as an option.
@@ -178,12 +265,14 @@ pub fn resolve(url: &str, screen_height: u32) -> Result<StreamInfo, String> {
     } else {
         None
     };
-    Ok(StreamInfo {
+    let info = StreamInfo {
         video_url: video.url.clone(),
         audio_url: audio,
         width: video.width.unwrap_or(1920),
         height: video.height.unwrap_or(1080),
-    })
+    };
+    resolution_cache().insert(url, screen_height, info.clone(), Instant::now());
+    Ok(info)
 }
 
 /// Run a child process with a deadline, capturing stdout and stderr.
@@ -365,5 +454,86 @@ mod tests {
             run_with_timeout(command, Duration::from_secs(5), "test command").unwrap();
         assert!(status.success());
         assert_eq!(stdout.len(), 200_000);
+    }
+
+    fn stream(url: &str) -> StreamInfo {
+        StreamInfo {
+            video_url: url.to_string(),
+            audio_url: None,
+            width: 1920,
+            height: 1080,
+        }
+    }
+
+    #[test]
+    fn reuses_a_resolution_until_the_ttl_expires() {
+        let cache = ResolutionCache::default();
+        let now = Instant::now();
+        cache.insert("https://pages/a", 1080, stream("https://cdn/a"), now);
+
+        let hit = cache
+            .get("https://pages/a", 1080, now + Duration::from_secs(60))
+            .expect("entry is fresh");
+        assert_eq!(hit.video_url, "https://cdn/a");
+
+        assert!(cache
+            .get("https://pages/a", 1080, now + RESOLUTION_TTL)
+            .is_none());
+        // The expired entry is dropped rather than left to grow the map.
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn a_different_screen_height_resolves_separately() {
+        let cache = ResolutionCache::default();
+        let now = Instant::now();
+        cache.insert("https://pages/a", 1080, stream("https://cdn/1080"), now);
+        cache.insert("https://pages/a", 2160, stream("https://cdn/2160"), now);
+
+        assert_eq!(
+            cache.get("https://pages/a", 2160, now).unwrap().video_url,
+            "https://cdn/2160"
+        );
+        assert_eq!(
+            cache.get("https://pages/a", 1080, now).unwrap().video_url,
+            "https://cdn/1080"
+        );
+        assert!(cache.get("https://pages/a", 1440, now).is_none());
+    }
+
+    #[test]
+    fn invalidation_drops_every_height_but_keeps_other_pages() {
+        let cache = ResolutionCache::default();
+        let now = Instant::now();
+        cache.insert("https://pages/a", 1080, stream("https://cdn/a"), now);
+        cache.insert("https://pages/a", 2160, stream("https://cdn/a4k"), now);
+        cache.insert("https://pages/b", 1080, stream("https://cdn/b"), now);
+
+        cache.invalidate("https://pages/a");
+
+        assert!(cache.get("https://pages/a", 1080, now).is_none());
+        assert!(cache.get("https://pages/a", 2160, now).is_none());
+        assert!(cache.get("https://pages/b", 1080, now).is_some());
+    }
+
+    #[test]
+    fn the_cache_is_bounded_and_drops_the_oldest_entry() {
+        let cache = ResolutionCache::default();
+        let now = Instant::now();
+        for index in 0..RESOLUTION_CACHE_LIMIT + 4 {
+            let url = format!("https://pages/{index}");
+            let stored = now + Duration::from_millis(index as u64);
+            cache.insert(&url, 1080, stream("https://cdn/x"), stored);
+        }
+        assert_eq!(cache.len(), RESOLUTION_CACHE_LIMIT);
+        // The earliest insert is the one evicted, not an arbitrary entry.
+        assert!(cache.get("https://pages/0", 1080, now).is_none());
+        assert!(cache
+            .get(
+                &format!("https://pages/{}", RESOLUTION_CACHE_LIMIT + 3),
+                1080,
+                now
+            )
+            .is_some());
     }
 }

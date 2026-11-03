@@ -494,11 +494,7 @@ impl App {
                 }
                 match result {
                     Ok(info) => {
-                        log::info!("[Stream] {}x{} from {url}", info.width, info.height);
-                        self.stream = Some(info);
-                        self.config.mode = Mode::Stream;
-                        self.config.data_source.insert("Default".to_string(), url);
-                        self.save_config();
+                        self.adopt_stream(url, info);
                         self.rebuild_windows();
                     }
                     Err(err) => {
@@ -1012,22 +1008,51 @@ impl App {
         }
     }
 
+    /// Highest monitor height, which decides the stream format to ask for.
+    fn screen_height(&self) -> u32 {
+        self.monitors
+            .iter()
+            .map(|monitor| monitor.height.max(0) as u32)
+            .max()
+            .unwrap_or(1080)
+    }
+
+    /// Make a resolved stream current. The config is only written when the
+    /// source actually changed: `Reload` re-adopts the same URL, and rewriting
+    /// the file (plus its backup) on every refresh is pointless.
+    fn adopt_stream(&mut self, url: String, info: ytdlp::StreamInfo) {
+        log::info!("[Stream] {}x{} from {url}", info.width, info.height);
+        let changed =
+            self.config.mode != Mode::Stream || self.config.default_source() != url.as_str();
+        self.stream = Some(info);
+        self.config.mode = Mode::Stream;
+        self.config.data_source.insert("Default".to_string(), url);
+        if changed {
+            self.save_config();
+        }
+    }
+
     /// Resolve a stream URL in the background. The mode only changes once a
     /// playable URL is known, so a bad link leaves the current wallpaper alone.
     fn resolve_stream(&mut self, url: String) {
         if self.stream_resolving {
             return;
         }
+        let screen_height = self.screen_height();
+        // A stream resolved in the last few minutes is still playable. Taking
+        // it synchronously skips `yt-dlp -J` (1.5–2.7 s) and, more visibly,
+        // the blank desktop a `Reload` would otherwise show while the worker
+        // runs.
+        if let Some(info) = ytdlp::cached(&url, screen_height) {
+            log::info!("[Stream] Reusing the cached resolution for {url}");
+            self.adopt_stream(url, info);
+            self.rebuild_windows();
+            return;
+        }
         self.stream_resolving = true;
         if let Some(control) = &self.control {
             control.set_streaming(true);
         }
-        let screen_height = self
-            .monitors
-            .iter()
-            .map(|monitor| monitor.height.max(0) as u32)
-            .max()
-            .unwrap_or(1080);
         let tx = self.tx.clone();
         log::info!("[Stream] Resolving: {url}");
         std::thread::spawn(move || {
@@ -1112,7 +1137,15 @@ impl App {
         if self.config.mode == Mode::Stream && self.stream.is_none() {
             let url = self.config.default_source().to_string();
             if !url.is_empty() {
-                self.resolve_stream(url);
+                // Adopt a recent resolution in place instead of entering
+                // `resolve_stream`, which rebuilds the windows itself and
+                // would make this call recurse.
+                if let Some(info) = ytdlp::cached(&url, self.screen_height()) {
+                    log::info!("[Stream] Reusing the cached resolution for {url}");
+                    self.adopt_stream(url, info);
+                } else {
+                    self.resolve_stream(url);
+                }
             }
         }
         self.sync_windows();
@@ -1299,6 +1332,16 @@ impl App {
             WindowKind::Stream => (ErrorKind::Network, "Could not stream".to_string()),
             WindowKind::Web => (ErrorKind::Network, "Could not open webpage".to_string()),
         };
+        if key.kind == WindowKind::Stream {
+            // The signed URL came from yt-dlp and may have expired or been
+            // revoked. Forget it so the next Apply or Reload asks the site
+            // again instead of replaying the dead link until the TTL runs out.
+            let page = self.config.default_source().to_string();
+            if !page.is_empty() {
+                ytdlp::invalidate(&page);
+                log::info!("[Stream] Dropped the cached resolution after a playback error");
+            }
+        }
         self.notify_user_error(UserError::with_detail(kind, summary, err.to_string()));
     }
 
@@ -1402,6 +1445,12 @@ impl App {
                             &key,
                             anyhow::anyhow!("playback stopped repeatedly"),
                         );
+                        // The cached link is invalidated by `notify_window_error`;
+                        // forget the resolved stream too, so the next rebuild
+                        // resolves instead of recreating a window from it.
+                        if key.kind == WindowKind::Stream {
+                            self.stream = None;
+                        }
                         // Stop the automatic loop. A later user action (Apply,
                         // Reload, monitor change) starts with a clean policy.
                         self.policies.remove(&key);

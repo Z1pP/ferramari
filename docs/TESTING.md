@@ -67,6 +67,12 @@ Run from a checkout with `cargo build --release`, or from an installed build.
 - [ ] Open a web page; it renders and the right-click menu works.
 - [ ] Open an invalid URL; one retry, then one clear error.
 - [ ] Resolve a streaming URL with `yt-dlp`; play/pause and mute work.
+- [ ] Press Reload in stream mode twice within 15 minutes: the wallpaper comes
+      back in well under a second, `[Stream] Reusing the cached resolution`
+      appears in the log, and no new `yt-dlp` process starts.
+- [ ] Kill the player until the restart policy gives up, then press Reload:
+      `yt-dlp` runs again (`[yt-dlp] Resolving`) instead of replaying the old
+      link.
 
 ### Performance and idle
 - [ ] A cold local-video grid shows cards immediately; only two thumbnail

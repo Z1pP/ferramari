@@ -253,7 +253,7 @@ time:
 | --- | --- |
 | `Active` | normal |
 | `Idle` | Balanced caps the frame rate at 30 fps; Eco pauses after the configured idle delay (5 min default) |
-| `Occluded` | paused when **Pause when maximized window** is on |
+| `Occluded` | paused when **Pause when maximized window** is on (X11 sessions) |
 | `Suspended` | paused on lock, suspend, battery rule or explicit pause |
 
 The profiles are **Quality** (smoothness first), **Balanced** (pause hidden
@@ -381,6 +381,10 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 - KDE Plasma and GNOME X11 are not part of the tested matrix yet; the
   XWayland desktop window is the only supported path there. `--doctor` reports
   what the current session actually exposes instead of guessing.
+- Occlusion pause is X11-only. On Wayland the X11 watcher is disabled, even
+  though XWayland windows do appear in `_NET_CLIENT_LIST`; Wayland-native
+  windows are not exposed through EWMH at all, so a native fullscreen app
+  could not be detected either way.
 - The Flatpak bundle is self-hosted and uses host media tools. Tray and portal
   autostart inside the sandbox are not verified.
 - Two- and three-monitor performance scenarios are not measured on the current

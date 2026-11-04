@@ -34,11 +34,24 @@ after ~40 ms.
 
 ## Power profiles
 
-The 4K60 run is the useful comparison: the power-saving profile reduced the
-process-tree CPU from 9.0% to 5.1% by dropping late frames, using one decoder
-thread, bilinear scaling and a 30 fps filter. Performance mode uses
-display-resample interpolation and measured 6.1% in this sample; treat the
-difference from Balanced as workload-dependent rather than a guarantee.
+Measured 2026-11-03 on 1.9.3, whole process tree, isolated instance, 5 samples
+after a 3 s warm-up. The 4K60 clip is the useful comparison: the power-saving
+profile reduces CPU by about a third through late-frame dropping, a single
+decoder thread, bilinear scaling and the 30 fps filter.
+
+| Clip | Performance | Balanced | Power |
+| --- | --- | --- | --- |
+| 4K60, CPU | 9.7% | 7.1% | 6.1% |
+| 4K60, peak RSS | 327 MiB | 328 MiB | 328 MiB |
+| 1080p30, CPU | 5.8% | 4.0% | 3.8% |
+| 1080p30, peak RSS | 273 MiB | 273 MiB | 271 MiB |
+
+RSS barely moves between profiles because mpv's GPU and decoder buffers
+dominate, and the same is true of the demuxer cache: mpv's budget is 150 MiB
+forward, but `--demuxer-readahead-secs` defaults to 1 s, so a looping wallpaper
+never fills it. Adding `--demuxer-max-bytes=16MiB` for local files changed the
+tree RSS by less than 1 MiB in the same runs, so the flags were measured and
+not kept. The profile is opt-in; Balanced remains the default.
 
 ## 1.1 optimisation results (2026-10-31)
 
@@ -251,11 +264,12 @@ blocks the UI for the full timeout.
    loop for 3 s on a broken binary.
 3. For playlists/rotation this is required anyway.
 
-### 7. Streaming re-resolves on every reload; mpv memory is untuned
+### 7. Streaming re-resolves on every reload; mpv memory is buffer-bound
 
 `ytdlp::resolve` starts `yt-dlp -J` (~1.5–2.7 s, 592 KiB JSON) on every
 stream start and every `Reload` in stream mode. mpv PSS is 159 MiB for one
-1080p video (gpu-next + libplacebo + decoders).
+1080p video (gpu-next + libplacebo + decoders); the whole tree with a 4K60
+clip is ~328 MiB RSS, dominated by GPU/decoder buffers rather than cache.
 
 **Paths**
 
@@ -265,9 +279,11 @@ stream start and every `Reload` in stream mode. mpv PSS is 159 MiB for one
    the GTK thread, so no worker runs and the desktop is not blanked while
    yt-dlp works. A playback error drops the entry (and the resolved stream),
    so the next Apply or Reload really re-resolves.
-2. Expose a low-power profile: 30 fps cap, `--demuxer-max-bytes` /
-   `--cache=no` for local files, hardware-decoder selection. Measure PSS/CPU
-   per profile before making it the default.
+2. ~~Expose a low-power profile: 30 fps cap, `--demuxer-max-bytes` /
+   `--cache=no` for local files, hardware-decoder selection.~~ The `power`
+   profile already exists (30 fps, one decoder thread, bilinear, late-frame
+   drop) and cuts CPU by a third; `--demuxer-max-bytes` was measured and does
+   not help. See **Power profiles** above.
 3. Add `hwdec-current` to the planned `ferramari doctor` output; software
    decode at 4K is the real CPU cliff.
 
@@ -310,7 +326,7 @@ library at startup.
 | Done | Conditional DING toggle | 1.1: skipped when there is no wallpaper window | — |
 | Done | Reuse mpv for video→video | 1.1: `loadfile` keeps the PID; ~0.2 ms app time instead of ~120 ms | — |
 | Done | Stream resolution cache | 1.9.3: reload 2.6 s → 27–186 ms; one yt-dlp run per URL per 15 min | — |
-| P2 | mpv low-power/memory profile | lower CPU/GPU on 4K/60 and idle | M |
+| Done | mpv low-power profile | 1.9.3: 4K60 CPU 9.7% → 6.1% and 1080p 5.8% → 3.8%; demuxer-cache flags measured, no gain, not added | — |
 | P3 | X11 event watcher | 3.3 wakeups/s on X11 sessions | M |
 | P3 | Optional WebKit feature | lighter builds/packaging | S–M |
 
@@ -322,6 +338,9 @@ library at startup.
 - **Blur itself**: ~0.06 s at 1080p; seek/decode is the cost.
 - **Language/runtime**: both video paths are GPU/C; Rust is not the limit.
 - **WebKit RSS in video mode**: ~7 MiB PSS; only relevant for build deps.
+- **Demuxer cache**: mpv allows 150 MiB forward, but reads only 1 s ahead, so
+  a looping local wallpaper never fills it; 16 MiB limits changed RSS by
+  <1 MiB. Do not add those flags.
 - **Single-monitor baseline**: two/three-monitor scenarios are still unmeasured;
   do not extrapolate this table to them.
 

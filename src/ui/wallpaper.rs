@@ -63,9 +63,32 @@ pub struct WindowKey {
     pub source: String,
 }
 
+/// Liveness of a WebView's web process. WebKit exposes it only as a signal,
+/// so the handler flips a shared latch that the supervisor polls on its tick.
+#[derive(Clone, Default)]
+struct WebLiveness(Rc<Cell<bool>>);
+
+impl WebLiveness {
+    fn mark_terminated(&self) {
+        self.0.set(true);
+    }
+
+    fn alive(&self) -> bool {
+        !self.0.get()
+    }
+}
+
 enum Content {
-    Video { mpv: Rc<RefCell<Mpv>> },
-    Web { webview: webkit2gtk::WebView },
+    Video {
+        mpv: Rc<RefCell<Mpv>>,
+    },
+    Web {
+        webview: webkit2gtk::WebView,
+        /// Set by WebKit's `web-process-terminated` signal. A WebView has no
+        /// other liveness API: without this latch a crashed web process leaves
+        /// a blank window that the supervisor never replaces.
+        liveness: WebLiveness,
+    },
 }
 
 impl WallpaperWindow {
@@ -264,6 +287,19 @@ impl WallpaperWindow {
             });
         }
 
+        // A crashed web process cannot be revived in place; the supervisor
+        // notices the latch on its next tick, drops the window and recreates
+        // it through the same restart policy mpv uses.
+        let liveness = WebLiveness::default();
+        {
+            let liveness = liveness.clone();
+            let monitor = monitor.name.clone();
+            webview.connect_web_process_terminated(move |_view, reason| {
+                log::warn!("[Web] {monitor}: web process terminated: {:?}", reason);
+                liveness.mark_terminated();
+            });
+        }
+
         window.add(&webview);
         webview.show();
         webview.load_uri(uri);
@@ -279,7 +315,7 @@ impl WallpaperWindow {
 
         Ok(Self {
             window,
-            content: Content::Web { webview },
+            content: Content::Web { webview, liveness },
             fade: Fade::default(),
             primary,
             muted,
@@ -337,7 +373,7 @@ impl WallpaperWindow {
     pub fn player_alive(&mut self) -> bool {
         match &mut self.content {
             Content::Video { mpv } => mpv.borrow_mut().is_running(),
-            Content::Web { .. } => true,
+            Content::Web { liveness, .. } => liveness.alive(),
         }
     }
 
@@ -361,7 +397,7 @@ impl WallpaperWindow {
                     );
                 }
             }
-            Content::Web { webview } => {
+            Content::Web { webview, .. } => {
                 // WebKitGTK has no public freeze API; muting is the part of
                 // "pause" we can guarantee. WebKit already throttles rendering
                 // for an unmapped/background surface.
@@ -423,7 +459,7 @@ impl WallpaperWindow {
                     let _ = mpv.borrow_mut().set_pause(true);
                 }
             }
-            Content::Web { webview } => webview.set_is_muted(true),
+            Content::Web { webview, .. } => webview.set_is_muted(true),
         }
     }
 
@@ -499,7 +535,7 @@ impl WallpaperWindow {
             Content::Video { mpv } => {
                 let _ = mpv.borrow_mut().set_mute(muted);
             }
-            Content::Web { webview } => webview.set_is_muted(muted || !self.primary),
+            Content::Web { webview, .. } => webview.set_is_muted(muted || !self.primary),
         }
     }
 }
@@ -614,6 +650,20 @@ mod tests {
         // Another monitor or another file: rebuild only that window.
         assert_ne!(original, key(WindowKind::Video, "HDMI-1", "/videos/a.mp4"));
         assert_ne!(original, key(WindowKind::Video, "eDP-1", "/videos/b.mp4"));
+    }
+
+    #[test]
+    fn a_terminated_web_process_is_dead_for_every_holder() {
+        // The signal handler and the supervisor hold clones of the same latch;
+        // if each had its own Cell the crash would never reach the poll.
+        let liveness = WebLiveness::default();
+        let polled = liveness.clone();
+        assert!(polled.alive());
+        liveness.mark_terminated();
+        assert!(!polled.alive());
+        // Termination is one-way: the window is replaced, never reused.
+        liveness.mark_terminated();
+        assert!(!polled.alive());
     }
 
     #[test]

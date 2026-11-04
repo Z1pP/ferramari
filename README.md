@@ -374,17 +374,18 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
   Wayland has no background role in `xdg-shell`, and `wlr-layer-shell` is not
   available on GNOME, so native Wayland windows are not an option.
 - Pause/mute when maximised needs `_NET_CLIENT_LIST`, which only lists X11
-  windows. On Wayland sessions the feature is therefore unavailable and its
-  controls are hidden in the quick settings.
+  windows. On a Wayland session it therefore works for X11/XWayland clients
+  (measured: a fullscreen mpv window is listed with
+  `_NET_WM_STATE_FULLSCREEN`) but never for native Wayland windows.
 - Fractional scaling and mixed-DPI layouts are upscaled by XWayland; expect
   softer output than a native Wayland client.
 - KDE Plasma and GNOME X11 are not part of the tested matrix yet; the
   XWayland desktop window is the only supported path there. `--doctor` reports
   what the current session actually exposes instead of guessing.
-- Occlusion pause is X11-only. On Wayland the X11 watcher is disabled, even
-  though XWayland windows do appear in `_NET_CLIENT_LIST`; Wayland-native
-  windows are not exposed through EWMH at all, so a native fullscreen app
-  could not be detected either way.
+- Occlusion pause is driven by the X11/EWMH watcher, which runs on X11 and on
+  Wayland sessions (through XWayland). Wayland-native windows are not exposed
+  through EWMH at all, so a native fullscreen app cannot be detected there;
+  an X11 fullscreen window can, and is.
 - The Flatpak bundle is self-hosted and uses host media tools. Tray and portal
   autostart inside the sandbox are not verified.
 - Two- and three-monitor performance scenarios are not measured on the current

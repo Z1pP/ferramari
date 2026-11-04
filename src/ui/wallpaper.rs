@@ -37,6 +37,13 @@ pub struct WallpaperWindow {
     /// True once the embedded player released its file. The next `play_fade`
     /// reloads from the saved position instead of just clearing `pause`.
     parked: bool,
+    /// The timer that applies `set_pause(true)` when a pause fade ends.
+    ///
+    /// A window has one fade slot, which the mute rule and the volume slider
+    /// also use. Applying the pause at the end of that fade meant any later
+    /// volume change cancelled it and the player kept decoding at volume 0.
+    /// The pause therefore fades on its own slot, cancelled by `play_fade`.
+    pause_timer: Fade,
     /// Whether the current pause is invisible to the user. Parking is only
     /// attempted while this is true, and switching it off reloads a parked
     /// file so a visible monitor never shows an empty surface.
@@ -134,6 +141,7 @@ impl WallpaperWindow {
             base_filter: crate::mpv::profile_video_filter(profile).to_string(),
             paused_at: None,
             parked: false,
+            pause_timer: Fade::default(),
             park_allowed: false,
             key: WindowKey {
                 kind: WindowKind::Video,
@@ -187,6 +195,7 @@ impl WallpaperWindow {
             base_filter: crate::mpv::profile_video_filter(profile).to_string(),
             paused_at: None,
             parked: false,
+            pause_timer: Fade::default(),
             park_allowed: false,
             key: WindowKey {
                 kind: WindowKind::Stream,
@@ -322,6 +331,7 @@ impl WallpaperWindow {
             base_filter: String::new(),
             paused_at: None,
             parked: false,
+            pause_timer: Fade::default(),
             park_allowed: false,
             key: WindowKey {
                 kind: WindowKind::Web,
@@ -379,6 +389,7 @@ impl WallpaperWindow {
 
     pub fn play_fade(&mut self, target: i64, duration: f64, interval: f64) {
         self.paused_at = None;
+        self.pause_timer.cancel();
         self.unpark(false);
         match &self.content {
             Content::Video { mpv } => {
@@ -442,7 +453,6 @@ impl WallpaperWindow {
                 if self.primary {
                     let from = mpv.borrow().volume() as f64;
                     let mpv_for_volume = Rc::clone(mpv);
-                    let mpv_for_pause = Rc::clone(mpv);
                     self.fade.start(
                         from,
                         0.0,
@@ -451,10 +461,15 @@ impl WallpaperWindow {
                         move |volume| {
                             let _ = mpv_for_volume.borrow_mut().set_volume(volume as i64);
                         },
-                        move || {
-                            let _ = mpv_for_pause.borrow_mut().set_pause(true);
-                        },
+                        || {},
                     );
+                    // The pause must not ride on the volume fade: the mute rule
+                    // and the volume slider start fades on the same slot, and
+                    // cancelling one used to cancel the pause with it.
+                    let mpv_for_pause = Rc::clone(mpv);
+                    self.pause_timer.finish_after(duration, interval, move || {
+                        let _ = mpv_for_pause.borrow_mut().set_pause(true);
+                    });
                 } else {
                     let _ = mpv.borrow_mut().set_pause(true);
                 }
@@ -543,6 +558,7 @@ impl WallpaperWindow {
 impl Drop for WallpaperWindow {
     fn drop(&mut self) {
         self.fade.cancel();
+        self.pause_timer.cancel();
         self.window.close();
     }
 }

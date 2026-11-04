@@ -1650,18 +1650,6 @@ fn build_settings_page(
             widget.hide();
         }
     }
-    if paths::is_wayland() {
-        for widget in [
-            playback_label.upcast_ref::<gtk::Widget>(),
-            row_pause_max.upcast_ref::<gtk::Widget>(),
-            row_mute_max.upcast_ref::<gtk::Widget>(),
-            playback_separator.upcast_ref::<gtk::Widget>(),
-        ] {
-            widget.set_no_show_all(true);
-            widget.hide();
-        }
-    }
-
     SettingsPage {
         root,
         monitors_summary,

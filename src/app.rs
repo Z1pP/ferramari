@@ -425,13 +425,9 @@ impl App {
     }
 
     fn start_external_watchers(app: &Rc<RefCell<Self>>) {
-        let (tx, is_wayland, idle_threshold) = {
+        let (tx, idle_threshold) = {
             let app = app.borrow();
-            (
-                app.tx.clone(),
-                paths::is_wayland(),
-                Arc::clone(&app.idle_threshold),
-            )
+            (app.tx.clone(), Arc::clone(&app.idle_threshold))
         };
 
         handlers::start_screen_lock_watcher(tx.clone());
@@ -439,10 +435,12 @@ impl App {
         handlers::start_sleep_watcher(tx.clone());
         handlers::start_logind_lock_watcher(tx.clone());
         handlers::start_idle_watcher(tx.clone(), idle_threshold);
-        if !is_wayland {
-            if let Some(watcher) = x11::start(tx.clone()) {
-                app.borrow_mut().window_watcher = Some(watcher);
-            }
+        // The app always runs as an X11/XWayland client, so the EWMH watcher is
+        // useful on a Wayland session too: X11 fullscreen windows are listed
+        // in _NET_CLIENT_LIST even there. `x11::start` returns `None` when no
+        // X server answers at all, which is the only real failure mode.
+        if let Some(watcher) = x11::start(tx.clone()) {
+            app.borrow_mut().window_watcher = Some(watcher);
         }
 
         let Some(display) = gtk::gdk::Display::default() else {

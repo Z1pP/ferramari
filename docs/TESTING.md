@@ -186,8 +186,8 @@ The shipped threshold is five minutes; the test only shortened the timer.
 
 ### Cross-desktop diagnostics
 - [ ] `ferramari --doctor` prints the session, backend, desktop and tool versions without starting the UI.
-- [ ] On a Wayland session it reports `Wayland (XWayland)` and `per-monitor occlusion: no`.
-- [ ] On X11 it reports `X11` and `per-monitor occlusion: yes`.
+- [ ] On a Wayland (XWayland) session it reports `per-monitor occlusion: yes`.
+- [ ] On X11 it reports `per-monitor occlusion: yes`.
 - [ ] Settings → System → Desktop integration shows the same backend summary.
 - [ ] Lock via logind and via the screensaver in either order; playback resumes only after both report unlocked.
 

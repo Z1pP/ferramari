@@ -103,13 +103,15 @@ impl Drop for Watcher {
     }
 }
 
-/// Start polling. Returns `None` on Wayland (the feature is disabled
-/// there too) or when X11 is not reachable.
+/// Start the EWMH watcher. Returns `None` when X11 is not reachable.
+///
+/// On a Wayland session the app still runs as an XWayland client, and every
+/// X11 window does appear in `_NET_CLIENT_LIST` (measured: a fullscreen mpv
+/// window is listed with `_NET_WM_STATE_FULLSCREEN`). Native Wayland windows
+/// are not exposed through EWMH at all, so a native fullscreen app cannot be
+/// detected there; that is a partial result, not a reason to disable the
+/// watcher, which is why the earlier Wayland gate was removed.
 pub fn start(tx: CommandSender) -> Option<Watcher> {
-    if crate::paths::is_wayland() {
-        log::info!("[WindowHandler] Wayland session, window polling disabled");
-        return None;
-    }
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = Arc::clone(&stop);
     std::thread::Builder::new()

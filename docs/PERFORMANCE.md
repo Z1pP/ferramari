@@ -327,6 +327,7 @@ library at startup.
 | Done | Reuse mpv for video→video | 1.1: `loadfile` keeps the PID; ~0.2 ms app time instead of ~120 ms | — |
 | Done | Stream resolution cache | 1.9.3: reload 2.6 s → 27–186 ms; one yt-dlp run per URL per 15 min | — |
 | Done | mpv low-power profile | 1.9.3: 4K60 CPU 9.7% → 6.1% and 1080p 5.8% → 3.8%; demuxer-cache flags measured, no gain, not added | — |
+| Done | Occlusion pause on Wayland sessions | 1.9.4: the EWMH watcher runs there too; mpv 3.8% → 0.0% CPU while a fullscreen X11 window covers the monitor | — |
 | P3 | X11 event watcher | 3.3 wakeups/s on X11 sessions | M |
 | P3 | Optional WebKit feature | lighter builds/packaging | S–M |
 

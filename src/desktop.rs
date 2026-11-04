@@ -56,7 +56,9 @@ impl Desktop {
 pub struct Capabilities {
     /// A desktop-type X11 toplevel can be created.
     pub desktop_window: bool,
-    /// Per-monitor occlusion and smart pause are available.
+    /// Per-monitor occlusion and smart pause are available for X11 windows.
+    /// On an XWayland session this only covers X11 clients: a native Wayland
+    /// window is not in `_NET_CLIENT_LIST` and cannot be detected.
     pub per_monitor_occlusion: bool,
     /// Native Wayland surfaces are implemented.
     pub native_wayland: bool,
@@ -80,9 +82,11 @@ pub fn detect() -> Environment {
     let desktop = classify_desktop(&env::var("XDG_CURRENT_DESKTOP").unwrap_or_default());
     let capabilities = Capabilities {
         desktop_window: matches!(session, SessionKind::X11 | SessionKind::WaylandXWayland),
-        // The EWMH watcher is intentionally disabled on a Wayland session:
-        // native Wayland windows are not in _NET_CLIENT_LIST.
-        per_monitor_occlusion: session == SessionKind::X11,
+        // The EWMH watcher needs an X server, and the app always runs as an
+        // X11/XWayland client, so occlusion works on both kinds of session.
+        // On Wayland it sees X11 clients only: a native Wayland fullscreen
+        // window is not in _NET_CLIENT_LIST and cannot be detected.
+        per_monitor_occlusion: matches!(session, SessionKind::X11 | SessionKind::WaylandXWayland),
         native_wayland: false,
         static_wallpaper: desktop == Desktop::Gnome,
     };
@@ -375,9 +379,21 @@ mod tests {
     fn native_wayland_is_never_claimed() {
         let environment = detect();
         assert!(!environment.capabilities.native_wayland);
-        assert_eq!(
-            environment.capabilities.per_monitor_occlusion,
-            environment.session == SessionKind::X11
-        );
+    }
+
+    #[test]
+    fn occlusion_tracks_the_x11_capability() {
+        // The watcher needs an X server. Both X11 and XWayland sessions have
+        // one, so occlusion is offered there; a Wayland session without
+        // DISPLAY has nothing to query.
+        for (session_type, display, wayland, expected) in [
+            ("x11", Some(":0"), None, true),
+            ("wayland", Some(":0"), Some("wayland-0"), true),
+            ("wayland", None, Some("wayland-0"), false),
+        ] {
+            let session = classify_session(session_type, display, wayland);
+            let occlusion = matches!(session, SessionKind::X11 | SessionKind::WaylandXWayland);
+            assert_eq!(occlusion, expected, "session {session:?}");
+        }
     }
 }

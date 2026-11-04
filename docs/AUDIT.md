@@ -93,7 +93,7 @@ monitor (pause/mute).
 | B10 | `Mpv::Drop` can still block the GTK thread for up to the IPC timeout while joining the worker. `loadfile` errors are now surfaced as a user-visible playback error. | partly fixed |
 | B11 | Monitor add/remove/size events are not debounced; a layout change can rebuild all windows several times. | **fixed** — 250 ms coalescing |
 | B12 | HiDPI: X11 window rectangles are device pixels while GDK monitor geometry is logical pixels. Occlusion needs the scale factor. | **fixed** — `MonitorInfo::scale_factor` |
-| B13 | Native Wayland has no wallpaper surface in the current implementation; the X11 watcher is disabled on Wayland sessions, so occlusion/smart pause is unavailable there. | open, documented |
+| B13 | Native Wayland has no wallpaper surface in the current implementation. The X11 watcher now runs on Wayland sessions too (measured: XWayland fullscreen windows are listed in `_NET_CLIENT_LIST` and produce `Occluded`), so occlusion/smart pause works for X11 clients there; native Wayland windows remain undetectable through EWMH. | partly fixed, documented |
 | B14 | WebKit can crash independently; `player_alive` always returns true for a WebView, and only load failures are reported. | **fixed** — `WebLiveness` shared latch via `connect_web_process_terminated`; `player_alive` uses `liveness.alive()`; supervisor drops/recreates the window through `RestartPolicy` |
 | B15 | `Mpv::spawn` with `--hwdec=auto-safe` assumes mpv picks a working hardware decoder; there is no VA-API probe and no fallback report. | manual override added (Auto/VA-API/Off); probe still open |
 

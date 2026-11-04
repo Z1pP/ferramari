@@ -94,7 +94,7 @@ monitor (pause/mute).
 | B11 | Monitor add/remove/size events are not debounced; a layout change can rebuild all windows several times. | **fixed** — 250 ms coalescing |
 | B12 | HiDPI: X11 window rectangles are device pixels while GDK monitor geometry is logical pixels. Occlusion needs the scale factor. | **fixed** — `MonitorInfo::scale_factor` |
 | B13 | Native Wayland has no wallpaper surface in the current implementation; the X11 watcher is disabled on Wayland sessions, so occlusion/smart pause is unavailable there. | open, documented |
-| B14 | WebKit can crash independently; `player_alive` always returns true for a WebView, and only load failures are reported. | open |
+| B14 | WebKit can crash independently; `player_alive` always returns true for a WebView, and only load failures are reported. | **fixed** — `WebLiveness` shared latch via `connect_web_process_terminated`; `player_alive` uses `liveness.alive()`; supervisor drops/recreates the window through `RestartPolicy` |
 | B15 | `Mpv::spawn` with `--hwdec=auto-safe` assumes mpv picks a working hardware decoder; there is no VA-API probe and no fallback report. | manual override added (Auto/VA-API/Off); probe still open |
 
 ### 3.2 Performance and resource use

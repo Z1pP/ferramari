@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.9.4 — 2026-11-04
+
+Fullscreen finally pauses the wallpaper — including on Wayland sessions.
+
+- The EWMH watcher was disabled wholesale on a Wayland session. It now runs
+  there too: the app is an XWayland client, and X11 windows do appear in
+  `_NET_CLIENT_LIST` (measured: a fullscreen mpv window is listed with
+  `_NET_WM_STATE_FULLSCREEN` and produces `Occluded` within ~0.5 s). Native
+  Wayland windows remain undetectable through EWMH; `--doctor` and the
+  README say so.
+- A live test showed the pause never reached mpv. `pause_fade` applied the
+  pause as the completion callback of the volume fade, and the mute rule
+  started its own fade on the same single slot in the same command,
+  cancelling it: the player decoded at volume 0. The pause now owns a second
+  fade slot, so occlusion actually stops decoding: mpv 3.8% → 0.0% CPU while
+  a fullscreen window covers the monitor, position frozen.
+- The "Pause/Mute when maximized" switches are no longer hidden on Wayland.
+- Web wallpaper crashes are detected (audit B14): WebKit's
+  `web-process-terminated` signal flips a shared latch, the supervisor
+  treats the window as dead and recreates it through the same restart
+  policy mpv uses. Before this a crashed web process left a blank desktop
+  forever.
+
 ## 1.9.3 — 2026-11-03
 
 Streaming no longer re-runs yt-dlp on every reload.

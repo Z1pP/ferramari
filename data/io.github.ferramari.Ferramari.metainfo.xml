@@ -16,6 +16,17 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="1.9.4" date="2026-11-04" type="stable">
+      <description>
+        <p>Fullscreen windows now pause the wallpaper, on Wayland sessions too.</p>
+        <ul>
+          <li>The occlusion watcher runs on XWayland, so X11 games and players pause playback</li>
+          <li>Pausing really stops decoding: the player no longer runs invisibly at zero volume</li>
+          <li>The pause/mute switches are visible on Wayland sessions</li>
+          <li>A crashed web-process page is detected and reloaded instead of leaving a blank desktop</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.9.3" date="2026-11-03" type="stable">
       <description>
         <p>Streaming reloads are nearly instant.</p>

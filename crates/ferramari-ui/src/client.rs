@@ -132,6 +132,23 @@ impl Server {
             .map_err(|e| e.to_string())
     }
 
+    pub async fn player_command_args<B>(&self, method: &str, body: &B) -> Result<(), String>
+    where
+        B: serde::Serialize + zvariant::DynamicType + Sync,
+    {
+        self.connection
+            .call_method(
+                Some(SERVER_NAME),
+                PLAYER_PATH,
+                Some(PLAYER_INTERFACE),
+                method,
+                body,
+            )
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
     pub async fn import_package(&self, source: String) -> Result<(), String> {
         self.command_args("import_package", &(source,)).await
     }
@@ -157,7 +174,7 @@ impl Server {
         monitor: String,
         collection: String,
     ) -> Result<(), String> {
-        self.command_args("set_monitor_rotation", &(monitor, collection)).await
+        self.player_command_args("set_monitor_rotation", &(monitor, collection)).await
     }
 
     /// Write one server property through the standard Properties interface.

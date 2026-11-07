@@ -7,7 +7,6 @@ use std::time::Duration;
 use ferramari_core::paths;
 
 /// GNOME Shell reports extension state as an integer; 1 means enabled.
-/// GNOME Shell reports extension state as an integer; 1 means enabled.
 pub fn gnome_extension_state(name: &str) -> Option<i32> {
     use zbus::blocking::{Connection, Proxy};
     let connection = Connection::session().ok()?;

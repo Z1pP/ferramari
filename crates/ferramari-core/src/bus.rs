@@ -193,10 +193,7 @@ impl CommandSender {
     }
 
     pub fn send(&self, command: Command) -> Result<(), mpsc::SendError<Command>> {
-        let result = self.0.send(command);
-        if result.is_ok() {
-        }
-        result
+        self.0.send(command)
     }
 }
 

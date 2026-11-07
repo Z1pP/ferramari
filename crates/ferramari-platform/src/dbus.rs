@@ -167,6 +167,11 @@ impl ServerInterface {
         send(&self.tx, Command::TrustKey(source.into()));
     }
 
+    #[zbus(name = "library_changed")]
+    fn library_changed(&self) {
+        send(&self.tx, Command::LibraryChanged);
+    }
+
     #[zbus(name = "pause_playback")]
     fn pause_playback(&self) {
         send(&self.tx, Command::PausePlayback);

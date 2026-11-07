@@ -1,5 +1,4 @@
-//! File-system locations, environment detection and process-wide environment
-//! preparation.
+//! Cross-platform user-data locations and helper executable discovery.
 //!
 //! All knowledge about *where things live* is kept here so the rest of the
 //! program never builds paths by hand.
@@ -82,7 +81,7 @@ fn data_base() -> PathBuf {
 }
 
 pub fn config_dir() -> PathBuf {
-    xdg_config_home().join("ferramari")
+    config_base().join("ferramari")
 }
 
 pub fn config_path() -> PathBuf {
@@ -108,7 +107,7 @@ pub fn thumbnail_cache_dir() -> PathBuf {
 
 /// Cached blurred frames used for the GNOME static wallpaper.
 pub fn static_cache_dir() -> PathBuf {
-    xdg_cache_home().join("ferramari").join("static")
+    cache_base().join("ferramari").join("static")
 }
 
 /// Installed `.ferramari` packages.
@@ -118,18 +117,18 @@ pub fn packages_dir() -> PathBuf {
 
 /// Declarative plugin manifests.
 pub fn plugins_dir() -> PathBuf {
-    xdg_data_home().join("ferramari").join("plugins")
+    data_base().join("ferramari").join("plugins")
 }
 
 /// Cache for the online wallpaper catalogue (pages, previews, downloads).
 pub fn catalogue_cache_dir() -> PathBuf {
-    xdg_cache_home().join("ferramari").join("catalogue")
+    cache_base().join("ferramari").join("catalogue")
 }
 
 /// mpv IPC sockets. Kept in the cache rather than `/tmp` so a host mpv
 /// started through `flatpak-spawn` can reach the same path.
 pub fn mpv_socket_dir() -> PathBuf {
-    xdg_cache_home().join("ferramari").join("mpv")
+    cache_base().join("ferramari").join("mpv")
 }
 
 /// User folder for local wallpaper videos.
@@ -260,8 +259,12 @@ mod tests {
     fn tool_prefers_a_sibling_binary() {
         let dir = std::env::temp_dir().join(format!("ferramari-tool-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("mpv"), b"#!/bin/sh\n").unwrap();
-        assert_eq!(tool_in(&dir, "mpv"), dir.join("mpv"));
+        #[cfg(target_os = "windows")]
+        let sibling = dir.join("mpv.exe");
+        #[cfg(not(target_os = "windows"))]
+        let sibling = dir.join("mpv");
+        std::fs::write(&sibling, b"tool").unwrap();
+        assert_eq!(tool_in(&dir, "mpv"), sibling);
         assert_eq!(tool_in(&dir, "yt-dlp"), std::path::PathBuf::from("yt-dlp"));
         let _ = std::fs::remove_dir_all(dir);
     }

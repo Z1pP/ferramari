@@ -119,6 +119,12 @@ enum Message {
 
     RefreshLibrary,
     ToggleFavorite(String),
+    CollectionNameChanged(String),
+    CreateCollection,
+    RenameCollection(String, String),
+    DeleteCollection(String),
+    AddToCollection(String, String),
+    RemoveFromCollection(String, String),
     Play(String),
     OpenFolder,
 
@@ -155,6 +161,18 @@ struct StatusLine {
     error: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CollectionChoice {
+    id: String,
+    name: String,
+}
+
+impl std::fmt::Display for CollectionChoice {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.name)
+    }
+}
+
 struct App {
     page: Page,
     server: Option<Server>,
@@ -169,6 +187,7 @@ struct App {
     sample: Option<Sample>,
 
     library: Library,
+    collection_name: String,
     /// Slider position for the static wallpaper blur. Committed with the
     /// explicit Apply button, mirroring the GTK control: regenerating the
     /// blurred frame on every pixel of drag would be wasteful.
@@ -193,6 +212,7 @@ impl App {
                 metrics: Monitor::default(),
                 sample: None,
                 library,
+                collection_name: String::new(),
                 blur_draft: 5,
                 blur_dirty: false,
                 online: Online {
@@ -207,6 +227,15 @@ impl App {
 
     fn sem(&self) -> &'static Semantics {
         Semantics::resolve(&self.state.theme, self.system_dark)
+    }
+
+    fn persist_library(&mut self) {
+        if let Err(error) = self.library.save() {
+            self.status = Some(StatusLine {
+                text: error,
+                error: true,
+            });
+        }
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -373,11 +402,41 @@ impl App {
             }
             Message::ToggleFavorite(path) => {
                 self.library.toggle_favorite(&path);
-                if let Err(error) = self.library.save() {
-                    self.status = Some(StatusLine {
-                        text: error,
-                        error: true,
-                    });
+                self.persist_library();
+                Task::none()
+            }
+            Message::CollectionNameChanged(name) => {
+                self.collection_name = name;
+                Task::none()
+            }
+            Message::CreateCollection => {
+                if self.library.create_collection(&self.collection_name).is_some() {
+                    self.collection_name.clear();
+                    self.persist_library();
+                }
+                Task::none()
+            }
+            Message::RenameCollection(id, name) => {
+                if self.library.rename_collection(&id, &name) {
+                    self.persist_library();
+                }
+                Task::none()
+            }
+            Message::DeleteCollection(id) => {
+                if self.library.delete_collection(&id) {
+                    self.persist_library();
+                }
+                Task::none()
+            }
+            Message::AddToCollection(id, path) => {
+                if self.library.add_to_collection(&id, &path) {
+                    self.persist_library();
+                }
+                Task::none()
+            }
+            Message::RemoveFromCollection(id, path) => {
+                if self.library.remove_from_collection(&id, &path) {
+                    self.persist_library();
                 }
                 Task::none()
             }
@@ -826,6 +885,16 @@ impl App {
             ))
             .push(secondary_button(tr("Open folder"), Message::OpenFolder, sem));
 
+        let collection_options: Vec<CollectionChoice> = self
+            .library
+            .collections()
+            .iter()
+            .map(|collection| CollectionChoice {
+                id: collection.id.clone(),
+                name: collection.name.clone(),
+            })
+            .collect();
+
         let mut body = Column::new().spacing(12);
         let history = self.library.history();
         if history.is_empty() {
@@ -843,32 +912,39 @@ impl App {
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| entry.path.clone());
-                body = body.push(
-                    Row::new()
-                        .spacing(12)
-                        .align_y(Alignment::Center)
-                        .push(
-                            Column::new()
-                                .spacing(2)
-                                .width(Length::Fill)
-                                .push(text(title).size(13).color(sem.text))
-                                .push(text(entry.path.clone()).size(10).color(sem.text_muted)),
-                        )
-                        .push(secondary_button(
-                            tr(if self.library.is_favorite(&entry.path) {
-                                "Remove favorite"
-                            } else {
-                                "Add to favorites"
-                            }),
-                            Message::ToggleFavorite(entry.path.clone()),
-                            sem,
-                        ))
-                        .push(secondary_button(
-                            tr("Play"),
-                            Message::Play(entry.path.clone()),
-                            sem,
-                        )),
-                );
+                let mut row = Row::new()
+                    .spacing(12)
+                    .align_y(Alignment::Center)
+                    .push(
+                        Column::new()
+                            .spacing(2)
+                            .width(Length::Fill)
+                            .push(text(title).size(13).color(sem.text))
+                            .push(text(entry.path.clone()).size(10).color(sem.text_muted)),
+                    );
+                if !collection_options.is_empty() {
+                    let options = collection_options.clone();
+                    let path = entry.path.clone();
+                    row = row.push(pick_list(options, None, move |choice| {
+                        Message::AddToCollection(choice.id, path.clone())
+                    }));
+                }
+                row = row
+                    .push(secondary_button(
+                        tr(if self.library.is_favorite(&entry.path) {
+                            "Remove favorite"
+                        } else {
+                            "Add to favorites"
+                        }),
+                        Message::ToggleFavorite(entry.path.clone()),
+                        sem,
+                    ))
+                    .push(secondary_button(
+                        tr("Play"),
+                        Message::Play(entry.path.clone()),
+                        sem,
+                    ));
+                body = body.push(row);
             }
         }
 
@@ -902,7 +978,7 @@ impl App {
                             sem,
                         ))
                         .push(secondary_button(
-                            tr("Remove"),
+                            tr("Remove favorite"),
                             Message::ToggleFavorite(path.clone()),
                             sem,
                         )),
@@ -910,7 +986,18 @@ impl App {
             }
         }
 
-        let mut collections = Column::new().spacing(8);
+        let mut collections = Column::new().spacing(10);
+        collections = collections.push(
+            Row::new()
+                .spacing(8)
+                .align_y(Alignment::Center)
+                .push(
+                    text_input(&tr("New collection"), &self.collection_name)
+                        .on_input(Message::CollectionNameChanged)
+                        .width(Length::Fill),
+                )
+                .push(secondary_button(tr("Create"), Message::CreateCollection, sem)),
+        );
         if self.library.collections().is_empty() {
             collections = collections.push(
                 text(tr("No videos yet"))
@@ -919,21 +1006,66 @@ impl App {
             );
         } else {
             for collection in self.library.collections() {
-                collections = collections.push(
-                    Row::new()
-                        .spacing(10)
-                        .align_y(Alignment::Center)
-                        .push(
-                            Column::new()
-                                .spacing(2)
-                                .width(Length::Fill)
-                                .push(text(collection.name.clone()).size(13).color(sem.text))
+                let collection_id = collection.id.clone();
+                let rename_id = collection_id.clone();
+                let mut items = Column::new().spacing(6);
+                if collection.items.is_empty() {
+                    items = items.push(
+                        text(tr("No videos yet"))
+                            .size(11)
+                            .color(sem.text_muted),
+                    );
+                } else {
+                    for path in &collection.items {
+                        let item_id = collection_id.clone();
+                        items = items.push(
+                            Row::new()
+                                .spacing(8)
+                                .align_y(Alignment::Center)
                                 .push(
-                                    text(format!("{}", collection.items.len()))
-                                        .size(11)
-                                        .color(sem.text_muted),
-                                ),
-                        ),
+                                    text(
+                                        PathBuf::from(path)
+                                            .file_name()
+                                            .map(|name| name.to_string_lossy().into_owned())
+                                            .unwrap_or_else(|| path.clone()),
+                                    )
+                                    .size(12)
+                                    .width(Length::Fill),
+                                )
+                                .push(secondary_button(
+                                    tr("Play"),
+                                    Message::Play(path.clone()),
+                                    sem,
+                                ))
+                                .push(secondary_button(
+                                    tr("Remove from collection"),
+                                    Message::RemoveFromCollection(item_id, path.clone()),
+                                    sem,
+                                )),
+                        );
+                    }
+                }
+                collections = collections.push(
+                    Column::new()
+                        .spacing(8)
+                        .push(
+                            Row::new()
+                                .spacing(8)
+                                .align_y(Alignment::Center)
+                                .push(
+                                    text_input(&tr("New collection"), &collection.name)
+                                        .on_input(move |name| {
+                                            Message::RenameCollection(rename_id.clone(), name)
+                                        })
+                                        .width(Length::Fill),
+                                )
+                                .push(secondary_button(
+                                    tr("Delete collection"),
+                                    Message::DeleteCollection(collection_id),
+                                    sem,
+                                )),
+                        )
+                        .push(items),
                 );
             }
         }

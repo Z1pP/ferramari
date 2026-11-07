@@ -18,8 +18,8 @@ use std::time::Duration;
 
 use iced::gradient::Linear;
 use iced::widget::{
-    button, container, pick_list, rule, scrollable, slider, text, text_input, toggler, Column,
-    Container, Row, Space,
+    button, container, image, pick_list, rule, scrollable, slider, text, text_input, toggler,
+    Column, Container, Row, Space,
 };
 use iced::{
     Alignment, Background, Border, Color, Element, Length, Padding, Shadow, Size, Subscription,
@@ -31,6 +31,7 @@ use ferramari_core::config::Config;
 use ferramari_core::library::Library;
 use ferramari_core::metrics::{Monitor, Sample};
 use ferramari_core::paths;
+use ferramari_core::thumbnails;
 use ferramari_core::util::tr;
 use ferramari_ui::client::{Server, ServerState};
 use ferramari_ui::theme::{self, ferramari_theme, Semantics};
@@ -1157,7 +1158,23 @@ impl App {
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| entry.path.clone());
-                let mut row = Row::new().spacing(12).align_y(Alignment::Center).push(
+
+                // Attempt to load a cached thumbnail; skip if file doesn't exist.
+                // `Handle::from_path` is lazy and does not panic on missing files —
+                // it just renders nothing when the renderer can't open the path later.
+                let thumb_handle = thumbnails::generate(&path)
+                    .filter(|thumb_path| thumb_path.is_file())
+                    .map(image::Handle::from_path);
+
+                let mut row = Row::new().spacing(12).align_y(Alignment::Center);
+
+                if let Some(handle) = thumb_handle {
+                    row = row.push(image::Image::new(handle).width(Length::Fixed(60.0)));
+                } else {
+                    row = row.push(Space::new().width(Length::Fixed(60.0)));
+                }
+
+                row = row.push(
                     Column::new()
                         .spacing(2)
                         .width(Length::Fill)
@@ -1453,6 +1470,7 @@ impl App {
             );
         } else {
             for wallpaper in &self.online.items {
+                // Preview images are remote URLs — skip thumbnails until caching is implemented.
                 let busy = self
                     .online
                     .downloading

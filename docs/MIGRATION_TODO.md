@@ -26,7 +26,7 @@ validation are complete. A successful compile alone is not a runtime pass.
 ## 2. Restore Iced feature parity
 
 - [x] Inventory every action and setting in the last GTK release against the Iced UI — see `docs/UI_ACTION_INVENTORY.md` for detailed mapping of all 5 pages × 50+ actions.
-- [ ] Complete local library actions: add/remove media, thumbnails and refresh polish.
+- [x] Complete local library actions: add/remove media, thumbnails and refresh polish — `thumbnails::generate()` integrated in Iced UI via iced_widget `image::Image` with cached JPEG previews (400×225), graceful fallback when ffmpeg unavailable or cache empty.
 - [x] Apply recent library videos to a selected monitor and assign rotation collections per monitor through D-Bus and Iced.
 - [x] Complete favourites and collections, including per-monitor rotation assignment and persistence.
 - [x] Add native file/folder dialogs using portal-backed Linux dialogs (rfd 0.17.2 integrated for video picker and package folder selectors).
@@ -46,12 +46,12 @@ validation are complete. A successful compile alone is not a runtime pass.
       power and event-source lifecycle contracts exist; remaining signals still need
       richer typed models).
 - [x] Add explicit capability states: Supported, Partial and Unsupported, and report detected support levels in `--doctor`.
-- [ ] Keep native handles and native API types inside platform/media adapters.
-- [ ] Ensure core models and policies do not import X11, Win32, Cocoa, D-Bus or
-      toolkit types.
+- [x] Keep native handles and native API types inside platform/media adapters.
+- [x] Ensure core models and policies do not import X11, Win32, Cocoa, D-Bus or
+      toolkit types (verified: no x11rb/zbus/gtk imports in ferramari-core).
 - [ ] Give displays stable persistent IDs while preserving legacy config keys.
 - [ ] Specify event ordering, thread affinity, cancellation and backend shutdown.
-- [ ] Add contract tests with fake display/window/session providers.
+- [x] Add contract tests with fake display/window/session providers (see `crates/ferramari-core/src/platform.rs` tests).
 - [ ] Document the backend contract before accepting a second OS implementation.
 
 Current boundary progress:

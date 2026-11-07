@@ -10,7 +10,7 @@ description = "Ferramari Iced UI: D-Bus client of the wallpaper server"
 ferramari-core = { path = "../ferramari-core" }
 
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
-iced = { version = "0.14", features = ["tokio"] }
+iced = { version = "0.14", features = ["tokio", "image"] }
 # XDG Desktop Portal on Linux; native system dialogs on macOS and Windows.
 # This dependency intentionally uses no GTK feature.
 # The Linux backend is the XDG Desktop Portal, not a toolkit binding.

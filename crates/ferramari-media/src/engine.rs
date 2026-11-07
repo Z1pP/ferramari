@@ -3,8 +3,8 @@
 //! Owns a native surface plus its player, and exposes the control surface the
 //! application loop needs: play/pause with fade, mute, volume, fps cap,
 //! decoder parking, restart-on-death. The GTK `ui/wallpaper.rs` had this same
-//! shape but wrapped a `gtk::ApplicationWindow`; the window is now a raw X11
-//! desktop-layer surface and the player is the same mpv IPC child process.
+//! shape but wrapped a `gtk::ApplicationWindow`; the window is now an opaque
+//! platform-provided surface and the player is the same mpv IPC child process.
 //!
 //! What is *not* here (yet):
 //! * the web wallpaper content — WebKitGTK was the only engine with a
@@ -180,14 +180,13 @@ impl Engine {
         self.primary
     }
 
-    /// The X11 window id the player renders into. Kept for diagnostics and
-    /// for callers that need to reparent or stack the surface explicitly;
-    /// holding the engine is what keeps the window alive.
-    pub fn surface_xid(&self) -> u64 {
+    /// The opaque native handle the player renders into. It is valid only
+    /// while this engine owns the platform surface and must never be stored.
+    pub fn surface_handle(&self) -> u64 {
         self.surface.embedding_handle()
     }
 
-    /// Point an existing video player at another file. Keeps the X11 window
+    /// Point an existing video player at another file. Keeps the native surface
     /// and the mpv process, which saves the ~120 ms cold start.
     pub fn load_video(&mut self, source: &str, volume: i64, muted: bool) -> anyhow::Result<()> {
         let Content::Video { mpv } = &self.content;

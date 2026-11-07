@@ -1750,6 +1750,7 @@ fn assign_video(
             return false;
         }
     }
+    let previous_mode = config.mode;
     config.mode = Mode::Video;
     match monitor {
         Some("all") | None => {
@@ -1760,9 +1761,16 @@ fn assign_video(
         }
         Some(name) => {
             config.data_source.insert(name.to_string(), path.clone());
-            let default = config.default_source().to_string();
-            if !Path::new(&default).is_file() {
-                config.data_source.insert("Default".to_string(), path);
+            if previous_mode != Mode::Video {
+                // A stream or webpage URL is not a local-video fallback for
+                // the other monitors. Remove it so only the selected monitor
+                // receives the newly assigned video.
+                config.data_source.remove("Default");
+            } else {
+                let default = config.default_source().to_string();
+                if !Path::new(&default).is_file() {
+                    config.data_source.insert("Default".to_string(), path);
+                }
             }
         }
     }

@@ -512,6 +512,7 @@ impl App {
             }
             Command::PackageImported(result) => match result {
                 Ok(imported) => {
+                    self.set_operation_status(format!("Imported {}", imported.name), false);
                     log::info!(
                         "[Package] Imported {} ({}, {} bytes, preview={}, checksums={}, {})",
                         imported.name,
@@ -542,10 +543,13 @@ impl App {
                         }
                     }
                 }
-                Err(err) => self.notify_user_error(UserError::new(
-                    ErrorKind::FileSystem,
-                    format!("Could not import the package: {err}"),
-                )),
+                Err(err) => {
+                    self.set_operation_status(format!("Package import failed: {err}"), true);
+                    self.notify_user_error(UserError::new(
+                        ErrorKind::FileSystem,
+                        format!("Could not import the package: {err}"),
+                    ));
+                }
             },
             Command::ExportPackage { video, parent } => {
                 let tx = self.tx.clone();
@@ -558,11 +562,17 @@ impl App {
                     .ok();
             }
             Command::PackageExported(result) => match result {
-                Ok(path) => log::info!("[Package] Exported {}", path.display()),
-                Err(err) => self.notify_user_error(UserError::new(
-                    ErrorKind::FileSystem,
-                    format!("Could not export the package: {err}"),
-                )),
+                Ok(path) => {
+                    self.set_operation_status(format!("Exported {}", path.display()), false);
+                    log::info!("[Package] Exported {}", path.display());
+                }
+                Err(err) => {
+                    self.set_operation_status(format!("Package export failed: {err}"), true);
+                    self.notify_user_error(UserError::new(
+                        ErrorKind::FileSystem,
+                        format!("Could not export the package: {err}"),
+                    ));
+                }
             },
             Command::SignPackage(dir) => {
                 let tx = self.tx.clone();
@@ -580,11 +590,17 @@ impl App {
                     .ok();
             }
             Command::PackageSigned(result) => match result {
-                Ok(dir) => log::info!("[Package] Signed {}", dir.display()),
-                Err(err) => self.notify_user_error(UserError::new(
-                    ErrorKind::FileSystem,
-                    format!("Could not sign the package: {err}"),
-                )),
+                Ok(dir) => {
+                    self.set_operation_status(format!("Signed {}", dir.display()), false);
+                    log::info!("[Package] Signed {}", dir.display());
+                }
+                Err(err) => {
+                    self.set_operation_status(format!("Package signing failed: {err}"), true);
+                    self.notify_user_error(UserError::new(
+                        ErrorKind::FileSystem,
+                        format!("Could not sign the package: {err}"),
+                    ));
+                }
             },
             Command::VerifyPackage(dir) => {
                 let tx = self.tx.clone();
@@ -619,6 +635,19 @@ impl App {
                     .ok();
             }
             Command::PackageVerified(report) => {
+                let invalid = matches!(
+                    &report.signature,
+                    signing::SignatureStatus::Invalid { .. }
+                );
+                self.set_operation_status(
+                    format!(
+                        "Verified {}: checksums={}, {}",
+                        report.dir.display(),
+                        report.checksummed,
+                        report.signature.label()
+                    ),
+                    invalid,
+                );
                 log::info!(
                     "[Package] {} checksums={} {}",
                     report.dir.display(),
@@ -627,15 +656,24 @@ impl App {
                 );
             }
             Command::TrustKey(path) => match signing::trust_source(&path) {
-                Ok(Some(key_id)) => log::info!("[Package] Trusted key {key_id}"),
-                Ok(None) => self.notify_user_error(UserError::new(
-                    ErrorKind::FileSystem,
-                    format!("{} carries no key to trust", path.display()),
-                )),
-                Err(err) => self.notify_user_error(UserError::new(
-                    ErrorKind::FileSystem,
-                    format!("Could not trust the key: {err}"),
-                )),
+                Ok(Some(key_id)) => {
+                    self.set_operation_status(format!("Trusted key {key_id}"), false);
+                    log::info!("[Package] Trusted key {key_id}");
+                }
+                Ok(None) => {
+                    self.set_operation_status("Package contains no signing key", true);
+                    self.notify_user_error(UserError::new(
+                        ErrorKind::FileSystem,
+                        format!("{} carries no key to trust", path.display()),
+                    ));
+                }
+                Err(err) => {
+                    self.set_operation_status(format!("Trust operation failed: {err}"), true);
+                    self.notify_user_error(UserError::new(
+                        ErrorKind::FileSystem,
+                        format!("Could not trust the key: {err}"),
+                    ));
+                }
             },
             Command::SetMonitorRotation {
                 monitor,

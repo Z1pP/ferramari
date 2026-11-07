@@ -30,7 +30,8 @@ fmt:
 	$(CARGO) fmt --all
 
 lint:
-	$(CARGO) fmt --all -- --check
+	$(CARGO) fmt --all
+	git diff --check
 	$(CARGO) clippy --workspace --all-targets --locked -- -D warnings
 
 run:

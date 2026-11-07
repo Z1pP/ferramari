@@ -188,6 +188,7 @@ struct App {
 
     library: Library,
     collection_name: String,
+    collection_placeholder: String,
     /// Slider position for the static wallpaper blur. Committed with the
     /// explicit Apply button, mirroring the GTK control: regenerating the
     /// blurred frame on every pixel of drag would be wasteful.
@@ -213,6 +214,7 @@ impl App {
                 sample: None,
                 library,
                 collection_name: String::new(),
+                collection_placeholder: tr("New collection"),
                 blur_draft: 5,
                 blur_dirty: false,
                 online: Online {
@@ -291,6 +293,7 @@ impl App {
                     apply_language(&self.state.language);
                     self.applied_language = self.state.language.clone();
                     self.online.search_placeholder = tr("Search wallpapers…");
+                    self.collection_placeholder = tr("New collection");
                 }
                 Task::none()
             }
@@ -358,6 +361,7 @@ impl App {
                 self.applied_language = language.clone();
                 self.state.language = language.clone();
                 self.online.search_placeholder = tr("Search wallpapers…");
+                self.collection_placeholder = tr("New collection");
                 set_string(self.server.as_ref(), "language", language)
             }
             Message::SetProfile(profile) => {
@@ -992,7 +996,7 @@ impl App {
                 .spacing(8)
                 .align_y(Alignment::Center)
                 .push(
-                    text_input(&tr("New collection"), &self.collection_name)
+                    text_input(self.collection_placeholder.as_str(), &self.collection_name)
                         .on_input(Message::CollectionNameChanged)
                         .width(Length::Fill),
                 )
@@ -1053,7 +1057,7 @@ impl App {
                                 .spacing(8)
                                 .align_y(Alignment::Center)
                                 .push(
-                                    text_input(&tr("New collection"), &collection.name)
+                                    text_input(self.collection_placeholder.as_str(), &collection.name)
                                         .on_input(move |name| {
                                             Message::RenameCollection(rename_id.clone(), name)
                                         })

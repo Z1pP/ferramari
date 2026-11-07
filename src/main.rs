@@ -115,7 +115,7 @@ fn main() {
         Box::new(monitors::X11DisplayProvider),
     );
     // Start the players (and the control surface unless `--background`)
-    // before waiting for commands, exactly as the GTK activate handler did.
+    // before waiting for commands, matching the server's startup contract.
     app.borrow_mut().activate();
     App::run(&app, rx);
     log::info!("[Server] Stopped");

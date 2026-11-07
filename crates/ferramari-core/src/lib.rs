@@ -24,7 +24,6 @@ pub mod signing;
 pub mod supervisor;
 pub mod thumbnails;
 pub mod util;
-pub mod wake;
 pub mod window;
 pub mod ytdlp;
 

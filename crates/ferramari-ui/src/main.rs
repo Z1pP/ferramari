@@ -276,7 +276,10 @@ impl App {
             });
             return Task::none();
         }
-        Task::perform(request(server, source, parent), Message::PackageRequestFinished)
+        Task::perform(
+            request(server, source, parent),
+            Message::PackageRequestFinished,
+        )
     }
 
     fn persist_library(&mut self) -> Task<Message> {
@@ -319,13 +322,19 @@ impl App {
                     let pid = self.state.server_pid.unwrap_or_else(std::process::id);
                     self.sample = Some(self.metrics.sample_of(pid));
                 }
-                Task::perform(async move { server.snapshot().await }, Message::StateUpdated)
+                Task::perform(
+                    async move { server.snapshot().await },
+                    Message::StateUpdated,
+                )
             }
 
             Message::Connected(Ok(server)) => {
                 self.server = Some(server.clone());
                 self.status = None;
-                Task::perform(async move { server.snapshot().await }, Message::StateUpdated)
+                Task::perform(
+                    async move { server.snapshot().await },
+                    Message::StateUpdated,
+                )
             }
             Message::Connected(Err(error)) => {
                 self.status = Some(StatusLine {
@@ -495,7 +504,11 @@ impl App {
                 Task::none()
             }
             Message::CreateCollection => {
-                if self.library.create_collection(&self.collection_name).is_some() {
+                if self
+                    .library
+                    .create_collection(&self.collection_name)
+                    .is_some()
+                {
                     self.collection_name.clear();
                     return self.persist_library();
                 }
@@ -569,7 +582,10 @@ impl App {
                 play_video(self.server.as_ref(), path.to_string_lossy().into_owned())
             }
             Message::VideoImported(Err(error)) => {
-                self.status = Some(StatusLine { text: error, error: true });
+                self.status = Some(StatusLine {
+                    text: error,
+                    error: true,
+                });
                 Task::none()
             }
             Message::PickPackageSource => Task::perform(
@@ -626,21 +642,26 @@ impl App {
                 self.package_parent = path;
                 Task::none()
             }
-            Message::ImportPackage => self.send_package_request(|server, path, _| async move {
-                server.import_package(path).await
-            }, false),
-            Message::SignPackage => self.send_package_request(|server, path, _| async move {
-                server.sign_package(path).await
-            }, false),
-            Message::VerifyPackage => self.send_package_request(|server, path, _| async move {
-                server.verify_package(path).await
-            }, false),
-            Message::TrustPackageKey => self.send_package_request(|server, path, _| async move {
-                server.trust_key(path).await
-            }, false),
-            Message::ExportPackage => self.send_package_request(|server, video, parent| async move {
-                server.export_package(video, parent).await
-            }, true),
+            Message::ImportPackage => self.send_package_request(
+                |server, path, _| async move { server.import_package(path).await },
+                false,
+            ),
+            Message::SignPackage => self.send_package_request(
+                |server, path, _| async move { server.sign_package(path).await },
+                false,
+            ),
+            Message::VerifyPackage => self.send_package_request(
+                |server, path, _| async move { server.verify_package(path).await },
+                false,
+            ),
+            Message::TrustPackageKey => self.send_package_request(
+                |server, path, _| async move { server.trust_key(path).await },
+                false,
+            ),
+            Message::ExportPackage => self.send_package_request(
+                |server, video, parent| async move { server.export_package(video, parent).await },
+                true,
+            ),
 
             // --- Online catalogue ------------------------------------------ //
             Message::OnlineSearchChanged(query) => {
@@ -852,16 +873,13 @@ impl App {
     }
 
     fn content(&self, sem: &'static Semantics) -> Element<'_, Message> {
-        let mut header = Row::new()
-            .align_y(Alignment::Center)
-            .spacing(12)
-            .push(
-                Column::new()
-                    .spacing(2)
-                    .width(Length::Fill)
-                    .push(text(self.page.title()).size(24).color(sem.text))
-                    .push(text(self.page.subtitle()).size(12).color(sem.text_muted)),
-            );
+        let mut header = Row::new().align_y(Alignment::Center).spacing(12).push(
+            Column::new()
+                .spacing(2)
+                .width(Length::Fill)
+                .push(text(self.page.title()).size(24).color(sem.text))
+                .push(text(self.page.subtitle()).size(12).color(sem.text_muted)),
+        );
         if let Some(status) = &self.status {
             header = header.push(
                 container(text(status.text.clone()).size(11).color(if status.error {
@@ -938,11 +956,7 @@ impl App {
                     Row::new()
                         .spacing(8)
                         .push(primary_button(play_label, Message::TogglePlay, sem))
-                        .push(secondary_button(
-                            mute_label,
-                            Message::ToggleMute,
-                            sem,
-                        ))
+                        .push(secondary_button(mute_label, Message::ToggleMute, sem))
                         .push(secondary_button(
                             tr("Reload"),
                             Message::ReloadWallpaper,
@@ -969,14 +983,20 @@ impl App {
             id: String::new(),
             name: tr("No rotation"),
         }];
-        rotation_options.extend(self.library.collections().iter().map(|collection| CollectionChoice {
-            id: collection.id.clone(),
-            name: collection.name.clone(),
+        rotation_options.extend(self.library.collections().iter().map(|collection| {
+            CollectionChoice {
+                id: collection.id.clone(),
+                name: collection.name.clone(),
+            }
         }));
         let mut names: Vec<&String> = self.state.monitor_states.keys().collect();
         names.sort();
         if names.is_empty() {
-            monitors = monitors.push(text(tr("No displays detected")).size(12).color(sem.text_muted));
+            monitors = monitors.push(
+                text(tr("No displays detected"))
+                    .size(12)
+                    .color(sem.text_muted),
+            );
         } else {
             for name in names {
                 let state = self
@@ -1018,7 +1038,9 @@ impl App {
                         .push(pick_list(
                             rotation_options.clone(),
                             selected_choice,
-                            move |choice| Message::SetMonitorRotation(monitor_name.clone(), choice.id),
+                            move |choice| {
+                                Message::SetMonitorRotation(monitor_name.clone(), choice.id)
+                            },
                         )),
                 );
             }
@@ -1042,15 +1064,11 @@ impl App {
                     Message::BlurChanged,
                     sem,
                 ))
-                .push(
-                    Row::new()
-                        .spacing(8)
-                        .push(if self.blur_dirty {
-                            primary_button(tr("Apply"), Message::ApplyBlur, sem)
-                        } else {
-                            secondary_button(tr("Apply"), Message::ApplyBlur, sem)
-                        }),
-                ),
+                .push(Row::new().spacing(8).push(if self.blur_dirty {
+                    primary_button(tr("Apply"), Message::ApplyBlur, sem)
+                } else {
+                    secondary_button(tr("Apply"), Message::ApplyBlur, sem)
+                })),
             sem,
         );
 
@@ -1101,7 +1119,11 @@ impl App {
                 Message::RefreshLibrary,
                 sem,
             ))
-            .push(secondary_button(tr("Open folder"), Message::OpenFolder, sem));
+            .push(secondary_button(
+                tr("Open folder"),
+                Message::OpenFolder,
+                sem,
+            ));
 
         let monitor_options: Vec<String> = {
             let mut names: Vec<String> = self.state.monitor_states.keys().cloned().collect();
@@ -1135,22 +1157,21 @@ impl App {
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| entry.path.clone());
-                let mut row = Row::new()
-                    .spacing(12)
-                    .align_y(Alignment::Center)
-                    .push(
-                        Column::new()
-                            .spacing(2)
-                            .width(Length::Fill)
-                            .push(text(title).size(13).color(sem.text))
-                            .push(text(entry.path.clone()).size(10).color(sem.text_muted)),
-                    );
+                let mut row = Row::new().spacing(12).align_y(Alignment::Center).push(
+                    Column::new()
+                        .spacing(2)
+                        .width(Length::Fill)
+                        .push(text(title).size(13).color(sem.text))
+                        .push(text(entry.path.clone()).size(10).color(sem.text_muted)),
+                );
                 if !collection_options.is_empty() {
                     let options = collection_options.clone();
                     let path = entry.path.clone();
-                    row = row.push(pick_list(options, None::<CollectionChoice>, move |choice| {
-                        Message::AddToCollection(choice.id, path.clone())
-                    }));
+                    row = row.push(pick_list(
+                        options,
+                        None::<CollectionChoice>,
+                        move |choice| Message::AddToCollection(choice.id, path.clone()),
+                    ));
                 }
                 if !monitor_options.is_empty() {
                     let options = monitor_options.clone();
@@ -1231,25 +1252,22 @@ impl App {
                         .on_input(Message::CollectionNameChanged)
                         .width(Length::Fill),
                 )
-                .push(secondary_button(tr("Create"), Message::CreateCollection, sem)),
+                .push(secondary_button(
+                    tr("Create"),
+                    Message::CreateCollection,
+                    sem,
+                )),
         );
         if self.library.collections().is_empty() {
-            collections = collections.push(
-                text(tr("No videos yet"))
-                    .size(12)
-                    .color(sem.text_muted),
-            );
+            collections =
+                collections.push(text(tr("No videos yet")).size(12).color(sem.text_muted));
         } else {
             for collection in self.library.collections() {
                 let collection_id = collection.id.clone();
                 let rename_id = collection_id.clone();
                 let mut items = Column::new().spacing(6);
                 if collection.items.is_empty() {
-                    items = items.push(
-                        text(tr("No videos yet"))
-                            .size(11)
-                            .color(sem.text_muted),
-                    );
+                    items = items.push(text(tr("No videos yet")).size(11).color(sem.text_muted));
                 } else {
                     for path in &collection.items {
                         let item_id = collection_id.clone();
@@ -1288,11 +1306,14 @@ impl App {
                                 .spacing(8)
                                 .align_y(Alignment::Center)
                                 .push(
-                                    text_input(self.collection_placeholder.as_str(), &collection.name)
-                                        .on_input(move |name| {
-                                            Message::RenameCollection(rename_id.clone(), name)
-                                        })
-                                        .width(Length::Fill),
+                                    text_input(
+                                        self.collection_placeholder.as_str(),
+                                        &collection.name,
+                                    )
+                                    .on_input(move |name| {
+                                        Message::RenameCollection(rename_id.clone(), name)
+                                    })
+                                    .width(Length::Fill),
                                 )
                                 .push(secondary_button(
                                     tr("Delete collection"),
@@ -1376,7 +1397,12 @@ impl App {
 
     fn online(&self, sem: &'static Semantics) -> Element<'_, Message> {
         let mut category_options = vec![tr("All wallpapers")];
-        category_options.extend(self.online.categories.iter().map(|category| category.name.clone()));
+        category_options.extend(
+            self.online
+                .categories
+                .iter()
+                .map(|category| category.name.clone()),
+        );
         let selected = self
             .online
             .selected
@@ -1393,7 +1419,11 @@ impl App {
                     .padding(9)
                     .width(Length::Fill),
             )
-            .push(secondary_button(tr("Search wallpapers"), Message::OnlineSearch, sem))
+            .push(secondary_button(
+                tr("Search wallpapers"),
+                Message::OnlineSearch,
+                sem,
+            ))
             .push(pick_list(
                 category_options,
                 Some(selected),
@@ -1410,7 +1440,11 @@ impl App {
             body = body.push(text(error.clone()).size(12).color(sem.danger));
         }
         if self.online.loading {
-            body = body.push(text(tr("Loading wallpapers…")).size(12).color(sem.text_muted));
+            body = body.push(
+                text(tr("Loading wallpapers…"))
+                    .size(12)
+                    .color(sem.text_muted),
+            );
         } else if self.online.items.is_empty() {
             body = body.push(
                 text(tr("No wallpapers found"))
@@ -1452,25 +1486,20 @@ impl App {
                                 .width(Length::Fill)
                                 .push(text(wallpaper.title.clone()).size(13).color(sem.text))
                                 .push(
-                                    text(format!(
-                                        "{} · {}",
-                                        wallpaper.category, wallpaper.id
-                                    ))
-                                    .size(10)
-                                    .color(sem.text_muted),
+                                    text(format!("{} · {}", wallpaper.category, wallpaper.id))
+                                        .size(10)
+                                        .color(sem.text_muted),
                                 ),
                         )
                         .push(action),
                 );
             }
             if self.online.next.is_some() {
-                body = body.push(
-                    Row::new().push(secondary_button(
-                        tr("Load the next page"),
-                        Message::OnlineMore,
-                        sem,
-                    )),
-                );
+                body = body.push(Row::new().push(secondary_button(
+                    tr("Load the next page"),
+                    Message::OnlineMore,
+                    sem,
+                )));
             }
         }
 
@@ -1540,9 +1569,11 @@ impl App {
                     .spacing(6)
                     .push(section_title(tr("Live resource use"), sem))
                     .push(
-                        text(tr("Metrics cover the Ferramari process and its mpv/WebKit children."))
-                            .size(11)
-                            .color(sem.text_muted),
+                        text(tr(
+                            "Metrics cover the Ferramari process and its mpv/WebKit children.",
+                        ))
+                        .size(11)
+                        .color(sem.text_muted),
                     ),
                 sem,
             ))
@@ -1557,9 +1588,21 @@ impl App {
                     tr("Theme"),
                     tr("Window and control appearance"),
                     vec![
-                        (tr("System"), self.state.theme == "system", Message::SetTheme("system".into())),
-                        (tr("Light"), self.state.theme == "light", Message::SetTheme("light".into())),
-                        (tr("Dark"), self.state.theme == "dark", Message::SetTheme("dark".into())),
+                        (
+                            tr("System"),
+                            self.state.theme == "system",
+                            Message::SetTheme("system".into()),
+                        ),
+                        (
+                            tr("Light"),
+                            self.state.theme == "light",
+                            Message::SetTheme("light".into()),
+                        ),
+                        (
+                            tr("Dark"),
+                            self.state.theme == "dark",
+                            Message::SetTheme("dark".into()),
+                        ),
                     ],
                     sem,
                 ),
@@ -1567,10 +1610,26 @@ impl App {
                     tr("Language"),
                     tr("Interface language"),
                     vec![
-                        (tr("System"), self.state.language.is_empty(), Message::SetLanguage(String::new())),
-                        ("English".into(), self.state.language == "en", Message::SetLanguage("en".into())),
-                        ("Русский".into(), self.state.language == "ru", Message::SetLanguage("ru".into())),
-                        ("日本語".into(), self.state.language == "ja", Message::SetLanguage("ja".into())),
+                        (
+                            tr("System"),
+                            self.state.language.is_empty(),
+                            Message::SetLanguage(String::new()),
+                        ),
+                        (
+                            "English".into(),
+                            self.state.language == "en",
+                            Message::SetLanguage("en".into()),
+                        ),
+                        (
+                            "Русский".into(),
+                            self.state.language == "ru",
+                            Message::SetLanguage("ru".into()),
+                        ),
+                        (
+                            "日本語".into(),
+                            self.state.language == "ja",
+                            Message::SetLanguage("ja".into()),
+                        ),
                     ],
                     sem,
                 ),
@@ -1633,9 +1692,21 @@ impl App {
                     tr("Rotation mode"),
                     tr("Use the collection assigned to each monitor on Home"),
                     vec![
-                        (tr("Off"), self.state.rotation_mode == "off", Message::SetRotationMode("off".into())),
-                        (tr("In order"), self.state.rotation_mode == "order", Message::SetRotationMode("order".into())),
-                        (tr("Random"), self.state.rotation_mode == "random", Message::SetRotationMode("random".into())),
+                        (
+                            tr("Off"),
+                            self.state.rotation_mode == "off",
+                            Message::SetRotationMode("off".into()),
+                        ),
+                        (
+                            tr("In order"),
+                            self.state.rotation_mode == "order",
+                            Message::SetRotationMode("order".into()),
+                        ),
+                        (
+                            tr("Random"),
+                            self.state.rotation_mode == "random",
+                            Message::SetRotationMode("random".into()),
+                        ),
                     ],
                     sem,
                 ),
@@ -1736,11 +1807,7 @@ fn play_video(server: Option<&Server>, path: String) -> Task<Message> {
     play_video_on_monitor(server, path, String::new())
 }
 
-fn play_video_on_monitor(
-    server: Option<&Server>,
-    path: String,
-    monitor: String,
-) -> Task<Message> {
+fn play_video_on_monitor(server: Option<&Server>, path: String, monitor: String) -> Task<Message> {
     let Some(server) = server.cloned() else {
         return Task::none();
     };
@@ -1809,7 +1876,11 @@ fn status_style(sem: &'static Semantics, error: bool) -> iced::widget::container
             width: 1.0,
             radius: 9.0.into(),
         },
-        text_color: Some(if error { sem.danger } else { sem.text_secondary }),
+        text_color: Some(if error {
+            sem.danger
+        } else {
+            sem.text_secondary
+        }),
         ..Default::default()
     }
 }
@@ -1819,10 +1890,7 @@ fn button_style(
     kind: ButtonKind,
 ) -> impl Fn(&Theme, button::Status) -> button::Style + 'static {
     move |_theme, status| {
-        let hovered = matches!(
-            status,
-            button::Status::Hovered | button::Status::Pressed
-        );
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
         let (background, text_color, border_color) = match (kind, hovered) {
             (ButtonKind::Primary, false) => (sem.accent_bg, sem.accent_ink, Color::TRANSPARENT),
             (ButtonKind::Primary, true) => {
@@ -1831,15 +1899,13 @@ fn button_style(
             (ButtonKind::Secondary, false) => (sem.surface, sem.text, sem.border),
             (ButtonKind::Secondary, true) => (sem.surface_hover, sem.text, sem.border_strong),
             (ButtonKind::Ghost, false) => (Color::TRANSPARENT, sem.text_secondary, sem.border),
-            (ButtonKind::Ghost, true) => {
-                (sem.surface_hover, sem.text, sem.border_strong)
+            (ButtonKind::Ghost, true) => (sem.surface_hover, sem.text, sem.border_strong),
+            (ButtonKind::Nav, false) => {
+                (Color::TRANSPARENT, sem.text_secondary, Color::TRANSPARENT)
             }
-            (ButtonKind::Nav, false) => (Color::TRANSPARENT, sem.text_secondary, Color::TRANSPARENT),
             (ButtonKind::Nav, true) => (sem.surface_hover, sem.text, Color::TRANSPARENT),
             (ButtonKind::NavActive, false) => (sem.accent_soft, sem.accent_text, sem.accent_border),
-            (ButtonKind::NavActive, true) => {
-                (sem.accent_soft, sem.accent_text, sem.accent_border)
-            }
+            (ButtonKind::NavActive, true) => (sem.accent_soft, sem.accent_text, sem.accent_border),
         };
         button::Style {
             background: Some(Background::Color(background)),

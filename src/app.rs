@@ -142,7 +142,7 @@ impl App {
         // observe different states while a charger is being plugged in.
         let power_status = power_provider.status();
         let idle_threshold = Arc::new(AtomicU64::new(
-            config.idle_timeout_sec.clamp(30, 86_400) as u64,
+            config.idle_timeout_sec.clamp(30, 86_400) as u64
         ));
 
         let app = Self {
@@ -267,10 +267,10 @@ impl App {
     }
 
     fn start_external_watchers(&mut self) {
-        self.platform_watchers = Some(self.platform_event_source.start(
-            self.tx.clone(),
-            Arc::clone(&self.idle_threshold),
-        ));
+        self.platform_watchers = Some(
+            self.platform_event_source
+                .start(self.tx.clone(), Arc::clone(&self.idle_threshold)),
+        );
     }
 
     pub fn activate(&mut self) {
@@ -629,10 +629,7 @@ impl App {
                     .ok();
             }
             Command::PackageVerified(report) => {
-                let invalid = matches!(
-                    &report.signature,
-                    signing::SignatureStatus::Invalid { .. }
-                );
+                let invalid = matches!(&report.signature, signing::SignatureStatus::Invalid { .. });
                 self.set_operation_status(
                     format!(
                         "Verified {}: checksums={}, {}",
@@ -652,24 +649,24 @@ impl App {
             Command::TrustKey(path) => {
                 self.set_operation_status("Trusting package key…", false);
                 match signing::trust_source(&path) {
-                Ok(Some(key_id)) => {
-                    self.set_operation_status(format!("Trusted key {key_id}"), false);
-                    log::info!("[Package] Trusted key {key_id}");
-                }
-                Ok(None) => {
-                    self.set_operation_status("Package contains no signing key", true);
-                    self.notify_user_error(UserError::new(
-                        ErrorKind::FileSystem,
-                        format!("{} carries no key to trust", path.display()),
-                    ));
-                }
-                Err(err) => {
-                    self.set_operation_status(format!("Trust operation failed: {err}"), true);
-                    self.notify_user_error(UserError::new(
-                        ErrorKind::FileSystem,
-                        format!("Could not trust the key: {err}"),
-                    ));
-                }
+                    Ok(Some(key_id)) => {
+                        self.set_operation_status(format!("Trusted key {key_id}"), false);
+                        log::info!("[Package] Trusted key {key_id}");
+                    }
+                    Ok(None) => {
+                        self.set_operation_status("Package contains no signing key", true);
+                        self.notify_user_error(UserError::new(
+                            ErrorKind::FileSystem,
+                            format!("{} carries no key to trust", path.display()),
+                        ));
+                    }
+                    Err(err) => {
+                        self.set_operation_status(format!("Trust operation failed: {err}"), true);
+                        self.notify_user_error(UserError::new(
+                            ErrorKind::FileSystem,
+                            format!("Could not trust the key: {err}"),
+                        ));
+                    }
                 }
             }
             Command::SetMonitorRotation {
@@ -1061,13 +1058,29 @@ impl App {
         let profile = self.config.playback_profile.as_str();
         let hwdec = self.config.hwdec.as_str();
         match key.kind {
-            ContentKind::Video => Engine::video(self.surface_provider.as_ref(), monitor, &key.source, volume, muted, profile, hwdec),
+            ContentKind::Video => Engine::video(
+                self.surface_provider.as_ref(),
+                monitor,
+                &key.source,
+                volume,
+                muted,
+                profile,
+                hwdec,
+            ),
             ContentKind::Stream => {
                 let stream = self
                     .stream
                     .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("stream is not resolved yet"))?;
-                Engine::stream(self.surface_provider.as_ref(), monitor, stream, volume, muted, profile, hwdec)
+                Engine::stream(
+                    self.surface_provider.as_ref(),
+                    monitor,
+                    stream,
+                    volume,
+                    muted,
+                    profile,
+                    hwdec,
+                )
             }
             ContentKind::Web => Engine::web(monitor, &key.source),
         }
@@ -1891,9 +1904,10 @@ mod tests {
         );
         config.mode = Mode::Video;
         for monitor in &monitors {
-            config
-                .data_source
-                .insert(monitor.name.clone(), format!("/videos/{}.mp4", monitor.name));
+            config.data_source.insert(
+                monitor.name.clone(),
+                format!("/videos/{}.mp4", monitor.name),
+            );
         }
 
         // Unplug HDMI-1: only the built-in display should get a window.
@@ -1950,16 +1964,28 @@ mod tests {
     #[test]
     fn order_rotation_advances_and_wraps() {
         let items = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        assert_eq!(next_rotation_path("order", &items, "a"), Some("b".to_string()));
-        assert_eq!(next_rotation_path("order", &items, "c"), Some("a".to_string()));
-        assert_eq!(next_rotation_path("order", &items, "gone"), Some("a".to_string()));
+        assert_eq!(
+            next_rotation_path("order", &items, "a"),
+            Some("b".to_string())
+        );
+        assert_eq!(
+            next_rotation_path("order", &items, "c"),
+            Some("a".to_string())
+        );
+        assert_eq!(
+            next_rotation_path("order", &items, "gone"),
+            Some("a".to_string())
+        );
     }
 
     #[test]
     fn random_rotation_avoids_the_current_item() {
         let items = vec!["a".to_string(), "b".to_string(), "c".to_string()];
         for _ in 0..50 {
-            assert_ne!(next_rotation_path("random", &items, "a").as_deref(), Some("a"));
+            assert_ne!(
+                next_rotation_path("random", &items, "a").as_deref(),
+                Some("a")
+            );
         }
         // One candidate left: it has to repeat.
         assert_eq!(

@@ -499,7 +499,11 @@ pub fn read_public_key_document(path: &Path) -> Result<TrustedKey, String> {
 fn key_id(public: &[u8]) -> String {
     use sha2::{Digest as _, Sha256};
     let digest = Sha256::digest(public);
-    digest.iter().map(|b| format!("{:02x}", b)).take(16).collect()
+    digest
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .take(16)
+        .collect()
 }
 
 fn write_json<T: Serialize>(path: &Path, value: &T, mode: u32) -> Result<(), String> {

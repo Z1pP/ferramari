@@ -165,9 +165,7 @@ pub fn uri_to_path(uri: &str) -> Option<PathBuf> {
         if !host.is_empty() && host != "localhost" {
             return None;
         }
-        return Url::parse(uri)
-            .ok()
-            .and_then(|url| url.to_file_path().ok());
+        return Url::parse(uri).ok().and_then(|url| url.to_file_path().ok());
     }
     // Anything else with a scheme (`https://`, `data:`) is not a local file.
     let local = !uri.is_empty() && !uri.contains("://") && !uri.starts_with("data:");

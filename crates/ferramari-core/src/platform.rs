@@ -51,11 +51,8 @@ pub trait PlatformWatchers {}
 
 /// Starts OS event sources and forwards normalized events to the core command bus.
 pub trait PlatformEventSource {
-    fn start(
-        &self,
-        tx: CommandSender,
-        idle_threshold: Arc<AtomicU64>,
-    ) -> Box<dyn PlatformWatchers>;
+    fn start(&self, tx: CommandSender, idle_threshold: Arc<AtomicU64>)
+        -> Box<dyn PlatformWatchers>;
 }
 
 /// An OS-owned surface suitable for embedding the media renderer.
@@ -71,10 +68,7 @@ pub trait WallpaperSurface {
 /// The returned object owns the native surface for as long as it is retained
 /// by the media engine. Dropping it must release the native resources.
 pub trait WallpaperSurfaceProvider {
-    fn create(
-        &self,
-        monitor: &MonitorInfo,
-    ) -> anyhow::Result<Box<dyn WallpaperSurface>>;
+    fn create(&self, monitor: &MonitorInfo) -> anyhow::Result<Box<dyn WallpaperSurface>>;
 }
 
 #[cfg(test)]

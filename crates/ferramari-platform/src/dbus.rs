@@ -9,8 +9,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use ferramari_core::{Command, CommandSender, Snapshot};
 use ferramari_core::paths;
+use ferramari_core::{Command, CommandSender, Snapshot};
 
 pub const SERVER_INTERFACE: &str = "io.github.ferramari.ferramari.server";
 #[allow(dead_code)] // documented API surface, asserted in tests

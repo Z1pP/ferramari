@@ -170,9 +170,8 @@ pub fn platform_capabilities() -> PlatformCapabilities {
         "org.kde.screensaver",
         "org.xfce.ScreenSaver",
     ]);
-    let service_available = |value: &str| {
-        value != "not found" && value != "session bus unavailable"
-    };
+    let service_available =
+        |value: &str| value != "not found" && value != "session bus unavailable";
 
     PlatformCapabilities {
         wallpaper_surface: x11_level,

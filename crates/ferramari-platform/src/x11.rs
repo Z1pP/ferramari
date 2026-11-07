@@ -3,8 +3,8 @@
 //! Native window-system observations are converted into the platform-neutral
 //! window geometry model owned by ferramari-core.
 
-use ferramari_core::{Command, CommandSender};
 pub use ferramari_core::window::{MonitorVisibility, WindowRect, WindowState};
+use ferramari_core::{Command, CommandSender};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -281,4 +281,3 @@ fn property32(
         .map(|values| values.collect())
         .unwrap_or_default())
 }
-

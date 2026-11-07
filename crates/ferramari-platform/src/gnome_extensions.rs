@@ -125,4 +125,3 @@ pub fn gnome_desktop_icon_workaround() {
         RUNNING.store(false, Ordering::SeqCst);
     });
 }
-

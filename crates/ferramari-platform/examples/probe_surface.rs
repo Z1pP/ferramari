@@ -23,7 +23,10 @@ fn root_monitor() -> anyhow::Result<ferramari_core::MonitorInfo> {
 }
 
 fn main() -> anyhow::Result<()> {
-    assert!(ferramari_platform::surface::available(), "no X server reachable");
+    assert!(
+        ferramari_platform::surface::available(),
+        "no X server reachable"
+    );
     let monitor = root_monitor()?;
 
     let surface = ferramari_platform::surface::create(&monitor)?;
@@ -33,7 +36,10 @@ fn main() -> anyhow::Result<()> {
     // same connection that owns the window.
     let connection = surface.connection();
     let atom = |name: &str| -> anyhow::Result<u32> {
-        Ok(connection.intern_atom(false, name.as_bytes())?.reply()?.atom)
+        Ok(connection
+            .intern_atom(false, name.as_bytes())?
+            .reply()?
+            .atom)
     };
     let type_atom = atom("_NET_WM_WINDOW_TYPE")?;
     let desktop_atom = atom("_NET_WM_WINDOW_TYPE_DESKTOP")?;
@@ -90,7 +96,11 @@ fn main() -> anyhow::Result<()> {
         .map(|v| v.collect())
         .unwrap_or_default();
     println!("_MOTIF_WM_HINTS = {motif:?}");
-    assert_eq!(motif.get(1).copied().unwrap_or(1), 0, "decorations should be off");
+    assert_eq!(
+        motif.get(1).copied().unwrap_or(1),
+        0,
+        "decorations should be off"
+    );
 
     let state = connection.get_window_attributes(surface.xid)?.reply()?;
     println!("map_state = {:?} (Viewable = mapped)", state.map_state);

@@ -55,11 +55,7 @@ pub struct Geometry {
 /// Enumerators report in different pixel units depending on the backend
 /// (logical vs device pixels). Accept both rectangles, which keeps connector
 /// matching working on scaled outputs.
-pub fn geometry_matches(
-    a: (i32, i32, i32, i32),
-    b: (i32, i32, i32, i32),
-    scale: i32,
-) -> bool {
+pub fn geometry_matches(a: (i32, i32, i32, i32), b: (i32, i32, i32, i32), scale: i32) -> bool {
     a == b || (a.0 * scale, a.1 * scale, a.2 * scale, a.3 * scale) == b
 }
 

@@ -129,7 +129,11 @@ impl Engine {
         let mpv = match Mpv::spawn(&MpvOptions {
             wid: Some(surface.embedding_handle()),
             source: stream.video_url.clone(),
-            audio_file: if primary { stream.audio_url.clone() } else { None },
+            audio_file: if primary {
+                stream.audio_url.clone()
+            } else {
+                None
+            },
             no_audio: !primary,
             volume: if primary { volume } else { 0 },
             muted,
@@ -190,7 +194,9 @@ impl Engine {
     /// and the mpv process, which saves the ~120 ms cold start.
     pub fn load_video(&mut self, source: &str, volume: i64, muted: bool) -> anyhow::Result<()> {
         let Content::Video { mpv } = &self.content;
-        let mut mpv = mpv.lock().map_err(|_| anyhow::anyhow!("mpv lock poisoned"))?;
+        let mut mpv = mpv
+            .lock()
+            .map_err(|_| anyhow::anyhow!("mpv lock poisoned"))?;
         mpv.set_volume(if self.primary { volume } else { 0 })?;
         mpv.set_mute(muted)?;
         mpv.load_file(source)?;
@@ -339,7 +345,10 @@ impl Engine {
             return false;
         };
         if let Err(err) = mpv.park() {
-            log::warn!("[Eco] could not park the decoder on {}: {err}", self.key.monitor);
+            log::warn!(
+                "[Eco] could not park the decoder on {}: {err}",
+                self.key.monitor
+            );
             return false;
         }
         self.parked = true;
@@ -461,7 +470,10 @@ mod tests {
             key(ContentKind::Video, "eDP-1", "/videos/a.mp4"),
             key(ContentKind::Video, "HDMI-1", "/videos/old.mp4"),
         ];
-        let kept: Vec<&WindowKey> = existing.iter().filter(|window| desired.contains(window)).collect();
+        let kept: Vec<&WindowKey> = existing
+            .iter()
+            .filter(|window| desired.contains(window))
+            .collect();
         assert_eq!(kept, vec![&existing[0]]);
     }
 

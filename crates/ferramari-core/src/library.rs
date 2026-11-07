@@ -111,8 +111,8 @@ impl Library {
         let favorites_before = self.favorites.len();
         self.history.retain(|entry| entry.path != path);
         self.favorites.retain(|favorite| favorite != path);
-        let mut changed = history_before != self.history.len()
-            || favorites_before != self.favorites.len();
+        let mut changed =
+            history_before != self.history.len() || favorites_before != self.favorites.len();
         for collection in &mut self.collections {
             let before = collection.items.len();
             collection.items.retain(|item| item != path);
@@ -249,7 +249,10 @@ impl Library {
 
 fn import_video_to(source: &Path, destination: &Path) -> Result<PathBuf, String> {
     if !source.is_file() || !crate::util::is_video(source) {
-        return Err(format!("{} is not a supported video file", source.display()));
+        return Err(format!(
+            "{} is not a supported video file",
+            source.display()
+        ));
     }
     fs::create_dir_all(destination)
         .map_err(|err| format!("could not create {}: {err}", destination.display()))?;
@@ -273,7 +276,9 @@ fn import_video_to(source: &Path, destination: &Path) -> Result<PathBuf, String>
         .file_stem()
         .map(|value| value.to_string_lossy().into_owned())
         .unwrap_or_else(|| filename.clone());
-    let extension = path.extension().map(|value| value.to_string_lossy().into_owned());
+    let extension = path
+        .extension()
+        .map(|value| value.to_string_lossy().into_owned());
 
     for suffix in 1u32.. {
         let name = if suffix == 1 {
@@ -284,7 +289,11 @@ fn import_video_to(source: &Path, destination: &Path) -> Result<PathBuf, String>
             format!("{stem} ({suffix})")
         };
         let target = destination.join(name);
-        let mut output = match fs::OpenOptions::new().write(true).create_new(true).open(&target) {
+        let mut output = match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&target)
+        {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(format!("could not create {}: {error}", target.display())),
@@ -420,7 +429,10 @@ mod tests {
         assert!(library.history().is_empty());
         assert!(library.favorites().is_empty());
         assert!(library.collection(&collection).unwrap().items.is_empty());
-        assert!(first.is_file(), "removing a library entry must not delete user data");
+        assert!(
+            first.is_file(),
+            "removing a library entry must not delete user data"
+        );
 
         let _ = fs::remove_dir_all(root);
     }

@@ -174,7 +174,8 @@ impl Server {
         monitor: String,
         collection: String,
     ) -> Result<(), String> {
-        self.player_command_args("set_monitor_rotation", &(monitor, collection)).await
+        self.player_command_args("set_monitor_rotation", &(monitor, collection))
+            .await
     }
 
     /// Write one server property through the standard Properties interface.
@@ -250,11 +251,7 @@ impl Server {
         state
     }
 
-    async fn get_all(
-        &self,
-        path: &str,
-        interface: &str,
-    ) -> Option<HashMap<String, OwnedValue>> {
+    async fn get_all(&self, path: &str, interface: &str) -> Option<HashMap<String, OwnedValue>> {
         self.connection
             .call_method(
                 Some(SERVER_NAME),

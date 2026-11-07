@@ -98,12 +98,9 @@ fn randr_monitors() -> (Vec<RawMonitor>, Option<i32>) {
         .iter()
         .position(|monitor| monitor.is_primary)
         .or_else(|| {
-            monitors.iter().position(|monitor| {
-                monitor
-                    .atom_name
-                    .to_ascii_uppercase()
-                    .starts_with("LVDS")
-            })
+            monitors
+                .iter()
+                .position(|monitor| monitor.atom_name.to_ascii_uppercase().starts_with("LVDS"))
         })
         .map(|index| index as i32);
 
@@ -170,8 +167,7 @@ impl Drop for Watcher {
 
 impl Watcher {
     pub fn stop(&self) {
-        self.stop
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -224,7 +220,10 @@ pub fn start(tx: ferramari_core::CommandSender) -> Option<Watcher> {
         })
         .ok()?;
 
-    Some(Watcher { stop, thread: Some(thread) })
+    Some(Watcher {
+        stop,
+        thread: Some(thread),
+    })
 }
 
 #[cfg(test)]
@@ -235,7 +234,6 @@ mod tests {
         assert_eq!(super::window_scale(), 1);
     }
 }
-
 
 /// XRandR-backed display provider for Linux X11/XWayland sessions.
 #[derive(Debug, Clone, Copy, Default)]

@@ -440,9 +440,7 @@ fn gsettings_get(key: &str) -> Option<String> {
     }
     let raw = String::from_utf8_lossy(&output.stdout);
     let value = raw.trim();
-    let unquoted = value
-        .trim_start_matches('\'')
-        .trim_end_matches(['\'', 's']);
+    let unquoted = value.trim_start_matches('\'').trim_end_matches(['\'', 's']);
     Some(unquoted.to_string())
 }
 
@@ -471,9 +469,7 @@ fn host_gsettings_get(key: &str) -> Option<String> {
     }
     let raw = String::from_utf8_lossy(&output.stdout);
     let value = raw.trim();
-    let unquoted = value
-        .trim_start_matches('\'')
-        .trim_end_matches(['\'', 's']);
+    let unquoted = value.trim_start_matches('\'').trim_end_matches(['\'', 's']);
     Some(unquoted.to_string())
 }
 

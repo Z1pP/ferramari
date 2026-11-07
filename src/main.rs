@@ -7,14 +7,17 @@
 // Business logic, the command bus and the data models live in `ferramari-core`.
 // The binary re-exports the modules under their historic names so that `app.rs`
 // keeps referring to `crate::paths`, `crate::util`, … unchanged.
-pub use ferramari_core::{
-    bus, catalog_api, catalogue, cli, config, eco, error, library, metrics, package, paths,
-    plugin, signing, supervisor, thumbnails, util, window, ytdlp,
-};
-pub use ferramari_core::MonitorInfo;
 pub use ferramari_core::bus::{Command, CommandReceiver, CommandSender, PackageReport, Snapshot};
+pub use ferramari_core::MonitorInfo;
+pub use ferramari_core::{
+    bus, catalog_api, catalogue, cli, config, eco, error, library, metrics, package, paths, plugin,
+    signing, supervisor, thumbnails, util, window, ytdlp,
+};
 pub use ferramari_media::mpv;
-pub use ferramari_platform::{autostart, dbus, desktop, event_source, gnome_bg, gnome_extensions, handlers, monitors, power, surface, tray, x11};
+pub use ferramari_platform::{
+    autostart, dbus, desktop, event_source, gnome_bg, gnome_extensions, handlers, monitors, power,
+    surface, tray, x11,
+};
 // The static-background module kept its historic name in the binary.
 pub use ferramari_platform::gnome_bg as wallpaper;
 
@@ -306,7 +309,6 @@ fn author_name(requested: &str) -> String {
     }
     signing::default_author_name()
 }
-
 
 #[cfg(not(unix))]
 fn install_signal_handlers(_tx: &CommandSender) {

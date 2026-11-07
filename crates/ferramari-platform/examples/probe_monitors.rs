@@ -17,5 +17,8 @@ fn main() {
             primary = monitor.is_primary,
         );
     }
-    println!("background: {}", ferramari_platform::gnome_bg::background_diagnostic());
+    println!(
+        "background: {}",
+        ferramari_platform::gnome_bg::background_diagnostic()
+    );
 }

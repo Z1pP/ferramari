@@ -7,8 +7,8 @@ use std::time::Duration;
 
 use zbus::blocking::{Connection, Proxy};
 
-use ferramari_core::{Command, CommandSender};
 use ferramari_core::paths;
+use ferramari_core::{Command, CommandSender};
 
 /// Portable idle detection. There is no freedesktop signal for "the user has
 /// been idle for N seconds", so this polls the desktop's idle counter. The

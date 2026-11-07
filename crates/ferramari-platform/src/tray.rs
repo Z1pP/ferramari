@@ -8,8 +8,8 @@ use ferramari_core::util::tr;
 use ksni::menu::StandardItem;
 use ksni::{MenuItem, Tray as KsniTray};
 
-use ferramari_core::{Command, CommandSender};
 use ferramari_core::paths;
+use ferramari_core::{Command, CommandSender};
 
 pub struct Tray {
     tx: CommandSender,

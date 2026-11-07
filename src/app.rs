@@ -2042,4 +2042,218 @@ mod tests {
         assert_eq!(wanted.len(), 1);
         assert_eq!(wanted[0].monitor, "eDP-1");
     }
+
+    // ======================================================================== //
+    // Eco Engine integration: platform signals → policy decision                //
+    // ======================================================================== //
+
+    /// Minimal App skeleton for eco_plan_for() unit tests — only the fields
+    // that `eco_plan_for` actually touches are populated.
+    use crate::window::{MonitorVisibility, WindowRect, WindowState};
+
+    struct EcoTestHarness {
+        paused_by_user: bool,
+        screen_locked: bool,
+        suspended: bool,
+        on_battery: bool,
+        idle: bool,
+        window_state: WindowState,
+        monitors: Vec<MonitorInfo>,
+        playback_profile: String,
+        pause_on_battery: bool,
+        is_pause_when_maximized: bool,
+    }
+
+    impl EcoTestHarness {
+        fn new(config_mode: &'static str) -> Self {
+            let monitors = vec![
+                MonitorInfo {
+                    index: 0,
+                    name: "eDP-1".to_string(),
+                    x: 0,
+                    y: 0,
+                    width: 1920,
+                    height: 1080,
+                    scale_factor: 1,
+                    is_primary: true,
+                },
+                MonitorInfo {
+                    index: 1,
+                    name: "HDMI-1".to_string(),
+                    x: 1920,
+                    y: 0,
+                    width: 1920,
+                    height: 1080,
+                    scale_factor: 1,
+                    is_primary: false,
+                },
+            ];
+            Self {
+                paused_by_user: false,
+                screen_locked: false,
+                suspended: false,
+                on_battery: false,
+                idle: false,
+                window_state: WindowState::default(),
+                monitors,
+                playback_profile: config_mode.to_string(),
+                pause_on_battery: false,
+                is_pause_when_maximized: true,
+            }
+        }
+
+        /// Equivalent of `App::eco_plan_for(monitor)` with local state.
+        fn plan(&self, monitor: &str) -> eco::Plan {
+            let visibility = self.monitor_visibility(monitor);
+            eco::plan(
+                eco::Profile::from_config(&self.playback_profile),
+                self.is_pause_when_maximized,
+                eco::Signals {
+                    user_paused: self.paused_by_user,
+                    screen_locked: self.screen_locked,
+                    suspended: self.suspended,
+                    battery_paused: self.pause_on_battery && self.on_battery,
+                    idle: self.idle,
+                    covered: visibility.covered,
+                    fullscreen: visibility.fullscreen,
+                },
+            )
+        }
+
+        fn monitor_visibility(&self, monitor: &str) -> MonitorVisibility {
+            self.monitors
+                .iter()
+                .find(|info| info.name == monitor)
+                .map(|info| {
+                    let scale = info.scale_factor.max(1);
+                    self.window_state.visibility_at(
+                        info.x * scale,
+                        info.y * scale,
+                        info.width * scale,
+                        info.height * scale,
+                    )
+                })
+                .unwrap_or_default()
+        }
+    }
+
+    #[test]
+    fn session_signals_override_all_profiles() {
+        // Each high-priority signal suspends playback for every profile.
+        for profile in ["quality", "balanced", "eco"] {
+            let mut h = EcoTestHarness::new(profile);
+            h.paused_by_user = true;
+            let p = h.plan("eDP-1");
+            assert_eq!(p.state, eco::State::Suspended, "{profile}: user pause");
+            assert!(!p.play);
+
+            let mut h = EcoTestHarness::new(profile);
+            h.screen_locked = true;
+            let p = h.plan("eDP-1");
+            assert_eq!(p.state, eco::State::Suspended, "{profile}: lock");
+            assert!(!p.play);
+
+            let mut h = EcoTestHarness::new(profile);
+            h.suspended = true;
+            let p = h.plan("eDP-1");
+            assert_eq!(p.state, eco::State::Suspended, "{profile}: suspend");
+            assert!(!p.play);
+        }
+    }
+
+    #[test]
+    fn battery_pause_is_profile_agnostic() {
+        for profile in ["quality", "balanced", "eco"] {
+            let mut h = EcoTestHarness::new(profile);
+            h.on_battery = true;
+            h.pause_on_battery = true;
+            let p = h.plan("eDP-1");
+            assert_eq!(p.state, eco::State::Suspended);
+            assert!(!p.play);
+        }
+    }
+
+    #[test]
+    fn occlusion_pauses_every_profile_when_smart_pause_is_on() {
+        let mut h = EcoTestHarness::new("quality");
+        h.window_state.windows.push(WindowRect {
+            fullscreen: true,
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            ..Default::default()
+        });
+        for prof in ["quality", "balanced", "eco"] {
+            h.playback_profile = prof.to_string();
+            let p = h.plan("eDP-1");
+            assert_eq!(p.state, eco::State::Occluded);
+            assert!(!p.play);
+        }
+    }
+
+    #[test]
+    fn smart_pause_disabled_means_occlusion_does_not_stop_playback() {
+        let mut h = EcoTestHarness::new("eco");
+        h.is_pause_when_maximized = false;
+        h.window_state.windows.push(WindowRect {
+            maximized: true,
+            x: 0,
+            y: 32,
+            width: 1920,
+            height: 1048,
+            ..Default::default()
+        });
+        let p = h.plan("eDP-1");
+        assert!(p.play);
+    }
+
+    #[test]
+    fn per_monitor_independence_coverage_vs_idle() {
+        // eDP-1 fully covered (fullscreen game); HDMI-1 idle but uncovered.
+        let mut h = EcoTestHarness::new("eco");
+        h.window_state.windows.push(WindowRect {
+            fullscreen: true,
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            ..Default::default()
+        });
+        h.idle = true;
+
+        let edp = h.plan("eDP-1");
+        let hdmi = h.plan("HDMI-1");
+
+        // Covered monitor is Occluded regardless of idle.
+        assert_eq!(edp.state, eco::State::Occluded);
+        assert!(!edp.play);
+
+        // Uncovered monitor sees idle and should be handled per profile (Eco stops).
+        assert_eq!(hdmi.state, eco::State::Idle);
+        assert!(!hdmi.play);
+    }
+
+    #[test]
+    fn quality_still_plays_through_idle_but_blocks_through_occlusion() {
+        let mut h = EcoTestHarness::new("quality");
+        // Idle alone doesn't stop Quality.
+        h.idle = true;
+        let p_idle = h.plan("eDP-1");
+        assert_eq!(p_idle.state, eco::State::Active);
+        assert!(p_idle.play);
+
+        // Now add fullscreen occlusion.
+        h.window_state.windows.push(WindowRect {
+            fullscreen: true,
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            ..Default::default()
+        });
+        let p_occl = h.plan("eDP-1");
+        assert_eq!(p_occl.state, eco::State::Occluded);
+        assert!(!p_occl.play);
+    }
 }

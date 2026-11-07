@@ -9,7 +9,7 @@
 // keeps referring to `crate::paths`, `crate::util`, … unchanged.
 pub use ferramari_core::{
     bus, catalog_api, catalogue, cli, config, eco, error, library, metrics, package, paths,
-    plugin, power, signing, supervisor, thumbnails, util, wake, ytdlp,
+    plugin, power, signing, supervisor, thumbnails, util, ytdlp,
 };
 pub use ferramari_core::MonitorInfo;
 pub use ferramari_core::bus::{Command, CommandReceiver, CommandSender, PackageReport, Snapshot};

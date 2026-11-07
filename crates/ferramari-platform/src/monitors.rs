@@ -185,14 +185,11 @@ pub fn start(tx: ferramari_core::CommandSender) -> Option<Watcher> {
         | NotifyMask::CRTC_CHANGE
         | NotifyMask::OUTPUT_CHANGE
         | NotifyMask::RESOURCE_CHANGE;
-    if connection
+    connection
         .randr_select_input(root, mask)
-        .ok()
-        .and_then(|cookie| cookie.check().ok())
-        .is_none()
-    {
-        return None;
-    }
+        .ok()?
+        .check()
+        .ok()?;
 
     let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let thread_stop = std::sync::Arc::clone(&stop);

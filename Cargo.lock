@@ -1074,7 +1074,6 @@ dependencies = [
  "ferramari-core",
  "log",
  "serde_json",
- "x11rb 0.14.0",
 ]
 
 [[package]]

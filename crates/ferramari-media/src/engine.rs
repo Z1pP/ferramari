@@ -19,11 +19,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use ferramari_core::eco;
+use ferramari_core::platform::{WallpaperSurface, WallpaperSurfaceProvider};
 use ferramari_core::MonitorInfo;
 
 use crate::fade::Fade;
 use crate::mpv::{self, Mpv, Options as MpvOptions};
-use crate::surface::{self, Surface};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ContentKind {
@@ -49,7 +49,7 @@ enum Content {
 /// A wallpaper surface with its media attached. Dropping stops the fade
 /// threads, kills the player and destroys the X window.
 pub struct Engine {
-    surface: Surface,
+    surface: Box<dyn WallpaperSurface>,
     content: Content,
     fade: Fade,
     key: WindowKey,
@@ -65,6 +65,7 @@ pub struct Engine {
 impl Engine {
     /// A window that renders a local video on `monitor` via mpv.
     pub fn video(
+        surface_provider: &dyn WallpaperSurfaceProvider,
         monitor: &MonitorInfo,
         source: &str,
         volume: i64,
@@ -73,9 +74,9 @@ impl Engine {
         hwdec: &str,
     ) -> anyhow::Result<Self> {
         let primary = monitor.is_primary;
-        let surface = surface::create(monitor)?;
+        let surface = surface_provider.create(monitor)?;
         let mpv = match Mpv::spawn(&MpvOptions {
-            wid: Some(surface.xid as u64),
+            wid: Some(surface.embedding_handle()),
             source: source.to_string(),
             audio_file: None,
             no_audio: !primary,
@@ -115,6 +116,7 @@ impl Engine {
 
     /// A window that renders a yt-dlp resolved stream on `monitor`.
     pub fn stream(
+        surface_provider: &dyn WallpaperSurfaceProvider,
         monitor: &MonitorInfo,
         stream: &ferramari_core::ytdlp::StreamInfo,
         volume: i64,
@@ -123,9 +125,9 @@ impl Engine {
         hwdec: &str,
     ) -> anyhow::Result<Self> {
         let primary = monitor.is_primary;
-        let surface = surface::create(monitor)?;
+        let surface = surface_provider.create(monitor)?;
         let mpv = match Mpv::spawn(&MpvOptions {
-            wid: Some(surface.xid as u64),
+            wid: Some(surface.embedding_handle()),
             source: stream.video_url.clone(),
             audio_file: if primary { stream.audio_url.clone() } else { None },
             no_audio: !primary,
@@ -182,7 +184,7 @@ impl Engine {
     /// for callers that need to reparent or stack the surface explicitly;
     /// holding the engine is what keeps the window alive.
     pub fn surface_xid(&self) -> u64 {
-        self.surface.xid as u64
+        self.surface.embedding_handle()
     }
 
     /// Point an existing video player at another file. Keeps the X11 window

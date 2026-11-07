@@ -50,7 +50,7 @@ The interface has a hand-tuned dark palette as well as the light one:
 - Browse a catalogue of live wallpapers with categories, search, sorting,
   resolution filters and a six-frame preview before installing
 - Streaming URLs through `yt-dlp` (YouTube and many other sites)
-- Any web page as the wallpaper (WebKitGTK, so WebGL/Unity/Godot work)
+- Web-page wallpapers are currently unavailable; a replacement browser engine is required before this feature can return
 - GNOME static wallpaper with a blurred frame from the video
 - Pause or mute playback per monitor when that monitor is covered by a
   maximized or fullscreen window (X11); the other monitors keep playing
@@ -108,17 +108,17 @@ sudo pacman -S base-devel pkgconf gettext
 ## Build, test, install
 
 ```sh
-cargo build --release
-cargo test
-cargo clippy --all-targets -- -D warnings
-cargo fmt --check
+cargo build --workspace --release --locked
+cargo test --workspace --locked
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo fmt --all -- --check
 ```
 
 Install (binary, desktop entry, AppStream metadata, icon, translations):
 
 ```sh
 # build as your user, then only install as root:
-cargo build --release
+cargo build --workspace --release --locked
 sudo make install CARGO=true            # PREFIX=/usr/local by default
 sudo make install CARGO=true PREFIX=/usr
 
@@ -302,26 +302,18 @@ The application is split into a wallpaper server and a separate Iced control sur
 | `crates/ferramari-core` | shared configuration, policy, catalogue, packages and data models |
 | `crates/ferramari-platform` | Linux session, tray, D-Bus, monitor and desktop integration |
 | `crates/ferramari-media` | mpv process control and native X11 wallpaper surfaces |
-| `src/config.rs` | schema-v4 config, validation, 3.x migration |
-| `src/mpv.rs` | mpv process + a dedicated JSON IPC worker (volume, mute, pause, profiles) |
-| `src/eco.rs` | pure per-monitor Eco Engine policy and profiles |
-| `src/metrics.rs` | `/proc` + sysfs process-tree metrics for the Performance page |
-| `src/desktop.rs` | session/desktop detection and `--doctor` diagnostics |
-| `src/package.rs` | `.ferramari` manifest validation, import and export |
-| `src/plugin.rs` | declarative catalogue-source plugin discovery |
-| `src/catalog_api.rs` | first-party Catalog API v1 client |
-| `src/power.rs` | battery/AC state from `/sys/class/power_supply` |
-| `src/ui/control.rs` | control window (videos, streaming, web page, toggles) |
-| `src/util.rs` | gettext helpers, video discovery, string utilities |
-| `src/ui/online.rs` | wallpaper catalogue and preview/install dialog |
-| `src/catalogue.rs` | catalogue client: listing/search parsing, cache, download, frames |
-| `src/ui/wallpaper.rs` | one desktop-type window per monitor |
-| `src/x11.rs` | EWMH polling for per-monitor window coverage (replaces libwnck) |
-| `src/dbus.rs` | zbus server/player interfaces, single-instance logic |
-| `src/tray.rs` | StatusNotifierItem tray (`ksni`) |
-| `src/wallpaper.rs` | blurred static wallpaper, original-background restore |
-| `src/handlers.rs` | screen-lock and end-session signals |
-| `src/ytdlp.rs` | `yt-dlp -J` parsing and format selection (unit-tested) |
+| `src/app.rs` | wallpaper-server state machine and command handling |
+| `crates/ferramari-ui/src/main.rs` | Iced pages, UI state and D-Bus client calls |
+| `crates/ferramari-ui/src/client.rs` | D-Bus client and server-state snapshot |
+| `crates/ferramari-core/src/eco.rs` | pure per-monitor Eco Engine policy and profiles |
+| `crates/ferramari-core/src/config.rs` | schema-v4 config, validation and 3.x migration |
+| `crates/ferramari-core/src/package.rs` | `.ferramari` manifest validation, import and export logic |
+| `crates/ferramari-core/src/catalogue.rs` | catalogue listing/search, cache, download and frame generation |
+| `crates/ferramari-platform/src/dbus.rs` | zbus server/player interfaces and single-instance server ownership |
+| `crates/ferramari-platform/src/monitors.rs` | XRandR monitor discovery and hotplug watcher |
+| `crates/ferramari-platform/src/tray.rs` | StatusNotifierItem tray (`ksni`) |
+| `crates/ferramari-media/src/engine.rs` | per-monitor wallpaper playback engine |
+| `crates/ferramari-media/src/surface.rs` | native X11 wallpaper windows and mpv embed IDs |
 
 Threading rule: GTK widgets never leave the main thread. Background work
 (yt-dlp, HTTP checks, thumbnails, X11 polling, D-Bus, tray) sends commands or

@@ -9,12 +9,12 @@
 // keeps referring to `crate::paths`, `crate::util`, … unchanged.
 pub use ferramari_core::{
     bus, catalog_api, catalogue, cli, config, eco, error, library, metrics, package, paths,
-    plugin, power, signing, supervisor, thumbnails, util, wake, x11, ytdlp,
+    plugin, power, signing, supervisor, thumbnails, util, wake, ytdlp,
 };
 pub use ferramari_core::MonitorInfo;
 pub use ferramari_core::bus::{Command, CommandReceiver, CommandSender, PackageReport, Snapshot};
 pub use ferramari_media::mpv;
-pub use ferramari_platform::{autostart, dbus, desktop, gnome_bg, handlers, monitors, tray};
+pub use ferramari_platform::{autostart, dbus, desktop, gnome_bg, handlers, monitors, tray, x11};
 // The static-background module kept its historic name in the binary.
 pub use ferramari_platform::gnome_bg as wallpaper;
 

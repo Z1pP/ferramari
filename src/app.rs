@@ -31,7 +31,6 @@ use crate::library::Library;
 use crate::monitors::MonitorInfo;
 use crate::package;
 use crate::paths;
-use crate::power;
 use crate::signing;
 use crate::supervisor::{RestartPolicy, Retry, MAX_RETRIES};
 use crate::tray;
@@ -69,6 +68,7 @@ pub struct App {
     tx: CommandSender,
     surface_provider: Box<dyn ferramari_core::platform::WallpaperSurfaceProvider>,
     display_provider: Box<dyn ferramari_core::platform::DisplayProvider>,
+    power_provider: Box<dyn ferramari_core::platform::PowerProvider>,
     platform_event_source: Box<dyn ferramari_core::platform::PlatformEventSource>,
     platform_watchers: Option<Box<dyn ferramari_core::platform::PlatformWatchers>>,
     weak_self: Weak<RefCell<App>>,
@@ -119,6 +119,7 @@ impl App {
         snapshot: Arc<Mutex<Snapshot>>,
         surface_provider: Box<dyn ferramari_core::platform::WallpaperSurfaceProvider>,
         display_provider: Box<dyn ferramari_core::platform::DisplayProvider>,
+        power_provider: Box<dyn ferramari_core::platform::PowerProvider>,
         platform_event_source: Box<dyn ferramari_core::platform::PlatformEventSource>,
     ) -> Rc<RefCell<Self>> {
         paths::ensure_dirs();
@@ -139,7 +140,7 @@ impl App {
         let background_wallpaper = GnomeBackground::capture();
         // Read the power supply once: two separate `status()` calls can
         // observe different states while a charger is being plugged in.
-        let power_status = power::status();
+        let power_status = power_provider.status();
         let idle_threshold = Arc::new(AtomicU64::new(
             config.idle_timeout_sec.clamp(30, 86_400) as u64,
         ));
@@ -152,6 +153,7 @@ impl App {
             tx: tx.clone(),
             surface_provider,
             display_provider,
+            power_provider,
             platform_event_source,
             platform_watchers: None,
             weak_self: Weak::new(),
@@ -202,7 +204,7 @@ impl App {
         let mut next_player = Instant::now();
         let mut next_rotation = Instant::now() + ROTATION_WATCH_EVERY;
         let mut next_power = Instant::now() + POWER_WATCH_EVERY;
-        let mut previous_power = power::status();
+        let mut previous_power = app.borrow().power_provider.status();
 
         while !app.borrow().quit_requested {
             // Sleep only until the earliest deadline, so an idle process still
@@ -243,7 +245,7 @@ impl App {
             }
             if now >= next_power {
                 next_power = now + POWER_WATCH_EVERY;
-                let status = power::status();
+                let status = app.borrow().power_provider.status();
                 if status != previous_power {
                     previous_power = status;
                     app.borrow_mut().handle(Command::PowerStatus {

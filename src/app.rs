@@ -1063,7 +1063,7 @@ impl App {
         // blink several times a minute; a reused player needs nothing.
         if self.pending_icon_refresh && !self.windows.is_empty() {
             self.pending_icon_refresh = false;
-            util::gnome_desktop_icon_workaround();
+            crate::gnome_extensions::gnome_desktop_icon_workaround();
         }
         self.sync_snapshot();
     }

@@ -143,6 +143,9 @@ pub struct Snapshot {
     pub autostart_enabled: bool,
     /// Monitor name → rotation collection id.
     pub rotations: std::collections::HashMap<String, String>,
+    /// Most recent long-running package operation result for UI clients.
+    pub operation_status: String,
+    pub operation_error: bool,
 }
 
 impl Default for Snapshot {
@@ -173,6 +176,8 @@ impl Default for Snapshot {
             is_show_systray: true,
             autostart_enabled: false,
             rotations: std::collections::HashMap::new(),
+            operation_status: String::new(),
+            operation_error: false,
         }
     }
 }

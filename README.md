@@ -396,7 +396,7 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 
 ## Implementation notes
 
-- GTK/GDK are no longer used by the default application build. Web-page wallpapers are temporarily disabled because the former WebKitGTK renderer was removed; an alternative browser process/engine has not yet been integrated.
+- GTK, GDK and WebKitGTK have been removed from the workspace manifests and lockfile. Web-page wallpapers are temporarily disabled because the former renderer was removed; an alternative browser process/engine has not yet been integrated.
 - Streaming needs a recent `yt-dlp`. The Ubuntu package can be months behind
   and then returns YouTube URLs that mpv cannot open (HTTP 403). The official
   binary is installed next to `ferramari` and is preferred automatically:

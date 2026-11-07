@@ -12,3 +12,4 @@ pub mod gnome_bg;
 pub mod handlers;
 pub mod monitors;
 pub mod tray;
+pub mod x11;

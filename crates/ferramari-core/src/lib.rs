@@ -24,7 +24,7 @@ pub mod supervisor;
 pub mod thumbnails;
 pub mod util;
 pub mod wake;
-pub mod x11;
+pub mod window;
 pub mod ytdlp;
 
 // Convenience aliases so call sites read the way the modules are known.

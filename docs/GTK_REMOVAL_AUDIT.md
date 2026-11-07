@@ -29,7 +29,7 @@
 
 ## Required completion checks
 
-1. <underline>Completed:</underline> remove the unused `webkit2gtk` optional
+1. **Completed:** remove the unused `webkit2gtk` optional
    dependency and feature, regenerate `Cargo.lock`, and prune the 42 packages
    used only by the legacy GTK/WebKitGTK chain.
 2. Confirm the default and all-feature dependency trees contain no GTK/GDK/

@@ -428,6 +428,17 @@ impl PlayerInterface {
         send(&self.tx, Command::QuitPlayer);
     }
 
+    #[zbus(name = "set_monitor_rotation")]
+    fn set_monitor_rotation(&self, monitor: String, collection: String) {
+        send(
+            &self.tx,
+            Command::SetMonitorRotation {
+                monitor,
+                collection: (!collection.is_empty()).then_some(collection),
+            },
+        );
+    }
+
     #[zbus(name = "reload_config")]
     fn reload_config(&self) {
         send(&self.tx, Command::ReloadConfig);
@@ -471,6 +482,11 @@ impl PlayerInterface {
     #[zbus(property, name = "monitor_states")]
     fn monitor_states(&self) -> HashMap<String, String> {
         self.snapshot().monitor_states
+    }
+
+    #[zbus(property, name = "rotations")]
+    fn rotations(&self) -> HashMap<String, String> {
+        self.snapshot().rotations
     }
 }
 

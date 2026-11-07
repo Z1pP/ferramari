@@ -1065,3 +1065,6 @@ msgstr "Проверить или подписать этот пакет"
 
 msgid "Remove favorite"
 msgstr "Убрать из избранного"
+
+msgid "Create"
+msgstr "Создать"

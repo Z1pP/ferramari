@@ -1649,13 +1649,17 @@ fn launch_control_surface() -> anyhow::Result<()> {
     };
     // A second `show_gui` while one window is open must not stack windows;
     // `ferramari-ui` exits immediately when another instance owns its name.
-    thread::Builder::new()
-        .name("ferramari-gui".to_string())
-        .spawn(move || {
-            let _ = std::process::Command::new(program).spawn();
+    // Spawning a process is quick and returning the error here lets
+    // show_gui() report a missing or non-executable UI binary to the log.
+    std::process::Command::new(&program)
+        .spawn()
+        .map(|_| ())
+        .map_err(|err| {
+            anyhow::anyhow!(
+                "could not launch control surface {}: {err}",
+                program.display()
+            )
         })
-        .ok();
-    Ok(())
 }
 
 /// Pure planning step: which wallpaper window should exist for every monitor

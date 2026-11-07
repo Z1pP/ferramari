@@ -485,7 +485,10 @@ impl App {
                     self.apply_playback_states();
                 }
             }
-            Command::LibraryChanged => {}
+            Command::LibraryChanged => {
+                *self.library.borrow_mut() = Library::load();
+                self.last_rotation.clear();
+            }
             Command::ImportPackage(source) => {
                 self.set_operation_status("Importing package…", false);
                 let tx = self.tx.clone();

@@ -45,7 +45,7 @@ validation are complete. A successful compile alone is not a runtime pass.
       window tracking, session state, idle state and power events (display, surface,
       power and event-source lifecycle contracts exist; remaining signals still need
       richer typed models).
-- [ ] Add explicit capability states: Supported, Partial and Unsupported.
+- [x] Add explicit capability states: Supported, Partial and Unsupported, and report detected support levels in `--doctor`.
 - [ ] Keep native handles and native API types inside platform/media adapters.
 - [ ] Ensure core models and policies do not import X11, Win32, Cocoa, D-Bus or
       toolkit types.
@@ -55,6 +55,9 @@ validation are complete. A successful compile alone is not a runtime pass.
 - [ ] Document the backend contract before accepting a second OS implementation.
 
 Current boundary progress:
+- Core config, cache, data and video-library roots now resolve to native per-user locations on Linux, macOS and Windows; Linux keeps its XDG/`xdg-user-dir` behavior.
+- Process metrics explicitly report unavailable on platforms without the current `/proc` sampler instead of displaying misleading zeroes.
+- Unix process-group termination and private-key mode bits are cfg-gated; Windows currently falls back to terminating the direct child and relies on the user's profile ACL.
 - Window rectangles and occlusion evaluation now live in ferramari-core.
 - The EWMH watcher now lives in ferramari-platform.
 - A platform-neutral DisplayProvider contract exists; the X11 implementation is injected at startup.

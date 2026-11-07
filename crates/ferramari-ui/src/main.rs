@@ -120,6 +120,7 @@ enum Message {
 
     RefreshLibrary,
     ToggleFavorite(String),
+    RemoveMedia(String),
     CollectionNameChanged(String),
     CreateCollection,
     RenameCollection(String, String),
@@ -132,6 +133,7 @@ enum Message {
     OpenFolder,
     PickVideo,
     VideoPicked(Option<PathBuf>),
+    VideoImported(Result<PathBuf, String>),
     PickPackageSource,
     PackageSourcePicked(Option<PathBuf>),
     PickExportVideo,
@@ -481,6 +483,13 @@ impl App {
                 self.library.toggle_favorite(&path);
                 self.persist_library()
             }
+            Message::RemoveMedia(path) => {
+                if self.library.remove_media(&path) {
+                    self.persist_library()
+                } else {
+                    Task::none()
+                }
+            }
             Message::CollectionNameChanged(name) => {
                 self.collection_name = name;
                 Task::none()
@@ -543,10 +552,26 @@ impl App {
                 },
                 Message::VideoPicked,
             ),
-            Message::VideoPicked(Some(path)) => {
+            Message::VideoPicked(Some(source)) => Task::perform(
+                async move {
+                    tokio::task::spawn_blocking(move || Library::import_video(&source))
+                        .await
+                        .unwrap_or_else(|error| Err(error.to_string()))
+                },
+                Message::VideoImported,
+            ),
+            Message::VideoPicked(None) => Task::none(),
+            Message::VideoImported(Ok(path)) => {
+                self.status = Some(StatusLine {
+                    text: format!("{}: {}", tr("Added to library"), path.display()),
+                    error: false,
+                });
                 play_video(self.server.as_ref(), path.to_string_lossy().into_owned())
             }
-            Message::VideoPicked(None) => Task::none(),
+            Message::VideoImported(Err(error)) => {
+                self.status = Some(StatusLine { text: error, error: true });
+                Task::none()
+            }
             Message::PickPackageSource => Task::perform(
                 async {
                     rfd::AsyncFileDialog::new()
@@ -1070,7 +1095,7 @@ impl App {
         let package_parent_placeholder = tr("Export destination folder");
         let mut actions = Row::new().spacing(8);
         actions = actions
-            .push(secondary_button(tr("Choose video"), Message::PickVideo, sem))
+            .push(secondary_button(tr("Add video"), Message::PickVideo, sem))
             .push(secondary_button(
                 tr("Refresh"),
                 Message::RefreshLibrary,
@@ -1147,6 +1172,11 @@ impl App {
                     .push(secondary_button(
                         tr("Play"),
                         Message::Play(entry.path.clone()),
+                        sem,
+                    ))
+                    .push(secondary_button(
+                        tr("Remove from library"),
+                        Message::RemoveMedia(entry.path.clone()),
                         sem,
                     ));
                 body = body.push(row);

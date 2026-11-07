@@ -1608,12 +1608,36 @@ fn locale_dir() -> PathBuf {
     PathBuf::from("/usr/share/locale")
 }
 
+const UI_INSTANCE_NAME: &str = "io.github.ferramari.Ferramari.ui";
+
+/// Keep a D-Bus name owned for the lifetime of the UI process. The server may
+/// ask to launch the UI more than once (tray activation, desktop entry, CLI),
+/// but only one control window should exist per session.
+fn acquire_ui_instance() -> anyhow::Result<zbus::blocking::Connection> {
+    let connection = zbus::blocking::Connection::session()?;
+    let flags = zbus::fdo::RequestNameFlags::DoNotQueue.into();
+    connection
+        .request_name_with_flags(UI_INSTANCE_NAME, flags)
+        .map_err(|error| anyhow::anyhow!("another Ferramari control window is already running: {error}"))?;
+    Ok(connection)
+}
+
 fn main() -> iced::Result {
     paths::prepare_env();
     if let Some(language) = Config::language_override() {
         apply_language(&language);
     }
     init_i18n();
+
+    // Keep this connection in scope until Iced exits; dropping it releases
+    // the well-known name so the control surface can be opened again.
+    let _instance = match acquire_ui_instance() {
+        Ok(connection) => connection,
+        Err(error) => {
+            eprintln!("[GUI] {error}");
+            return Ok(());
+        }
+    };
 
     iced::application(App::boot, App::update, App::view)
         .title("Ferramari")

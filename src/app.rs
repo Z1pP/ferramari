@@ -500,6 +500,7 @@ impl App {
             }
             Command::LibraryChanged => {}
             Command::ImportPackage(source) => {
+                self.set_operation_status("Importing package…", false);
                 let tx = self.tx.clone();
                 let destination = paths::packages_dir();
                 thread::Builder::new()
@@ -552,6 +553,7 @@ impl App {
                 }
             },
             Command::ExportPackage { video, parent } => {
+                self.set_operation_status("Exporting video package…", false);
                 let tx = self.tx.clone();
                 thread::Builder::new()
                     .name("ferramari-package-export".to_string())
@@ -575,6 +577,7 @@ impl App {
                 }
             },
             Command::SignPackage(dir) => {
+                self.set_operation_status("Signing package…", false);
                 let tx = self.tx.clone();
                 thread::Builder::new()
                     .name("ferramari-package-sign".to_string())
@@ -603,6 +606,7 @@ impl App {
                 }
             },
             Command::VerifyPackage(dir) => {
+                self.set_operation_status("Verifying package…", false);
                 let tx = self.tx.clone();
                 thread::Builder::new()
                     .name("ferramari-package-verify".to_string())
@@ -655,7 +659,9 @@ impl App {
                     report.signature.label()
                 );
             }
-            Command::TrustKey(path) => match signing::trust_source(&path) {
+            Command::TrustKey(path) => {
+                self.set_operation_status("Trusting package key…", false);
+                match signing::trust_source(&path) {
                 Ok(Some(key_id)) => {
                     self.set_operation_status(format!("Trusted key {key_id}"), false);
                     log::info!("[Package] Trusted key {key_id}");
@@ -674,7 +680,8 @@ impl App {
                         format!("Could not trust the key: {err}"),
                     ));
                 }
-            },
+                }
+            }
             Command::SetMonitorRotation {
                 monitor,
                 collection,

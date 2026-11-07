@@ -107,7 +107,12 @@ fn main() {
     install_signal_handlers(&tx);
 
     log::info!("[Server] Started");
-    let app = App::new(&args, tx.clone(), Arc::clone(&snapshot));
+    let app = App::new(
+        &args,
+        tx.clone(),
+        Arc::clone(&snapshot),
+        Box::new(surface::X11SurfaceProvider),
+    );
     // Start the players (and the control surface unless `--background`)
     // before waiting for commands, exactly as the GTK activate handler did.
     app.borrow_mut().activate();

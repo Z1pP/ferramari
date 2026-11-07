@@ -46,6 +46,23 @@ jobs:
         run: |
           test -x target/release/ferramari
           test -x target/release/ferramari-ui
+      - name: Verify staged installation
+        run: |
+          stage="$RUNNER_TEMP/ferramari-stage"
+          make install CARGO=true DESTDIR="$stage" PREFIX=/usr TARGET_DIR=target
+          test -x "$stage/usr/bin/ferramari"
+          test -x "$stage/usr/bin/ferramari-ui"
+          grep -Fx 'Exec=/usr/bin/ferramari' "$stage/usr/share/applications/io.github.ferramari.Ferramari.desktop"
+          test -s "$stage/usr/share/metainfo/io.github.ferramari.Ferramari.metainfo.xml"
+          test -s "$stage/usr/share/icons/hicolor/scalable/apps/io.github.ferramari.Ferramari.svg"
+          test -s "$stage/usr/share/locale/ru/LC_MESSAGES/ferramari.mo"
+          # The server and UI are installed side by side; both must remain GTK-free.
+          for binary in "$stage/usr/bin/ferramari" "$stage/usr/bin/ferramari-ui"; do
+            if ldd "$binary" | grep -E 'lib(gtk|gdk|webkit2gtk)[^ ]*'; then
+              echo "GTK/GDK/WebKitGTK runtime dependency found in $binary"
+              exit 1
+            fi
+          done
       - name: Validate translations
         run: |
           for po in po/*.po; do

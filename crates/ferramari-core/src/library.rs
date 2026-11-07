@@ -98,6 +98,29 @@ impl Library {
             .map_err(|err| format!("could not write {}: {err}", path.display()))
     }
 
+    /// Copy a video into the managed library folder without overwriting an
+    /// existing file. If the source is already inside the library, return it.
+    pub fn import_video(source: &Path) -> Result<PathBuf, String> {
+        import_video_to(source, &paths::video_wallpaper_dir())
+    }
+
+    /// Remove a media path from history, favourites and every collection.
+    /// The underlying file is deliberately left untouched.
+    pub fn remove_media(&mut self, path: &str) -> bool {
+        let history_before = self.history.len();
+        let favorites_before = self.favorites.len();
+        self.history.retain(|entry| entry.path != path);
+        self.favorites.retain(|favorite| favorite != path);
+        let mut changed = history_before != self.history.len()
+            || favorites_before != self.favorites.len();
+        for collection in &mut self.collections {
+            let before = collection.items.len();
+            collection.items.retain(|item| item != path);
+            changed |= before != collection.items.len();
+        }
+        changed
+    }
+
     /// All favourite video paths, in the order they were added.
     pub fn favorites(&self) -> &[String] {
         &self.favorites
@@ -224,6 +247,62 @@ impl Library {
     }
 }
 
+fn import_video_to(source: &Path, destination: &Path) -> Result<PathBuf, String> {
+    if !source.is_file() || !crate::util::is_video(source) {
+        return Err(format!("{} is not a supported video file", source.display()));
+    }
+    fs::create_dir_all(destination)
+        .map_err(|err| format!("could not create {}: {err}", destination.display()))?;
+    let source = source
+        .canonicalize()
+        .map_err(|err| format!("could not resolve {}: {err}", source.display()))?;
+    let destination = destination
+        .canonicalize()
+        .map_err(|err| format!("could not resolve library folder: {err}"))?;
+    if source.starts_with(&destination) {
+        return Ok(source);
+    }
+
+    let filename = source
+        .file_name()
+        .ok_or_else(|| "video path has no file name".to_string())?
+        .to_string_lossy()
+        .into_owned();
+    let path = Path::new(&filename);
+    let stem = path
+        .file_stem()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| filename.clone());
+    let extension = path.extension().map(|value| value.to_string_lossy().into_owned());
+
+    for suffix in 1u32.. {
+        let name = if suffix == 1 {
+            filename.clone()
+        } else if let Some(extension) = &extension {
+            format!("{stem} ({suffix}).{extension}")
+        } else {
+            format!("{stem} ({suffix})")
+        };
+        let target = destination.join(name);
+        let mut output = match fs::OpenOptions::new().write(true).create_new(true).open(&target) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("could not create {}: {error}", target.display())),
+        };
+        let copy_result = (|| -> std::io::Result<()> {
+            let mut input = fs::File::open(&source)?;
+            std::io::copy(&mut input, &mut output)?;
+            output.sync_all()
+        })();
+        if let Err(error) = copy_result {
+            let _ = fs::remove_file(&target);
+            return Err(format!("could not copy {}: {error}", source.display()));
+        }
+        return Ok(target);
+    }
+    unreachable!("u32 suffix space exhausted")
+}
+
 fn now_seconds() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -315,6 +394,35 @@ mod tests {
         assert_eq!(library.collection(&id).unwrap().name, "Favourites");
         assert!(library.delete_collection(&id));
         assert!(library.collection(&id).is_none());
+    }
+
+    #[test]
+    fn media_import_avoids_overwrite_and_removal_cleans_library_references() {
+        let root = temp_dir("media-import");
+        let source_dir = root.join("source");
+        let library_dir = root.join("library");
+        fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("clip.mp4");
+        fs::write(&source, b"video bytes").unwrap();
+
+        let first = import_video_to(&source, &library_dir).unwrap();
+        assert_eq!(fs::read(&first).unwrap(), b"video bytes");
+        let second = import_video_to(&source, &library_dir).unwrap();
+        assert_eq!(second.file_name().unwrap(), "clip (2).mp4");
+        assert_eq!(fs::read(&second).unwrap(), b"video bytes");
+
+        let mut library = Library::default();
+        library.record_use(first.to_string_lossy().as_ref());
+        library.toggle_favorite(first.to_string_lossy().as_ref());
+        let collection = library.create_collection("Imported").unwrap();
+        library.add_to_collection(&collection, first.to_string_lossy().as_ref());
+        assert!(library.remove_media(first.to_string_lossy().as_ref()));
+        assert!(library.history().is_empty());
+        assert!(library.favorites().is_empty());
+        assert!(library.collection(&collection).unwrap().items.is_empty());
+        assert!(first.is_file(), "removing a library entry must not delete user data");
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

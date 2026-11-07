@@ -1049,11 +1049,9 @@ dependencies = [
  "anyhow",
  "base64",
  "clap",
- "env_logger",
  "gettext-rs",
  "libc",
  "log",
- "mime_guess",
  "rand",
  "regex",
  "ring",
@@ -1062,7 +1060,6 @@ dependencies = [
  "sha2",
  "ureq",
  "url",
- "zbus",
  "zip",
 ]
 

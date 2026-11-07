@@ -163,12 +163,15 @@ library controls are still being restored.
 
 ### Packages
 
-Local Video → **Import…** accepts a `.ferramari` directory. A video package is
-installed under `$XDG_DATA_HOME/ferramari/packages`, applied to all monitors
-and shown in the library progress; a web package is applied as the current web
-wallpaper. Select a video and use **Export .ferramari** to create a package in
-a folder of your choice. The format, manifest fields and security limits are
-documented in [`docs/FERRAMARI_FORMAT.md`](docs/FERRAMARI_FORMAT.md).
+The Iced Library page exposes package import, export, signing, verification
+and key trust through the server. Until native file pickers land, enter absolute
+paths in the package controls. Import accepts a package source; export takes a
+video file and a destination folder. A video package is installed under
+`$XDG_DATA_HOME/ferramari/packages`, applied to the configured monitors and
+reported in the UI with progress, success and actionable errors. Web packages
+remain unavailable while the browser engine is absent. The format, manifest
+fields and security limits are documented in
+[`docs/FERRAMARI_FORMAT.md`](docs/FERRAMARI_FORMAT.md).
 
 Exported and imported packages can carry integrity data. `checksums.json`
 records the SHA-256 of every file, and `signature.json` holds an Ed25519

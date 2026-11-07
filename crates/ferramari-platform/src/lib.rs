@@ -9,6 +9,7 @@ pub mod autostart;
 pub mod dbus;
 pub mod desktop;
 pub mod gnome_bg;
+pub mod gnome_extensions;
 pub mod handlers;
 pub mod monitors;
 pub mod tray;

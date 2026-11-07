@@ -31,6 +31,18 @@ pub struct PlatformCapabilities {
     pub idle_detection: SupportLevel,
 }
 
+/// Owns the lifetime of platform event subscriptions and watcher threads.
+pub trait PlatformWatchers {}
+
+/// Starts OS event sources and forwards normalized events to the core command bus.
+pub trait PlatformEventSource {
+    fn start(
+        &self,
+        tx: CommandSender,
+        idle_threshold: Arc<AtomicU64>,
+    ) -> Box<dyn PlatformWatchers>;
+}
+
 /// An OS-owned surface suitable for embedding the media renderer.
 ///
 /// The embedding handle is intentionally opaque to core. Its interpretation

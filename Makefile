@@ -67,8 +67,6 @@ install: build
 	install -Dm644 "data/icons/hicolor/scalable/apps/$(APP_ID).svg" "$(ICONDIR)/$(APP_ID).svg"
 	@if command -v msgfmt >/dev/null 2>&1; then $(MAKE) translations; \
 	else echo "msgfmt not found: install gettext to build the translations"; fi
-	@if command -v gtk-update-icon-cache >/dev/null 2>&1; then \
-		gtk-update-icon-cache -qtf "$(DATADIR)/icons/hicolor" 2>/dev/null || true; fi
 
 uninstall:
 	rm -f "$(BINDIR)/ferramari" "$(BINDIR)/ferramari-ui"

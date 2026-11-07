@@ -46,6 +46,7 @@ pub struct ServerState {
     pub data_source: HashMap<String, String>,
     /// Monitor name → Eco state (`active`, `idle`, `occluded`, `suspended`).
     pub monitor_states: HashMap<String, String>,
+    pub rotations: HashMap<String, String>,
     /// PID of the server process, for metrics of the real workload.
     pub server_pid: Option<u32>,
 
@@ -151,6 +152,14 @@ impl Server {
         self.command_args("trust_key", &(source,)).await
     }
 
+    pub async fn set_monitor_rotation(
+        &self,
+        monitor: String,
+        collection: String,
+    ) -> Result<(), String> {
+        self.command_args("set_monitor_rotation", &(monitor, collection)).await
+    }
+
     /// Write one server property through the standard Properties interface.
     pub async fn set_property(&self, property: &str, value: Value<'_>) -> Result<(), String> {
         let owned = OwnedValue::try_from(value).map_err(|e| e.to_string())?;
@@ -219,6 +228,7 @@ impl Server {
         if let Some(values) = self.get_all(PLAYER_PATH, PLAYER_INTERFACE).await {
             state.data_source = string_map_of(&values, "data_source");
             state.monitor_states = string_map_of(&values, "monitor_states");
+            state.rotations = string_map_of(&values, "rotations");
         }
         state
     }

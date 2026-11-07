@@ -1678,12 +1678,12 @@ const UI_INSTANCE_NAME: &str = "io.github.ferramari.Ferramari.ui";
 /// Keep a D-Bus name owned for the lifetime of the UI process. The server may
 /// ask to launch the UI more than once (tray activation, desktop entry, CLI),
 /// but only one control window should exist per session.
-fn acquire_ui_instance() -> anyhow::Result<zbus::blocking::Connection> {
-    let connection = zbus::blocking::Connection::session()?;
+fn acquire_ui_instance() -> Result<zbus::blocking::Connection, String> {
+    let connection = zbus::blocking::Connection::session().map_err(|error| error.to_string())?;
     let flags = zbus::fdo::RequestNameFlags::DoNotQueue.into();
     connection
         .request_name_with_flags(UI_INSTANCE_NAME, flags)
-        .map_err(|error| anyhow::anyhow!("another Ferramari control window is already running: {error}"))?;
+        .map_err(|error| format!("another Ferramari control window is already running: {error}"))?;
     Ok(connection)
 }
 

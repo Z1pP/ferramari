@@ -41,10 +41,10 @@
    exactly one Iced control surface over D-Bus.
 5. Run live X11/XWayland checks for mpv `--wid` embedding, desktop stacking,
    monitor hotplug, lock/unlock, tray activation and clean shutdown.
-6. Restore remaining UI feature parity (collection CRUD/assignment, package
-   import/export/sign/verify, file pickers, monitor assignment and any settings
-   still missing from the Iced surface). Favourites have been restored in the
-   Iced library page.
+6. Restore remaining UI feature parity (package import/export/sign/verify,
+   file pickers, monitor assignment and any settings still missing from the
+   Iced surface). Favourites and collection CRUD/assignment are now present in
+   the Iced library page; they still need live-session persistence testing.
 7. Decide on a replacement web renderer before claiming web wallpaper support.
 8. Migrate Flatpak packaging or explicitly mark it unsupported for 2.0.
 9. Define the shared platform/surface contract before integrating macOS or

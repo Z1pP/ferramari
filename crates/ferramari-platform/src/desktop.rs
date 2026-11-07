@@ -275,6 +275,9 @@ pub fn doctor() -> String {
     let _ = writeln!(report, "yt-dlp: {}", tool_version("yt-dlp", &["--version"]));
     let _ = writeln!(report, "vainfo: {}", tool_version("vainfo", &[]));
     let _ = writeln!(report, "render nodes: {}", render_nodes());
+    // The mpv value and the hardware APIs mpv itself reports as available, so
+    // a "hardware decoding does nothing" report can be answered from the log.
+    let _ = writeln!(report, "hardware decode: {}", hwdec_report());
     let _ = writeln!(
         report,
         "idle service: {}",
@@ -395,6 +398,104 @@ fn x11_screen_count() -> String {
     }
 }
 
+/// Hardware decoding as configured, as this build of mpv supports it, and as
+/// the running server reports it.
+///
+/// Three different questions, so the report keeps them apart. The config says
+/// what the user asked for. `mpv --hwdec=help` lists the APIs mpv was *built*
+/// with, which says nothing about the attached GPU. Only the running player
+/// knows what it actually decodes with, and that is where a silently ignored
+/// request becomes visible: mpv accepts `--hwdec=vaapi` on hardware without a
+/// VA-API path and decodes on the CPU.
+fn hwdec_report() -> String {
+    let requested = requested_hwdec();
+    let mut parts = vec![format!(
+        "requested {requested} -> --hwdec={}",
+        ferramari_core::hwdec::hwdec_arg(&requested)
+    )];
+    match mpv_hwdec_apis() {
+        Some(apis) => parts.push(format!("mpv built with: {apis}")),
+        None => parts.push("mpv API list unavailable".to_string()),
+    }
+    parts.push(match crate::dbus::hwdec_running() {
+        Some(running) if !running.is_empty() => {
+            let current = ferramari_core::hwdec::HwDec::from_report(Some(running.as_str()));
+            let verdict = ferramari_core::hwdec::HwDecCheck::evaluate(&requested, &current);
+            if verdict.is_silent() {
+                format!("decoding as {running}")
+            } else {
+                // Names the verdict so a log line is enough to diagnose: the
+                // setting was accepted by mpv but did not take effect.
+                format!("decoding as {running}: {}", verdict.message())
+            }
+        }
+        // No server, or nothing decoded yet: the honest answer is that the
+        // machine's choice is unknown, not that it matched the request.
+        _ => "not decoding".to_string(),
+    });
+    parts.join("; ")
+}
+
+/// The configured mode, read without touching the file. `Config::load` would
+/// create or repair a configuration, which a diagnostic must not do.
+fn requested_hwdec() -> String {
+    let Ok(text) = std::fs::read_to_string(ferramari_core::paths::config_path()) else {
+        return ferramari_core::hwdec::HWDEC_AUTO.to_string();
+    };
+    let names: Vec<String> = crate::monitors::list()
+        .into_iter()
+        .map(|monitor| monitor.name)
+        .collect();
+    ferramari_core::config::Config::parse(&text, &names).0.hwdec
+}
+
+/// Decoding APIs this mpv was built with, from its own help output.
+fn mpv_hwdec_apis() -> Option<String> {
+    let mut command = Command::new(ferramari_core::paths::tool("mpv"));
+    command
+        .args(["--no-config", "--hwdec=help"])
+        .env_remove("WAYLAND_DISPLAY")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let output = ferramari_core::util::output_with_timeout(&mut command, Duration::from_secs(3))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // mpv writes this list to stderr when it can, stdout in other builds.
+    parse_hwdec_apis(&stderr).or_else(|| parse_hwdec_apis(&stdout))
+}
+
+/// Decode API names from `mpv --hwdec=help`.
+///
+/// The list is one API per line in the form `vulkan (h264-vulkan)`: the first
+/// word is the name mpv accepts on the command line, the parenthesised part is
+/// the codec-specific full name, so the same API appears once per codec. The
+/// header line and anything that is not such a pair is skipped, and each API
+/// is reported once.
+///
+/// mpv's own aliases (`auto (yes '')`, then bare `no`, `auto-safe`, …) are
+/// excluded: the list is meant to answer "does this machine have a VA-API or
+/// NVDEC path", and an alias is not an answer to that question.
+fn parse_hwdec_apis(text: &str) -> Option<String> {
+    let mut apis: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        let Some((api, rest)) = line.split_once(' ') else {
+            continue;
+        };
+        if !rest.starts_with('(') || line.contains(':') || api.contains('(') {
+            continue;
+        }
+        if api == "auto" || api.starts_with("auto-") {
+            continue;
+        }
+        if !apis.iter().any(|seen| seen == api) {
+            apis.push(api.to_string());
+        }
+    }
+    (!apis.is_empty()).then(|| apis.join(","))
+}
+
 fn render_nodes() -> String {
     let Ok(entries) = std::fs::read_dir("/dev/dri") else {
         return "none".to_string();
@@ -476,6 +577,29 @@ fn service_owned(connection: &zbus::blocking::Connection, name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_hwdec_help_list_keeps_only_real_apis() {
+        // Real shape of `mpv --hwdec=help`: a header line, one line per
+        // codec/API pair, then mpv's own aliases. Duplicates collapse and the
+        // aliases are dropped, because they say nothing about the hardware.
+        let text = "Valid values (with alternative full names):\n  \
+                    vulkan (ffv1-vulkan)\n  vulkan (h264-vulkan)\n  \
+                    vaapi (h264-vaapi)\n  v4l2m2m-copy (vp9_v4l2m2m-v4l2m2m-copy)\n  \
+                    auto (yes '')\n  no\n  auto-safe\n  auto-copy-unsafe\n";
+        assert_eq!(parse_hwdec_apis(text).unwrap(), "vulkan,vaapi,v4l2m2m-copy");
+    }
+
+    #[test]
+    fn an_unrecognisable_hwdec_help_output_reports_nothing() {
+        // An mpv that prints something else must not invent a list.
+        assert_eq!(parse_hwdec_apis(""), None);
+        assert_eq!(parse_hwdec_apis("mpv: unknown option --hwdec\n"), None);
+        assert_eq!(
+            parse_hwdec_apis("Valid values (with alternative full names):\n  no\n  auto\n"),
+            None
+        );
+    }
 
     #[test]
     fn session_classification_is_explicit_about_xwayland() {

@@ -16,7 +16,7 @@
 | Input stripping | No OSC, OSD, keybindings, cursor autohide disabled for wallpaper use | ✅ |
 | Audio control | `--no-audio` flag for secondary monitors; audio routed to primary | ✅ |
 | Loop control | `--loop-file=inf` enables infinite loop by default | ✅ |
-| HW decode | `--hwdec={auto|vaapi|none}` passed through user config | ⚠️ Section 7.2 |
+| HW decode | `--hwdec={auto|vaapi|none}` passed through user config, and the decoder that ended up running is read back over IPC (`hwdec-current`) | ✅ Section 7.2 |
 
 **Findings:** All spawn flags are minimal and correct for a background wallpaper renderer. No unnecessary GUI elements exposed.
 
@@ -92,9 +92,37 @@ On `Drop<Mpv>`:
 All spawn, IPC, cleanup, and restart paths reviewed. Design is solid.
 
 ### Section 7.2 — Validate hardware decode per OS/GPU backend
-**Status:** Partially complete. The `--hwdec` parameter passes through to mpv, but there is no runtime validation of whether the detected GPU supports the requested decode path. On some systems VA-API may fail silently and fall back to software without clear logging.
+**Status:** Complete.
 
-**Recommendation:** Add `mpv --log-level=debug vd=info` output parsing after spawn to detect hardware decode failures and log warnings. Consider falling back to `--hwdec=auto` when explicit request fails.
+The recommended approach (parsing `mpv --log-level=debug vd=info` output) was
+measured and rejected: it needs a spawned player plus a decoded file before the
+log line exists, and it only tells us what mpv printed, not what is in use.
+mpv 0.41 answers the question directly through the IPC property
+`hwdec-current` — verified on the test machine, where `current-hwdec` and
+`hwdec-active` from older documentation do not exist at all and return
+`property not found`.
+
+Implementation:
+
+| Layer | Behaviour |
+|-------|-----------|
+| `media::mpv` | `Request::ProbeHwdec` reads `hwdec-current` on the IPC worker into a shared slot; `LoadFile` clears the previous reading, because a new file can decode on a different path |
+| `media::engine` | `Engine::hwdec_status()` returns the last reading and re-arms the probe while nothing is known; never waits on the socket |
+| `core::hwdec` | `HwDec` / `HwDecCheck` turn `(requested mode, running decoder)` into a verdict, free of placeholders so catalogs hold whole sentences |
+| `app` | `poll_hwdec()` on the 1 s supervision tick, logs the raw pair, publishes the reading in the snapshot |
+| D-Bus | new read-only `hwdec_running` property (a `hwdec` write is unchanged, so old clients are unaffected) |
+| UI | a line under the Hardware decoding setting, only when the reading contradicts the setting |
+| `--doctor` | requested mode → the `--hwdec` value → the APIs this mpv was built with → what the live server reports |
+
+A rejected probe is *not* a failure: `hwdec-current` is unavailable until a file
+is decoded, so startup and a parked decoder answer with `property unavailable`,
+which must leave the connection, the recorded reading and the user-facing error
+slot untouched.
+
+Measured on the test machine: real wallpaper (`hwdec=auto`, VP9) reports
+`hwdec-current = vaapi` with `hwdec-interop = vaapi`; `--hwdec=vaapi` forced on a
+clip it cannot decode reports `no` — the silent fallback this item was about, now
+visible in the UI, the log and `--doctor` together.
 
 ### Section 7.3 — Stream resolution, cache invalidation, yt-dlp failures
 **Status:** Not addressed in this audit. Requires separate review of `ytdlp.rs` and stream handling in `engine.rs`.
@@ -120,7 +148,7 @@ All spawn, IPC, cleanup, and restart paths reviewed. Design is solid.
 | Sub-item | TODO ref | Status | Notes |
 |----------|----------|--------|-------|
 | 1. Audit mpv lifecycle | §7.1 | ✅ Done | Full code review completed |
-| 2. Hardware decode validation | §7.2 | ⚠️ Partial | Parameter passes through; need runtime GPU capability check |
+| 2. Hardware decode validation | §7.2 | ✅ Done | Requested mode and running decoder are compared; the fallback is reported in UI, log and `--doctor` |
 | 3. Stream/cache/ytdlp failures | §7.3 | ❌ Out of scope | Requires separate audit of ytdlp.rs |
 | 4. Web wallpaper renderer selection | §7.4 | ❌ Blocked | Awaiting renderer decision (non-GTK) |
 | 5. Restore web wallpaper | §7.5 | ❌ Blocked | Depends on §7.4 completion |

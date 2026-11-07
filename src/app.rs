@@ -114,6 +114,10 @@ pub struct App {
     gui_shown: bool,
     operation_status: String,
     operation_error: bool,
+    /// What the players report as the decoder actually in use, from the
+    /// supervision tick. Empty while nothing has decoded. The setting in the
+    /// config is what the user asked for; this is what the machine does.
+    hwdec_running: String,
 }
 
 impl App {
@@ -187,6 +191,7 @@ impl App {
             gui_shown: false,
             operation_status: String::new(),
             operation_error: false,
+            hwdec_running: String::new(),
         };
         app.sync_snapshot();
 
@@ -1221,6 +1226,13 @@ impl App {
             }
         }
 
+        // Ask the running players which decoder they ended up with. The
+        // setting is what the user asked for; this is what the machine does,
+        // and mpv falls back to the CPU without saying so. One probe per
+        // second is enough for the settings page and costs the command loop
+        // nothing, because the reply is read on the IPC worker.
+        self.poll_hwdec();
+
         // Free decoders that have been paused out of sight for a while. The
         // decision is checked every second so a monitor that becomes visible
         // again is resumed through `play_fade` before its decoder is released.
@@ -1300,6 +1312,63 @@ impl App {
                 }
             }
         }
+    }
+
+    /// Collect the decoder each player reports and keep the one worth showing.
+    ///
+    /// Every window decodes through the same mpv options, so the first
+    /// answered probe is representative; a machine where one monitor's GPU
+    /// path differs would be visible as a mixed reading, which the log shows.
+    /// An empty result means nothing has decoded yet, and the UI stays quiet.
+    fn poll_hwdec(&mut self) {
+        let mut reports = Vec::new();
+        for window in self.windows.iter_mut() {
+            let report = window.hwdec_status().report();
+            if !report.is_empty() && !reports.contains(&report) {
+                reports.push(report);
+            }
+        }
+        if reports.is_empty() {
+            // Playback stopped, or every decoder is parked: the previous
+            // reading describes a player that no longer exists, so it has to
+            // be retracted from the snapshot as well, not only locally.
+            if !self.hwdec_running.is_empty() {
+                log::debug!("[HwDec] no player reporting a decoder any more");
+                self.hwdec_running = String::new();
+                self.sync_snapshot();
+            }
+            return;
+        }
+        let joined = reports.join(",");
+        if joined == self.hwdec_running {
+            return;
+        }
+        // Log the raw facts rather than the user-facing sentence: the log is
+        // untranslated, and the verdict is derivable from these two values.
+        let verdict = self.hwdec_verdict(&joined);
+        if verdict.is_silent() {
+            log::debug!(
+                "[HwDec] requested {:?}, decoding as {joined}",
+                self.config.hwdec
+            );
+        } else {
+            log::warn!(
+                "[HwDec] requested {:?}, decoding as {joined}",
+                self.config.hwdec
+            );
+        }
+        self.hwdec_running = joined;
+        // The reading is only useful if bus clients see it; publish it when it
+        // changes rather than on every tick.
+        self.sync_snapshot();
+    }
+
+    /// Compare the configured mode with a reported decoder.
+    fn hwdec_verdict(&self, running: &str) -> ferramari_core::hwdec::HwDecCheck {
+        ferramari_core::hwdec::HwDecCheck::evaluate(
+            &self.config.hwdec,
+            &ferramari_core::hwdec::HwDec::from_report(Some(running)),
+        )
     }
 
     fn monitor_visibility(&self, monitor: &str) -> WindowVisibility {
@@ -1679,6 +1748,7 @@ impl App {
             pause_on_battery: self.config.pause_on_battery,
             idle_timeout_sec: self.config.idle_timeout_sec,
             hwdec: self.config.hwdec.clone(),
+            hwdec_running: self.hwdec_running.clone(),
             web_allow_network: self.config.web_allow_network,
             fade_duration_sec: self.config.fade_duration_sec,
             fade_interval: self.config.fade_interval,

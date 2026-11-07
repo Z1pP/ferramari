@@ -62,6 +62,9 @@ pub struct ServerState {
     pub idle_timeout_sec: i32,
     /// `auto`, `vaapi` or `none`.
     pub hwdec: String,
+    /// Decoder reported by the players (`hwdec-current`): API name, `no` for
+    /// software, empty while nothing has decoded.
+    pub hwdec_running: String,
     pub web_allow_network: bool,
     pub autostart_enabled: bool,
     pub operation_status: String,
@@ -238,6 +241,7 @@ impl Server {
             state.pause_on_battery = bool_of(&values, "pause_on_battery");
             state.idle_timeout_sec = int_of(&values, "idle_timeout_sec");
             state.hwdec = string_of(&values, "hwdec");
+            state.hwdec_running = string_of(&values, "hwdec_running");
             state.web_allow_network = bool_of(&values, "web_allow_network");
             state.autostart_enabled = bool_of(&values, "autostart_enabled");
             state.operation_status = string_of(&values, "operation_status");

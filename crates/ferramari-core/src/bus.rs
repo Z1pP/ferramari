@@ -136,6 +136,11 @@ pub struct Snapshot {
     pub pause_on_battery: bool,
     pub idle_timeout_sec: i64,
     pub hwdec: String,
+    /// The decoder the players report as actually running (`hwdec-current`):
+    /// an API name, `no` for software, or empty while nothing has decoded.
+    /// The setting above is what the user asked for; this is the machine's
+    /// answer, and the UI compares them.
+    pub hwdec_running: String,
     pub web_allow_network: bool,
     pub fade_duration_sec: f64,
     pub fade_interval: f64,
@@ -170,6 +175,7 @@ impl Default for Snapshot {
             pause_on_battery: false,
             idle_timeout_sec: 300,
             hwdec: "auto".to_string(),
+            hwdec_running: String::new(),
             web_allow_network: true,
             fade_duration_sec: 1.0,
             fade_interval: 0.05,

@@ -1644,39 +1644,42 @@ impl App {
             sem,
         );
 
-        let playback = column_section(
-            tr("Playback"),
-            vec![
-                segmented_row(
-                    tr("Playback profile"),
-                    tr("Quality prioritises smoothness; Eco reduces decoding and pauses idle wallpapers"),
-                    vec![
-                        (tr("Quality"), self.state.playback_profile == "quality", Message::SetProfile("quality".into())),
-                        (tr("Balanced"), self.state.playback_profile == "balanced", Message::SetProfile("balanced".into())),
-                        (tr("Eco"), self.state.playback_profile == "eco", Message::SetProfile("eco".into())),
-                    ],
-                    sem,
-                ),
-                segmented_row(
-                    tr("Hardware decoding"),
-                    tr("Auto lets mpv choose a safe decoder; VA-API forces it; Off uses software"),
-                    vec![
-                        (tr("Auto"), self.state.hwdec == "auto", Message::SetHwdec("auto".into())),
-                        ("VA-API".into(), self.state.hwdec == "vaapi", Message::SetHwdec("vaapi".into())),
-                        (tr("Off"), self.state.hwdec == "none", Message::SetHwdec("none".into())),
-                    ],
-                    sem,
-                ),
-                toggle_row(
-                    tr("Pause on battery"),
-                    tr("Stop playback when running on battery"),
-                    self.state.pause_on_battery,
-                    Message::TogglePauseOnBattery,
-                    sem,
-                ),
-            ],
+        let mut playback_rows = vec![
+            segmented_row(
+                tr("Playback profile"),
+                tr("Quality prioritises smoothness; Eco reduces decoding and pauses idle wallpapers"),
+                vec![
+                    (tr("Quality"), self.state.playback_profile == "quality", Message::SetProfile("quality".into())),
+                    (tr("Balanced"), self.state.playback_profile == "balanced", Message::SetProfile("balanced".into())),
+                    (tr("Eco"), self.state.playback_profile == "eco", Message::SetProfile("eco".into())),
+                ],
+                sem,
+            ),
+            segmented_row(
+                tr("Hardware decoding"),
+                tr("Auto lets mpv choose a safe decoder; VA-API forces it; Off uses software"),
+                vec![
+                    (tr("Auto"), self.state.hwdec == "auto", Message::SetHwdec("auto".into())),
+                    ("VA-API".into(), self.state.hwdec == "vaapi", Message::SetHwdec("vaapi".into())),
+                    (tr("Off"), self.state.hwdec == "none", Message::SetHwdec("none".into())),
+                ],
+                sem,
+            ),
+        ];
+        // Directly under the setting it describes, and only when the running
+        // decoder contradicts that setting: an empty row would shift the
+        // controls below it while a file is loading.
+        if let Some(status) = hwdec_status(&self.state, sem) {
+            playback_rows.push(status);
+        }
+        playback_rows.push(toggle_row(
+            tr("Pause on battery"),
+            tr("Stop playback when running on battery"),
+            self.state.pause_on_battery,
+            Message::TogglePauseOnBattery,
             sem,
-        );
+        ));
+        let playback = column_section(tr("Playback"), playback_rows, sem);
 
         let eco = column_section(
             tr("Eco Engine"),
@@ -2086,6 +2089,46 @@ fn column_section<'a, M: Clone + 'a>(
         }
     }
     card(body, sem).into()
+}
+
+/// What the players are really decoding with, next to the setting.
+///
+/// The setting alone is not the truth: mpv accepts a hardware API it cannot
+/// use and decodes on the CPU silently. The server reports the running
+/// decoder over D-Bus, so the page can show whether the choice is honoured
+/// instead of leaving the user to guess from CPU load.
+///
+/// Returns `None` when there is nothing to tell. An option rather than an
+/// empty row keeps the card from gaining a blank line that shifts every
+/// control below it while a file is loading.
+fn hwdec_status(state: &ServerState, sem: &'static Semantics) -> Option<Element<'static, Message>> {
+    use ferramari_core::hwdec::{HwDec, HwDecCheck};
+
+    let current = HwDec::from_report(
+        (!state.hwdec_running.is_empty()).then_some(state.hwdec_running.as_str()),
+    );
+    let check = HwDecCheck::evaluate(&state.hwdec, &current);
+    if check.is_silent() {
+        // Nothing decoding yet, or exactly what was asked for.
+        return None;
+    }
+    // "auto landed on the CPU" is a fact, not a fault; anything else
+    // contradicts an explicit request and reads as a warning.
+    let color = if check == HwDecCheck::AutoIsSoftware {
+        sem.text_muted
+    } else {
+        sem.danger
+    };
+    let mut line = Row::new()
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .push(text(tr(check.message())).size(11).color(color));
+    if let Some(api) = check.decoder() {
+        // The API in use, for example "(vulkan)": the detail to quote in a
+        // bug report, and the proof the setting was not simply ignored.
+        line = line.push(text(format!("({api})")).size(11).color(sem.text_muted));
+    }
+    Some(line.into())
 }
 
 /// Render one metric, naming the reason when there is no measurement. A dash

@@ -13,6 +13,7 @@ pub mod config;
 pub mod display_ids;
 pub mod eco;
 pub mod error;
+pub mod hwdec;
 pub mod library;
 pub mod metrics;
 pub mod monitor;

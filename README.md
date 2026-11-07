@@ -35,7 +35,8 @@ The interface has a hand-tuned dark palette as well as the light one:
 - Event-driven X11 window watcher (no 300 ms polling)
 - Performance page with live CPU, RAM, thread, process and (where available)
   GPU metrics
-- Hardware decoding selector (Auto / VA-API / Off)
+- Hardware decoding selector (Auto / VA-API / Off), with the decoder that is
+  actually running reported when it differs from the choice
 - Web-page wallpapers are temporarily unavailable while a GTK-free browser engine is evaluated; the current media backend reports this explicitly instead of silently failing
 - Reproducible benchmark harness (`make bench`) for startup, CPU, RAM,
   processes, GPU and mpv recovery
@@ -233,9 +234,12 @@ gdbus call --session --dest io.github.ferramari.Ferramari.server \
 keys are ignored, missing keys get defaults, and a schema-3 file is migrated on
 first start.
 
-Favourites, history and collections live next to it in `library.json`.
+Favourites, history and collections live next to it in `library.json`, and
+`display-ids.json` remembers which connected screen owns which per-monitor
+key, so a wallpaper follows the monitor across replugs and reboots. Resetting
+the configuration does not discard those bindings.
 
-Both files are written atomically through a temporary file and rename; the
+All three files are written atomically through a temporary file and rename; the
 previous good copy is kept as `.json.bak`. A truncated or invalid
 `config.json` is restored from that backup instead of silently resetting the
 settings.

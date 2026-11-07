@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use ferramari_core::eco;
+use ferramari_core::hwdec::HwDec;
 use ferramari_core::platform::{WallpaperSurface, WallpaperSurfaceProvider};
 use ferramari_core::MonitorInfo;
 
@@ -215,6 +216,28 @@ impl Engine {
         match &self.content {
             Content::Video { mpv } => mpv.lock().ok().and_then(|mpv| mpv.take_error()),
         }
+    }
+
+    /// Ask the player which decoder it is actually using and report the last
+    /// known answer. The request is queued on the IPC worker, so the first
+    /// call returns [`HwDec::Unknown`] and a later supervision tick sees the
+    /// reply — the command loop never waits on mpv.
+    ///
+    /// This exists because the setting is not the fact: mpv accepts
+    /// `--hwdec=vaapi` on a machine without a VA-API path and decodes on the
+    /// CPU without failing. Comparing the two is what turns a silent fallback
+    /// into something the user can see.
+    pub fn hwdec_status(&mut self) -> HwDec {
+        let Content::Video { mpv } = &self.content;
+        let Ok(mut mpv) = mpv.lock() else {
+            return HwDec::Unknown;
+        };
+        let current = mpv.hwdec_current();
+        if current == HwDec::Unknown {
+            // Nothing recorded yet; ask once per call until an answer lands.
+            let _ = mpv.probe_hwdec();
+        }
+        current
     }
 
     /// True while the embedded player is alive.

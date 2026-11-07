@@ -131,6 +131,7 @@ fn main() {
 /// it the default action would kill the process mid-fade, and a handler
 /// could not send on the command channel without risking an async-signal-
 /// unsafe call. `sigwait` returns only for the signals we asked for.
+#[cfg(unix)]
 fn install_signal_handlers(tx: &CommandSender) {
     let tx = tx.clone();
     std::thread::Builder::new()
@@ -304,4 +305,11 @@ fn author_name(requested: &str) -> String {
         return requested.trim().to_string();
     }
     signing::default_author_name()
+}
+
+
+#[cfg(not(unix))]
+fn install_signal_handlers(_tx: &CommandSender) {
+    // Native console-control handling belongs to the Windows platform
+    // backend. Until that backend is enabled, retain the OS default behavior.
 }

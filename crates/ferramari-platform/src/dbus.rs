@@ -376,6 +376,16 @@ impl ServerInterface {
         self.snapshot().autostart_enabled
     }
 
+    #[zbus(property, name = "operation_status")]
+    fn operation_status(&self) -> String {
+        self.snapshot().operation_status
+    }
+
+    #[zbus(property, name = "operation_error")]
+    fn operation_error(&self) -> bool {
+        self.snapshot().operation_error
+    }
+
     #[zbus(property, name = "autostart_enabled")]
     fn set_autostart_enabled(&self, enabled: bool) {
         send(&self.tx, Command::SetAutostart(enabled));

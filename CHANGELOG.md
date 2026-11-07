@@ -1,5 +1,53 @@
 # Changelog
 
+## 2.0.0 — 2026-11-07
+
+**Major release: GTK removal complete, Iced UI, native event loop.**
+
+- **GTK/GDK/WebKit fully removed** from the server binary. The binary now links
+  zero GTK, GDK, Pango, Cairo, or WebKit libraries (153 MB → 153 MB, but
+  runtime GTK dependencies are gone).
+- **Iced UI** replaces the GTK control surface. The UI is a separate binary
+  (`ferramari-ui`) that connects to the server over D-Bus, so the server has
+  no GUI dependency at all.
+- **Native event loop** replaces `glib::main_loop`. The server runs on a plain
+  `recv_timeout` loop with deadline bookkeeping for periodic tasks (player
+  watch, rotation, power). No GLib main loop, no `glib::timeout_add_local`.
+- **Native signal handling** replaces `glib::unix_signal_add`. SIGINT/SIGTERM
+  are blocked process-wide and delivered via `sigwait` on a dedicated thread.
+- **Native fade engine** replaces `glib::timeout_add_local` for volume fades.
+  Each fade runs on a dedicated `std::thread` with `std::thread::sleep`.
+- **Native wallpaper surfaces** replace GTK `ApplicationWindow`. Windows are
+  created via `x11rb` with `_NET_WM_WINDOW_TYPE_DESKTOP`, no decorations,
+  non-focusable, lowered below desktop icons.
+- **Native monitor enumeration** replaces `gdk::Monitor`. Uses `x11rb` RandR
+  with hotplug via `randr_select_input` on a dedicated thread.
+- **Native tray** via `ksni` (already in place, no GTK).
+- **Web wallpapers** gated behind `web-wallpaper` feature flag. Enabling it
+  pulls WebKitGTK 2.x back in (the only toolkit with a maintained Rust
+  binding for WebKitGTK 4.1). See `docs/GTK_REMOVAL_AUDIT.md` §4 for
+  alternatives (CEF, external browser process).
+- **160 tests** pass (113 core + 19 platform + 19 media + 8 UI + 1 binary).
+- **Workspace split** into 4 crates: `ferramari-core`, `ferramari-media`,
+  `ferramari-platform`, `ferramari-ui`.
+
+### Breaking changes
+
+- `ferramari` no longer links GTK. Build with `--features web-wallpaper` to
+  enable WebKitGTK web wallpapers (requires GTK dev packages).
+- The control surface is now a separate binary (`ferramari-ui`). The server
+  launches it via `std::process::Command` when `show_gui` is called.
+- `Command::SetTheme` now accepts `system`, `light`, or `dark`. The old GTK
+  theme system is gone.
+- `Command::SetLanguage` now accepts `system`, `en`, `ru`, or `ja`. The old
+  GTK language system is gone.
+
+### Migration guide
+
+See `docs/GTK_REMOVAL_AUDIT.md` for the full audit and migration plan.
+
+# Changelog
+
 ## 1.9.4 — 2026-11-04
 
 Fullscreen finally pauses the wallpaper — including on Wayland sessions.

@@ -1,0 +1,25 @@
+[package]
+name = "ferramari-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Ferramari Iced UI: D-Bus client of the wallpaper server"
+
+[dependencies]
+ferramari-core = { path = "../ferramari-core" }
+
+gettext-rs = { version = "0.8", features = ["gettext-system"] }
+iced = { version = "0.14", features = ["tokio"] }
+serde = "1"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+zbus = "5"
+zvariant = "5"
+
+[[bin]]
+name = "ferramari-ui"
+path = "src/main.rs"
+
+[lib]
+name = "ferramari_ui"
+path = "src/lib.rs"

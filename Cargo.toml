@@ -1,23 +1,38 @@
-[package]
-name = "ferramari"
-version = "1.9.4"
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "2.0.0"
 edition = "2021"
 rust-version = "1.88"
 license = "GPL-3.0-or-later"
+
+[package]
+name = "ferramari"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
 description = "Video wallpaper for Linux, written in Rust"
 readme = "README.md"
-keywords = ["wallpaper", "video", "gtk", "linux"]
+keywords = ["wallpaper", "video", "linux"]
 categories = ["multimedia::video", "graphics"]
 
+[features]
+default = []
+# Webpage wallpapers need a browser engine. WebKitGTK 2.x is only published
+# with GTK 3 bindings, so enabling this feature pulls the whole GTK line back
+# in. The default build has no toolkit at all; see docs/GTK_REMOVAL_AUDIT.md
+# §4 for the engine candidates that would let this feature go away.
+web-wallpaper = ["dep:webkit2gtk"]
+
 [dependencies]
-# GTK 3 line: the only toolkit line that still has a WebKitGTK binding
-# (webkit2gtk 2.x), which webpage wallpapers need.
-gtk = "0.18"
-gdk-pixbuf = "0.18"
-gdkx11 = "0.18"
-gio = "0.18"
-glib = "0.18"
-webkit2gtk = { version = "2.0", features = ["v2_40"] }
+ferramari-core = { path = "crates/ferramari-core" }
+ferramari-platform = { path = "crates/ferramari-platform" }
+ferramari-media = { path = "crates/ferramari-media" }
+
+webkit2gtk = { version = "2.0", features = ["v2_40"], optional = true }
 
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }

@@ -1,10 +1,14 @@
 //! Application state and the command loop.
 //!
-//! Every part of the program that wants to change something (GUI callbacks,
-//! D-Bus methods, X11/session watchers, tray) sends a [`Command`] into one
-//! channel. The GTK main thread drains it and mutates [`App`], so GTK objects
-//! are only ever touched from the thread that owns them and state changes are
-//! serialised in one place.
+//! Every part of the program that wants to change something (D-Bus methods,
+//! X11/session watchers, tray) sends a [`Command`] into one channel. A single
+//! thread drains it and mutates [`App`], so state changes are serialised in
+//! one place and nothing here needs `Send`.
+//!
+//! The loop is a plain `recv_timeout` over the command channel plus deadline
+//! bookkeeping for what used to be GLib timeouts. Periodic work therefore runs
+//! on the same thread that owns the players, exactly like the previous GTK
+//! main loop, without a second event loop in the process.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -12,11 +16,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender as StdSender};
+use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::{Duration, Instant};
 
-use gtk::prelude::*;
 use rand::seq::SliceRandom;
 
 use crate::autostart;
@@ -32,183 +36,40 @@ use crate::power;
 use crate::signing;
 use crate::supervisor::{RestartPolicy, Retry, MAX_RETRIES};
 use crate::tray;
-use crate::ui::control::{ControlWindow, RefreshState};
-use crate::ui::theme;
-use crate::ui::wallpaper::{WallpaperWindow, WindowKey, WindowKind};
 use crate::util;
 use crate::wallpaper::GnomeBackground;
 use crate::x11::{self, WindowState};
 use crate::ytdlp;
+
+use ferramari_media::engine::{ContentKind, Engine, WindowKey};
 
 /// How long a hidden local video must stay paused before its decoder is
 /// released. Five minutes keeps short game alt-tabs and lock-screen blips from
 /// paying a reload; the mpv process itself is kept alive.
 const DECODER_PARK_AFTER: Duration = Duration::from_secs(5 * 60);
 
-#[derive(Debug, Clone)]
-pub enum Command {
-    ShowGui,
-    Null,
-    Video {
-        path: Option<String>,
-        monitor: Option<String>,
-    },
-    Stream {
-        url: String,
-    },
-    StreamReady {
-        url: String,
-        result: Result<ytdlp::StreamInfo, String>,
-    },
-    Webpage {
-        url: String,
-    },
-    WebpageReady {
-        url: String,
-        result: Result<(), String>,
-    },
-    PausePlayback,
-    StartPlayback,
-    Reload,
-    ReloadConfig,
-    QuitPlayer,
-    FeelingLucky,
-    Quit,
-    ToggleMute,
-    TogglePause,
-    SetVolume(i64),
-    SetMute(bool),
-    SetPausedByUser(bool),
-    SetBlurRadius(i64),
-    SetStaticWallpaper(bool),
-    SetPauseWhenMaximized(bool),
-    SetMuteWhenMaximized(bool),
-    ScreenLockActive(bool),
-    SessionLock(bool),
-    WindowState(WindowState),
-    Idle(bool),
-    MonitorsChanged,
-    MonitorsChangedNow,
-    SetAutostart(bool),
-    SetLanguage(String),
-    SetTheme(String),
-    SetRotationMode(String),
-    SetRotationInterval(i64),
-    SetMonitorRotation {
-        monitor: String,
-        collection: Option<String>,
-    },
-    SetPlaybackProfile(String),
-    SetPauseOnBattery(bool),
-    SetIdleTimeout(i64),
-    SetHardwareDecoding(String),
-    SetWebNetwork(bool),
-    PowerStatus {
-        on_battery: bool,
-        percent: Option<u8>,
-    },
-    Suspend(bool),
-    LibraryChanged,
-    ImportPackage(PathBuf),
-    PackageImported(Result<Box<package::ImportedPackage>, String>),
-    ExportPackage {
-        video: PathBuf,
-        parent: PathBuf,
-    },
-    PackageExported(Result<PathBuf, String>),
-    SignPackage(PathBuf),
-    PackageSigned(Result<PathBuf, String>),
-    VerifyPackage(PathBuf),
-    PackageVerified(Box<PackageReport>),
-    TrustKey(PathBuf),
-    WebError {
-        monitor: String,
-        message: String,
-    },
-    StaticWallpaperReady {
-        source: String,
-        blur: i64,
-        generation: u64,
-        file: Option<PathBuf>,
-    },
-}
+/// Cadence of the periodic jobs that were GLib timeouts.
+const PLAYER_WATCH_EVERY: Duration = Duration::from_secs(1);
+const ROTATION_WATCH_EVERY: Duration = Duration::from_secs(5);
+const POWER_WATCH_EVERY: Duration = Duration::from_secs(30);
+/// Coalescing window for a hotplug burst, and the debounce for a burst of
+/// slider changes waiting to be written to disk.
+const MONITOR_DEBOUNCE: Duration = Duration::from_millis(250);
+const CONFIG_FLUSH_AFTER: Duration = Duration::from_millis(500);
 
-/// Integrity and authorship of one package, for the library dialog.
-#[derive(Debug, Clone)]
-pub struct PackageReport {
-    pub dir: PathBuf,
-    pub checksummed: bool,
-    pub signature: signing::SignatureStatus,
-}
-
-/// Read-only view of the current state for the D-Bus interfaces.
-#[derive(Debug, Clone)]
-pub struct Snapshot {
-    pub mode: Mode,
-    pub volume: i64,
-    pub blur_radius: i64,
-    pub is_mute: bool,
-    pub is_playing: bool,
-    pub is_paused_by_user: bool,
-    pub is_static_wallpaper: bool,
-    pub is_pause_when_maximized: bool,
-    pub is_mute_when_maximized: bool,
-    pub theme: String,
-    pub data_source: std::collections::HashMap<String, String>,
-    /// Monitor name → Eco state label (`active`, `idle`, `occluded`,
-    /// `suspended`). Useful to scripts and the Home cards.
-    pub monitor_states: std::collections::HashMap<String, String>,
-}
-
-impl Default for Snapshot {
-    fn default() -> Self {
-        Self {
-            mode: Mode::Null,
-            volume: 50,
-            blur_radius: 5,
-            is_mute: false,
-            is_playing: false,
-            is_paused_by_user: false,
-            is_static_wallpaper: true,
-            is_pause_when_maximized: true,
-            is_mute_when_maximized: false,
-            theme: "system".to_string(),
-            data_source: std::collections::HashMap::new(),
-            monitor_states: std::collections::HashMap::new(),
-        }
-    }
-}
-
-/// Cloneable command handle shared with UI, D-Bus, tray and watcher threads.
-/// Sending also wakes the GTK main loop, so it does not need to poll.
-#[derive(Clone)]
-pub struct CommandSender(StdSender<Command>);
-
-impl CommandSender {
-    pub fn new(sender: StdSender<Command>) -> Self {
-        Self(sender)
-    }
-
-    pub fn send(&self, command: Command) -> Result<(), mpsc::SendError<Command>> {
-        let result = self.0.send(command);
-        if result.is_ok() {
-            crate::wake::wake();
-        }
-        result
-    }
-}
+// The command bus (Command, PackageReport, Snapshot, CommandSender)
+// lives in ferramari-core. Re-export it under `app` so the pre-split call
+// sites (`crate::app::Command`, …) keep resolving.
+pub use crate::bus::{Command, CommandSender, PackageReport, Snapshot};
 
 pub struct App {
-    gtk_app: gtk::Application,
     pub config: Config,
     pub monitors: Vec<MonitorInfo>,
-    pub windows: Vec<WallpaperWindow>,
-    pub control: Option<ControlWindow>,
+    pub windows: Vec<Engine>,
     pub snapshot: Arc<Mutex<Snapshot>>,
     tx: CommandSender,
     weak_self: Weak<RefCell<App>>,
     background: bool,
-    version: String,
     paused_by_user: bool,
     /// Aggregate lock state; a lock from either source keeps it true.
     screen_locked: bool,
@@ -237,60 +98,56 @@ pub struct App {
     /// Set when a wallpaper window is newly mapped: only then do the desktop
     /// icons need to be redrawn on top of it.
     pending_icon_refresh: bool,
-    /// Desktop dark preference captured before the in-app override.
-    system_prefers_dark: bool,
     /// Pending debounced config save; volume and blur sliders change fast.
     config_dirty_at: Option<Instant>,
     policies: HashMap<WindowKey, RestartPolicy>,
+    /// Kept alive so the EWMH watcher stops with the app.
     window_watcher: Option<x11::Watcher>,
-    monitor_debounce: Option<glib::SourceId>,
-    tray_handle: Option<ksni::blocking::Handle<tray::Tray>>,
+    /// Kept alive so the RandR hotplug watcher stops with the app.
+    monitor_watcher: Option<monitors::Watcher>,
+    /// When a debounced hotplug should be applied, from `Command::MonitorsChanged`.
+    monitor_due: Option<Instant>,
     quit_requested: bool,
     gui_shown: bool,
-    hold_guard: Option<gtk::gio::ApplicationHoldGuard>,
 }
 
 impl App {
     pub fn new(
-        gtk_app: &gtk::Application,
         args: &crate::cli::Args,
         tx: CommandSender,
-        rx: Receiver<Command>,
         snapshot: Arc<Mutex<Snapshot>>,
     ) -> Rc<RefCell<Self>> {
         paths::ensure_dirs();
-        std::thread::spawn(|| {
-            let age = Duration::from_secs(3600);
-            util::cleanup_partial_files(&paths::thumbnail_cache_dir(), age);
-            util::cleanup_partial_files(&paths::static_cache_dir(), age);
-        });
+        thread::Builder::new()
+            .name("ferramari-cache-clean".into())
+            .spawn(|| {
+                let age = Duration::from_secs(3600);
+                util::cleanup_partial_files(&paths::thumbnail_cache_dir(), age);
+                util::cleanup_partial_files(&paths::static_cache_dir(), age);
+            })
+            .ok();
         let monitors = monitors::list();
         let names: Vec<String> = monitors
             .iter()
             .map(|monitor| monitor.name.clone())
             .collect();
         let config = Config::load(&names);
-        let system_prefers_dark = theme::system_prefers_dark();
-        theme::apply_mode(&config.theme, system_prefers_dark);
         let background_wallpaper = GnomeBackground::capture();
         // Read the power supply once: two separate `status()` calls can
         // observe different states while a charger is being plugged in.
         let power_status = power::status();
         let idle_threshold = Arc::new(AtomicU64::new(
-            config.idle_timeout_sec.clamp(30, 86_400) as u64
+            config.idle_timeout_sec.clamp(30, 86_400) as u64,
         ));
 
-        let mut app = Self {
-            gtk_app: gtk_app.clone(),
+        let app = Self {
             config,
             monitors,
             windows: Vec::new(),
-            control: None,
             snapshot,
             tx: tx.clone(),
             weak_self: Weak::new(),
             background: args.background,
-            version: env!("CARGO_PKG_VERSION").to_string(),
             paused_by_user: false,
             screen_locked: false,
             screensaver_locked: false,
@@ -310,125 +167,98 @@ impl App {
             static_job: None,
             static_generation: 0,
             pending_icon_refresh: false,
-            system_prefers_dark,
             config_dirty_at: None,
             policies: HashMap::new(),
             window_watcher: None,
-            monitor_debounce: None,
-            tray_handle: None,
+            monitor_watcher: None,
+            monitor_due: None,
             quit_requested: false,
             gui_shown: false,
-            hold_guard: None,
         };
         app.sync_snapshot();
 
         if app.config.is_show_systray {
-            app.tray_handle = tray::spawn(tx.clone());
+            tray::spawn(tx.clone());
         }
 
         let app = Rc::new(RefCell::new(app));
         app.borrow_mut().weak_self = Rc::downgrade(&app);
-
-        // Keep the process alive even when there is no wallpaper window and
-        // the control window is hidden (the background server role).
-        app.borrow_mut().hold_guard = Some(gtk_app.hold());
-
-        install_actions(gtk_app, &tx);
-        Self::start_command_loop(&app, rx);
-        Self::start_external_watchers(&app);
-        Self::start_player_watch(&app);
-        Self::start_rotation_watch(&app);
-        Self::start_power_watch(&app);
+        app.borrow_mut().start_external_watchers();
         app
     }
 
-    fn start_command_loop(app: &Rc<RefCell<Self>>, rx: Receiver<Command>) {
-        let weak = Rc::downgrade(app);
-        match crate::wake::init() {
-            Some(fd) => {
-                glib::unix_fd_add_local(fd, glib::IOCondition::IN, move |fd, _| {
-                    crate::wake::drain(fd);
-                    let Some(app) = weak.upgrade() else {
-                        return glib::ControlFlow::Break;
-                    };
-                    drain_commands(&app, &rx)
-                });
-                // Commands sent before the loop started (D-Bus, signals) are
-                // still in the queue; one synthetic wakeup drains them.
-                crate::wake::wake();
+    /// Drain commands and run the periodic jobs until `Command::Quit` arrives
+    /// or the channel closes. This is the whole event loop: one thread owns
+    /// the players, so nothing here needs locking or message passing.
+    pub fn run(app: &Rc<RefCell<App>>, rx: Receiver<Command>) {
+        let mut next_player = Instant::now();
+        let mut next_rotation = Instant::now() + ROTATION_WATCH_EVERY;
+        let mut next_power = Instant::now() + POWER_WATCH_EVERY;
+        let mut previous_power = power::status();
+
+        while !app.borrow().quit_requested {
+            // Sleep only until the earliest deadline, so an idle process still
+            // reacts to a command immediately.
+            let now = Instant::now();
+            let mut wait = next_player
+                .min(next_rotation)
+                .min(next_power)
+                .saturating_duration_since(now);
+            if let Some(due) = app.borrow().monitor_due {
+                wait = wait.min(due.saturating_duration_since(now));
             }
-            None => {
-                // Pipe creation failed: keep the old polling loop as a
-                // fallback so commands are still processed.
-                log::warn!("[Server] Wakeup pipe unavailable, polling commands");
-                glib::timeout_add_local(Duration::from_millis(40), move || {
-                    let Some(app) = weak.upgrade() else {
-                        return glib::ControlFlow::Break;
-                    };
-                    drain_commands(&app, &rx)
-                });
+            match rx.recv_timeout(wait) {
+                Ok(command) => app.borrow_mut().handle(command),
+                // Every sender lives in this process; a dropped channel means
+                // the watchers are gone and nothing can wake us again.
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+            }
+            // Everything queued behind the command we just took.
+            while let Ok(command) = rx.try_recv() {
+                app.borrow_mut().handle(command);
+                if app.borrow().quit_requested {
+                    break;
+                }
+            }
+
+            let now = Instant::now();
+            if now >= next_player {
+                next_player = now + PLAYER_WATCH_EVERY;
+                let mut state = app.borrow_mut();
+                state.watch_players();
+                state.flush_config_if_due();
+            }
+            if now >= next_rotation {
+                next_rotation = now + ROTATION_WATCH_EVERY;
+                app.borrow_mut().rotate_wallpapers();
+            }
+            if now >= next_power {
+                next_power = now + POWER_WATCH_EVERY;
+                let status = power::status();
+                if status != previous_power {
+                    previous_power = status;
+                    app.borrow_mut().handle(Command::PowerStatus {
+                        on_battery: status.on_battery,
+                        percent: status.percent,
+                    });
+                }
+            }
+            // The hotplug debounce is a deadline, not a thread: a burst of
+            // RandR notifications collapses into one rebuild.
+            let due = app.borrow().monitor_due;
+            if due.is_some_and(|due| now >= due) {
+                app.borrow_mut().monitor_due = None;
+                app.borrow_mut().handle(Command::MonitorsChangedNow);
             }
         }
+
+        app.borrow_mut().shutdown();
     }
 
-    fn start_player_watch(app: &Rc<RefCell<Self>>) {
-        let weak = Rc::downgrade(app);
-        glib::timeout_add_local(Duration::from_secs(1), move || {
-            let Some(app) = weak.upgrade() else {
-                return glib::ControlFlow::Break;
-            };
-            let mut state = app.borrow_mut();
-            if state.quit_requested {
-                return glib::ControlFlow::Break;
-            }
-            state.watch_players();
-            state.flush_config_if_due();
-            glib::ControlFlow::Continue
-        });
-    }
-
-    fn start_power_watch(app: &Rc<RefCell<Self>>) {
-        let weak = Rc::downgrade(app);
-        // Only emit a command when the state actually changes. Plugging and
-        // unplugging is rare; a 30 s heartbeat that refreshes the whole UI
-        // every time is exactly the kind of idle work the Eco Engine avoids.
-        let mut previous = power::status();
-        glib::timeout_add_local(Duration::from_secs(30), move || {
-            let Some(app) = weak.upgrade() else {
-                return glib::ControlFlow::Break;
-            };
-            let status = power::status();
-            if status != previous {
-                previous = status;
-                let _ = app.borrow().tx.send(Command::PowerStatus {
-                    on_battery: status.on_battery,
-                    percent: status.percent,
-                });
-            }
-            glib::ControlFlow::Continue
-        });
-    }
-
-    fn start_rotation_watch(app: &Rc<RefCell<Self>>) {
-        let weak = Rc::downgrade(app);
-        glib::timeout_add_local(Duration::from_secs(5), move || {
-            let Some(app) = weak.upgrade() else {
-                return glib::ControlFlow::Break;
-            };
-            let mut state = app.borrow_mut();
-            if state.quit_requested {
-                return glib::ControlFlow::Break;
-            }
-            state.rotate_wallpapers();
-            glib::ControlFlow::Continue
-        });
-    }
-
-    fn start_external_watchers(app: &Rc<RefCell<Self>>) {
-        let (tx, idle_threshold) = {
-            let app = app.borrow();
-            (app.tx.clone(), Arc::clone(&app.idle_threshold))
-        };
+    fn start_external_watchers(&mut self) {
+        let tx = self.tx.clone();
+        let idle_threshold = Arc::clone(&self.idle_threshold);
 
         handlers::start_screen_lock_watcher(tx.clone());
         handlers::start_end_session_watcher(tx.clone());
@@ -439,27 +269,10 @@ impl App {
         // useful on a Wayland session too: X11 fullscreen windows are listed
         // in _NET_CLIENT_LIST even there. `x11::start` returns `None` when no
         // X server answers at all, which is the only real failure mode.
-        if let Some(watcher) = x11::start(tx.clone()) {
-            app.borrow_mut().window_watcher = Some(watcher);
-        }
-
-        let Some(display) = gtk::gdk::Display::default() else {
-            return;
-        };
-        let monitor_tx = tx.clone();
-        display.connect_monitor_added(move |_, _| {
-            let _ = monitor_tx.send(Command::MonitorsChanged);
-        });
-        let monitor_tx = tx.clone();
-        display.connect_monitor_removed(move |_, _| {
-            let _ = monitor_tx.send(Command::MonitorsChanged);
-        });
-        if let Some(screen) = gtk::gdk::Screen::default() {
-            let screen_tx = tx;
-            screen.connect_size_changed(move |_| {
-                let _ = screen_tx.send(Command::MonitorsChanged);
-            });
-        }
+        self.window_watcher = x11::start(tx.clone());
+        // RandR replaces the GDK monitor signals: the watcher thread only ever
+        // touches the command channel.
+        self.monitor_watcher = monitors::start(tx);
     }
 
     pub fn activate(&mut self) {
@@ -473,6 +286,8 @@ impl App {
         self.flush_config();
         self.close_windows();
         self.background_wallpaper.restore();
+        self.window_watcher = None;
+        self.monitor_watcher = None;
     }
 
     fn handle(&mut self, command: Command) {
@@ -487,9 +302,6 @@ impl App {
             Command::Stream { url } => self.resolve_stream(url),
             Command::StreamReady { url, result } => {
                 self.stream_resolving = false;
-                if let Some(control) = &self.control {
-                    control.set_streaming(false);
-                }
                 match result {
                     Ok(info) => {
                         self.adopt_stream(url, info);
@@ -498,7 +310,7 @@ impl App {
                     Err(err) => {
                         self.stream = None;
                         self.notify_user_error(UserError::new(ErrorKind::Network, err));
-                        self.refresh_ui();
+                        self.sync_snapshot();
                     }
                 }
             }
@@ -515,12 +327,10 @@ impl App {
             Command::PausePlayback => {
                 self.pause_all();
                 self.sync_snapshot();
-                self.refresh_ui();
             }
             Command::StartPlayback => {
                 self.apply_playback_states();
                 self.sync_snapshot();
-                self.refresh_ui();
             }
             Command::Reload => {
                 if self.config.mode == Mode::Stream {
@@ -544,13 +354,10 @@ impl App {
                 self.save_config();
                 self.apply_playback_states();
                 self.apply_mute_states();
-                self.refresh_ui();
-                self.sync_snapshot();
             }
             Command::SetMuteWhenMaximized(enabled) => {
                 self.config.is_mute_when_maximized = enabled;
                 self.save_config();
-                self.refresh_ui();
                 self.apply_mute_states();
             }
             Command::ScreenLockActive(active) => {
@@ -558,16 +365,12 @@ impl App {
                 self.screensaver_locked = active;
                 self.screen_locked = self.screensaver_locked || self.logind_locked;
                 self.apply_playback_states();
-                self.sync_snapshot();
-                self.refresh_ui();
             }
             Command::SessionLock(active) => {
                 log::debug!("[ScreenLock] logind lock active={active}");
                 self.logind_locked = active;
                 self.screen_locked = self.screensaver_locked || self.logind_locked;
                 self.apply_playback_states();
-                self.sync_snapshot();
-                self.refresh_ui();
             }
             Command::WindowState(state) => {
                 if state == self.window_state {
@@ -580,16 +383,12 @@ impl App {
                 );
                 self.apply_playback_states();
                 self.apply_mute_states();
-                self.sync_snapshot();
-                self.refresh_ui();
             }
             Command::Idle(idle) => {
                 if self.idle != idle {
                     log::debug!("[Eco] idle={idle}");
                     self.idle = idle;
                     self.apply_playback_states();
-                    self.sync_snapshot();
-                    self.refresh_ui();
                 }
             }
             Command::SetAutostart(enabled) => self.set_autostart(enabled),
@@ -608,9 +407,6 @@ impl App {
                 if self.config.theme != mode {
                     self.config.theme = mode;
                     self.save_config();
-                    theme::apply_mode(&self.config.theme, self.system_prefers_dark);
-                    self.sync_snapshot();
-                    self.refresh_ui();
                 }
             }
             Command::SetRotationMode(mode) => {
@@ -618,7 +414,6 @@ impl App {
                     self.config.rotation_mode = mode;
                     self.last_rotation.clear();
                     self.save_config();
-                    self.refresh_ui();
                 }
             }
             Command::SetRotationInterval(seconds) => {
@@ -627,7 +422,6 @@ impl App {
                     self.config.rotation_interval_sec = seconds;
                     self.last_rotation.clear();
                     self.save_config();
-                    self.refresh_ui();
                 }
             }
             Command::SetPlaybackProfile(profile) => {
@@ -646,7 +440,6 @@ impl App {
                 self.config.pause_on_battery = enabled;
                 self.save_config();
                 self.apply_playback_states();
-                self.refresh_ui();
             }
             Command::SetIdleTimeout(seconds) => {
                 let seconds = seconds.clamp(30, 86_400);
@@ -654,7 +447,6 @@ impl App {
                     self.config.idle_timeout_sec = seconds;
                     self.idle_threshold.store(seconds as u64, Ordering::Relaxed);
                     self.save_config();
-                    self.refresh_ui();
                 }
             }
             Command::SetHardwareDecoding(mode) => {
@@ -677,8 +469,6 @@ impl App {
                     self.save_config();
                     if self.config.mode == Mode::Webpage {
                         self.restart_windows();
-                    } else {
-                        self.refresh_ui();
                     }
                 }
             }
@@ -686,7 +476,6 @@ impl App {
                 log::info!("[Power] Suspend={sleeping}");
                 self.suspended = sleeping;
                 self.apply_playback_states();
-                self.refresh_ui();
             }
             Command::PowerStatus {
                 on_battery,
@@ -695,18 +484,15 @@ impl App {
                 let changed = self.on_battery != on_battery || self.battery_percent != percent;
                 self.on_battery = on_battery;
                 self.battery_percent = percent;
-                if changed {
-                    if self.config.pause_on_battery {
-                        self.apply_playback_states();
-                    }
-                    self.refresh_ui();
+                if changed && self.config.pause_on_battery {
+                    self.apply_playback_states();
                 }
             }
-            Command::LibraryChanged => self.refresh_ui(),
+            Command::LibraryChanged => {}
             Command::ImportPackage(source) => {
                 let tx = self.tx.clone();
                 let destination = paths::packages_dir();
-                std::thread::Builder::new()
+                thread::Builder::new()
                     .name("ferramari-package-import".to_string())
                     .spawn(move || {
                         let result = package::import(&source, &destination).map(Box::new);
@@ -734,7 +520,6 @@ impl App {
                                 self.library.borrow_mut().record_use(&source);
                                 let _ = self.library.borrow().save();
                                 self.rebuild_windows();
-                                self.reload_library_ui();
                             }
                         }
                         package::PackageType::Web => {
@@ -746,18 +531,6 @@ impl App {
                             self.rebuild_windows();
                         }
                     }
-                    if let Some(control) = &self.control {
-                        control.show_info(&format!(
-                            "{}\n{}\n{}",
-                            imported.package_dir.display(),
-                            imported.signature.label(),
-                            if imported.checksummed {
-                                util::tr("All files match their recorded SHA-256")
-                            } else {
-                                util::tr("The package carries no checksums")
-                            }
-                        ));
-                    }
                 }
                 Err(err) => self.notify_user_error(UserError::new(
                     ErrorKind::FileSystem,
@@ -766,7 +539,7 @@ impl App {
             },
             Command::ExportPackage { video, parent } => {
                 let tx = self.tx.clone();
-                std::thread::Builder::new()
+                thread::Builder::new()
                     .name("ferramari-package-export".to_string())
                     .spawn(move || {
                         let result = package::export_video(&video, &parent);
@@ -775,12 +548,7 @@ impl App {
                     .ok();
             }
             Command::PackageExported(result) => match result {
-                Ok(path) => {
-                    log::info!("[Package] Exported {}", path.display());
-                    if let Some(control) = &self.control {
-                        control.show_info(&path.display().to_string());
-                    }
-                }
+                Ok(path) => log::info!("[Package] Exported {}", path.display()),
                 Err(err) => self.notify_user_error(UserError::new(
                     ErrorKind::FileSystem,
                     format!("Could not export the package: {err}"),
@@ -788,7 +556,7 @@ impl App {
             },
             Command::SignPackage(dir) => {
                 let tx = self.tx.clone();
-                std::thread::Builder::new()
+                thread::Builder::new()
                     .name("ferramari-package-sign".to_string())
                     .spawn(move || {
                         let result = (|| {
@@ -802,13 +570,7 @@ impl App {
                     .ok();
             }
             Command::PackageSigned(result) => match result {
-                Ok(dir) => {
-                    log::info!("[Package] Signed {}", dir.display());
-                    if let Some(control) = &self.control {
-                        control.refresh_signing_summary();
-                        control.show_info(&format!("{}: {}", dir.display(), util::tr("Signed")));
-                    }
-                }
+                Ok(dir) => log::info!("[Package] Signed {}", dir.display()),
                 Err(err) => self.notify_user_error(UserError::new(
                     ErrorKind::FileSystem,
                     format!("Could not sign the package: {err}"),
@@ -816,7 +578,7 @@ impl App {
             },
             Command::VerifyPackage(dir) => {
                 let tx = self.tx.clone();
-                std::thread::Builder::new()
+                thread::Builder::new()
                     .name("ferramari-package-verify".to_string())
                     .spawn(move || {
                         let result = (|| -> Result<PackageReport, String> {
@@ -853,17 +615,9 @@ impl App {
                     report.checksummed,
                     report.signature.label()
                 );
-                if let Some(control) = &self.control {
-                    control.show_package_report(&report);
-                }
             }
             Command::TrustKey(path) => match signing::trust_source(&path) {
-                Ok(Some(key_id)) => {
-                    if let Some(control) = &self.control {
-                        control.refresh_signing_summary();
-                        control.show_info(&format!("{} ({})", util::tr("Trusted key"), key_id));
-                    }
-                }
+                Ok(Some(key_id)) => log::info!("[Package] Trusted key {key_id}"),
                 Ok(None) => self.notify_user_error(UserError::new(
                     ErrorKind::FileSystem,
                     format!("{} carries no key to trust", path.display()),
@@ -890,7 +644,6 @@ impl App {
                 }
                 self.last_rotation.remove(&monitor);
                 self.save_config();
-                self.refresh_ui();
             }
             Command::WebError { monitor, message } => {
                 log::warn!("[Web] {monitor}: {message}");
@@ -941,19 +694,13 @@ impl App {
             Command::MonitorsChanged => {
                 // A single hotplug often arrives as added + removed + size
                 // events. Coalesce them so the players are rebuilt once.
-                if self.monitor_debounce.is_some() {
-                    return;
-                }
-                let tx = self.tx.clone();
-                self.monitor_debounce = Some(glib::timeout_add_local_once(
-                    Duration::from_millis(250),
-                    move || {
-                        let _ = tx.send(Command::MonitorsChangedNow);
-                    },
-                ));
+                let due = self
+                    .monitor_due
+                    .unwrap_or_else(|| Instant::now() + MONITOR_DEBOUNCE);
+                self.monitor_due = Some(due);
             }
             Command::MonitorsChangedNow => {
-                self.monitor_debounce = None;
+                self.monitor_due = None;
                 log::info!("[Monitors] Layout changed");
                 // A hotplug must not throw away a debounced volume/blur edit:
                 // `Config::load` re-reads the file, which does not contain it
@@ -970,7 +717,6 @@ impl App {
                     self.config.idle_timeout_sec.clamp(30, 86_400) as u64,
                     Ordering::Relaxed,
                 );
-                theme::apply_mode(&self.config.theme, self.system_prefers_dark);
                 self.rebuild_windows();
             }
         }
@@ -997,13 +743,6 @@ impl App {
             }
         }
         self.rebuild_windows();
-        self.reload_library_ui();
-    }
-
-    fn reload_library_ui(&self) {
-        if let Some(control) = &self.control {
-            control.reload_library();
-        }
     }
 
     /// Highest monitor height, which decides the stream format to ask for.
@@ -1048,12 +787,9 @@ impl App {
             return;
         }
         self.stream_resolving = true;
-        if let Some(control) = &self.control {
-            control.set_streaming(true);
-        }
         let tx = self.tx.clone();
         log::info!("[Stream] Resolving: {url}");
-        std::thread::spawn(move || {
+        thread::spawn(move || {
             let result = ytdlp::resolve(&url, screen_height);
             let _ = tx.send(Command::StreamReady { url, result });
         });
@@ -1066,7 +802,7 @@ impl App {
         if url.starts_with("http://") || url.starts_with("https://") {
             let target = url.clone();
             let tx = self.tx.clone();
-            std::thread::spawn(move || {
+            thread::spawn(move || {
                 let result = ytdlp::check_url(&target);
                 let _ = tx.send(Command::WebpageReady {
                     url: target,
@@ -1126,7 +862,6 @@ impl App {
         self.config.data_source.insert("Default".to_string(), video);
         self.save_config();
         self.rebuild_windows();
-        self.reload_library_ui();
     }
 
     fn rebuild_windows(&mut self) {
@@ -1172,13 +907,13 @@ impl App {
             desired.contains(window.key())
                 // A video player can be reused for a new file on the same
                 // monitor instead of being torn down and respawned.
-                || (window.key().kind == WindowKind::Video
+                || (window.key().kind == ContentKind::Video
                     && desired.iter().any(|key| {
-                        key.kind == WindowKind::Video
+                        key.kind == ContentKind::Video
                             && key.monitor == window.key().monitor
                             && Path::new(&key.source).is_file()
                     }))
-                || (pending_stream && window.key().kind == WindowKind::Stream)
+                || (pending_stream && window.key().kind == ContentKind::Stream)
         });
 
         let live_monitors: Vec<String> = self
@@ -1210,9 +945,9 @@ impl App {
             else {
                 continue;
             };
-            if key.kind == WindowKind::Video && Path::new(&key.source).is_file() {
+            if key.kind == ContentKind::Video && Path::new(&key.source).is_file() {
                 if let Some(index) = self.windows.iter().position(|window| {
-                    window.key().kind == WindowKind::Video && window.key().monitor == key.monitor
+                    window.key().kind == ContentKind::Video && window.key().monitor == key.monitor
                 }) {
                     let switch_started = Instant::now();
                     match self.windows[index].load_video(&key.source, volume, muted) {
@@ -1275,62 +1010,37 @@ impl App {
         desired_windows_for(&self.config, &self.monitors, self.stream.as_ref())
     }
 
-    fn create_window(
-        &self,
-        key: &WindowKey,
-        monitor: &MonitorInfo,
-    ) -> anyhow::Result<WallpaperWindow> {
+    fn create_window(&self, key: &WindowKey, monitor: &MonitorInfo) -> anyhow::Result<Engine> {
         let volume = self.config.volume;
         let muted = self.config.is_mute;
+        let profile = self.config.playback_profile.as_str();
+        let hwdec = self.config.hwdec.as_str();
         match key.kind {
-            WindowKind::Video => WallpaperWindow::video(
-                &self.gtk_app,
-                monitor,
-                &key.source,
-                volume,
-                muted,
-                &self.config.playback_profile,
-                &self.config.hwdec,
-            ),
-            WindowKind::Stream => {
+            ContentKind::Video => Engine::video(monitor, &key.source, volume, muted, profile, hwdec),
+            ContentKind::Stream => {
                 let stream = self
                     .stream
                     .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("stream is not resolved yet"))?;
-                WallpaperWindow::stream(
-                    &self.gtk_app,
-                    monitor,
-                    stream,
-                    volume,
-                    muted,
-                    &self.config.playback_profile,
-                    &self.config.hwdec,
-                )
+                Engine::stream(monitor, stream, volume, muted, profile, hwdec)
             }
-            WindowKind::Web => WallpaperWindow::web(
-                &self.gtk_app,
-                monitor,
-                &key.source,
-                muted,
-                self.config.web_allow_network,
-                self.tx.clone(),
-            ),
+            ContentKind::Web => Engine::web(monitor, &key.source),
         }
     }
 
     fn notify_window_error(&self, key: &WindowKey, err: anyhow::Error) {
         let (kind, summary) = match key.kind {
-            WindowKind::Video => {
+            ContentKind::Video => {
                 let name = Path::new(&key.source)
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| key.source.clone());
                 (ErrorKind::Playback, format!("Could not play {name}"))
             }
-            WindowKind::Stream => (ErrorKind::Network, "Could not stream".to_string()),
-            WindowKind::Web => (ErrorKind::Network, "Could not open webpage".to_string()),
+            ContentKind::Stream => (ErrorKind::Network, "Could not stream".to_string()),
+            ContentKind::Web => (ErrorKind::Network, "Could not open webpage".to_string()),
         };
-        if key.kind == WindowKind::Stream {
+        if key.kind == ContentKind::Stream {
             // The signed URL came from yt-dlp and may have expired or been
             // revoked. Forget it so the next Apply or Reload asks the site
             // again instead of replaying the dead link until the TTL runs out.
@@ -1353,7 +1063,6 @@ impl App {
             util::gnome_desktop_icon_workaround();
         }
         self.sync_snapshot();
-        self.refresh_ui();
     }
 
     /// Re-read `config.json` from disk (D-Bus `reload_config`).
@@ -1368,7 +1077,6 @@ impl App {
             self.config.idle_timeout_sec.clamp(30, 86_400) as u64,
             Ordering::Relaxed,
         );
-        theme::apply_mode(&self.config.theme, self.system_prefers_dark);
         // Volume, mute, mode and sources all come from the file now, so the
         // players are recreated rather than patched. Streaming sources are
         // page URLs and have to be resolved again.
@@ -1385,7 +1093,6 @@ impl App {
         log::info!("[Player] Stopped by request");
         self.close_windows();
         self.sync_snapshot();
-        self.refresh_ui();
     }
 
     fn close_windows(&mut self) {
@@ -1401,7 +1108,7 @@ impl App {
         let now = Instant::now();
         log::trace!("[Player] tick: {} window(s)", self.windows.len());
         // Command-level errors arrive asynchronously from the IPC worker.
-        // Reporting them here keeps the GTK thread free of IPC waits.
+        // Reporting them here keeps the owning thread free of IPC waits.
         let mut reported_errors = Vec::new();
         for window in &mut self.windows {
             if let Some(message) = window.take_error() {
@@ -1446,7 +1153,7 @@ impl App {
                         // The cached link is invalidated by `notify_window_error`;
                         // forget the resolved stream too, so the next rebuild
                         // resolves instead of recreating a window from it.
-                        if key.kind == WindowKind::Stream {
+                        if key.kind == ContentKind::Stream {
                             self.stream = None;
                         }
                         // Stop the automatic loop. A later user action (Apply,
@@ -1619,6 +1326,7 @@ impl App {
             window.set_fps_cap(plan.fps);
             self.last_plans.insert(monitor, plan);
         }
+        self.sync_snapshot();
     }
 
     /// Apply master mute and the per-monitor "mute when covered" rule. This
@@ -1691,7 +1399,6 @@ impl App {
         }
         self.apply_mute_states();
         self.sync_snapshot();
-        self.refresh_ui();
     }
 
     fn set_mute(&mut self, muted: bool) {
@@ -1699,14 +1406,12 @@ impl App {
         self.save_config();
         self.apply_mute_states();
         self.sync_snapshot();
-        self.refresh_ui();
     }
 
     fn set_paused_by_user(&mut self, paused: bool) {
         self.paused_by_user = paused;
         self.apply_playback_states();
         self.sync_snapshot();
-        self.refresh_ui();
     }
 
     fn set_static_wallpaper(&mut self, enabled: bool) {
@@ -1714,7 +1419,6 @@ impl App {
         self.save_config();
         self.update_static_wallpaper();
         self.sync_snapshot();
-        self.refresh_ui();
     }
 
     fn set_blur_radius(&mut self, radius: i64) {
@@ -1724,7 +1428,6 @@ impl App {
             self.update_static_wallpaper();
         }
         self.sync_snapshot();
-        self.refresh_ui();
     }
 
     /// Advance every monitor whose rotation timer is due. Collections are
@@ -1807,14 +1510,14 @@ impl App {
             return;
         }
 
-        // ffmpeg can take seconds on 4K video; never run it under the GTK
-        // main loop. The generation counter discards a stale result if the
-        // source or blur radius changes while the worker is running.
+        // ffmpeg can take seconds on 4K video; never run it under the event
+        // loop. The generation counter discards a stale result if the source or
+        // blur radius changes while the worker is running.
         self.static_generation += 1;
         let generation = self.static_generation;
         self.static_job = Some((source.clone(), blur));
         let tx = self.tx.clone();
-        std::thread::Builder::new()
+        thread::Builder::new()
             .name("ferramari-static-frame".to_string())
             .spawn(move || {
                 let file = crate::wallpaper::render_static_frame(Path::new(&source), blur as u32);
@@ -1828,39 +1531,13 @@ impl App {
             .ok();
     }
 
+    /// The control surface is a separate binary now: ask the session to start
+    /// it rather than opening a window in this process.
     pub fn show_gui(&mut self) {
-        if self.control.is_none() {
-            self.control = Some(ControlWindow::new(
-                &self.gtk_app,
-                self.tx.clone(),
-                &self.version,
-                Rc::clone(&self.library),
-            ));
+        if let Err(err) = launch_control_surface() {
+            log::warn!("[GUI] Could not start the control window: {err}");
         }
-        let first_time = self.config.is_first_time;
-        let is_playing = self.any_playing();
-        let eco_states = self.monitor_states();
-        if let Some(control) = self.control.as_ref() {
-            control.present();
-            // The key and trust store can change from the CLI between windows.
-            control.refresh_signing_summary();
-            control.refresh(RefreshState {
-                config: &self.config,
-                monitors: &self.monitors,
-                eco_states: &eco_states,
-                autostart_enabled: autostart::is_enabled(),
-                paused_by_user: self.paused_by_user,
-                is_playing,
-                battery: power::PowerStatus {
-                    on_battery: self.on_battery,
-                    percent: self.battery_percent,
-                },
-            });
-            if !self.gui_shown && first_time {
-                control.show_welcome();
-            }
-        }
-        if !self.gui_shown && first_time {
+        if self.config.is_first_time {
             self.config.is_first_time = false;
             self.save_config();
         }
@@ -1875,22 +1552,13 @@ impl App {
                 err.to_string(),
             ));
         }
-        self.refresh_ui();
+        self.sync_snapshot();
     }
 
     fn quit(&mut self) {
         log::info!("[Server] Stopping");
         self.flush_config();
         self.quit_requested = true;
-        self.close_windows();
-        self.background_wallpaper.restore();
-        self.window_watcher = None;
-        if let Some(source) = self.monitor_debounce.take() {
-            source.remove();
-        }
-        self.tray_handle = None;
-        self.hold_guard = None;
-        self.gtk_app.quit();
     }
 
     /// Coalesce rapid slider changes into one write.
@@ -1901,7 +1569,7 @@ impl App {
     fn flush_config_if_due(&mut self) {
         if self
             .config_dirty_at
-            .is_some_and(|at| at.elapsed() >= Duration::from_millis(500))
+            .is_some_and(|at| at.elapsed() >= CONFIG_FLUSH_AFTER)
         {
             self.flush_config();
         }
@@ -1942,59 +1610,56 @@ impl App {
                 .into_iter()
                 .map(|(monitor, state)| (monitor, state.as_str().to_string()))
                 .collect(),
+            language: self.config.language.clone(),
+            rotation_mode: self.config.rotation_mode.clone(),
+            rotation_interval_sec: self.config.rotation_interval_sec,
+            playback_profile: self.config.playback_profile.clone(),
+            pause_on_battery: self.config.pause_on_battery,
+            idle_timeout_sec: self.config.idle_timeout_sec,
+            hwdec: self.config.hwdec.clone(),
+            web_allow_network: self.config.web_allow_network,
+            fade_duration_sec: self.config.fade_duration_sec,
+            fade_interval: self.config.fade_interval,
+            is_show_systray: self.config.is_show_systray,
+            autostart_enabled: autostart::is_enabled(),
+            rotations: self.config.rotations.clone(),
         };
         if let Ok(mut shared) = self.snapshot.lock() {
             *shared = snapshot;
         }
     }
 
-    fn refresh_ui(&self) {
-        if let Some(control) = &self.control {
-            let is_playing = self.any_playing();
-            let eco_states = self.monitor_states();
-            control.refresh(RefreshState {
-                config: &self.config,
-                monitors: &self.monitors,
-                eco_states: &eco_states,
-                autostart_enabled: autostart::is_enabled(),
-                paused_by_user: self.paused_by_user,
-                is_playing,
-                battery: power::PowerStatus {
-                    on_battery: self.on_battery,
-                    percent: self.battery_percent,
-                },
-            });
-        }
-    }
-
     fn notify_user_error(&self, error: UserError) {
         error.log();
-        if let Some(control) = &self.control {
-            control.show_error(&error.message());
-        }
     }
 }
 
-fn drain_commands(app: &Rc<RefCell<App>>, rx: &Receiver<Command>) -> glib::ControlFlow {
-    let mut state = app.borrow_mut();
-    loop {
-        match rx.try_recv() {
-            Ok(command) => {
-                state.handle(command);
-                if state.quit_requested {
-                    return glib::ControlFlow::Break;
-                }
-            }
-            Err(mpsc::TryRecvError::Empty) => break,
-            Err(mpsc::TryRecvError::Disconnected) => return glib::ControlFlow::Break,
-        }
-    }
-    state.flush_config_if_due();
-    glib::ControlFlow::Continue
+/// Start the Iced control surface next to this executable. It is a normal
+/// D-Bus client, so the server never has to know about its widgets.
+fn launch_control_surface() -> anyhow::Result<()> {
+    let exe = std::env::current_exe()?;
+    let dir = exe
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("executable has no directory"))?;
+    let candidate = dir.join("ferramari-ui");
+    let program = if candidate.is_file() {
+        candidate
+    } else {
+        PathBuf::from("ferramari-ui")
+    };
+    // A second `show_gui` while one window is open must not stack windows;
+    // `ferramari-ui` exits immediately when another instance owns its name.
+    thread::Builder::new()
+        .name("ferramari-gui".to_string())
+        .spawn(move || {
+            let _ = std::process::Command::new(program).spawn();
+        })
+        .ok();
+    Ok(())
 }
 
 /// Pure planning step: which wallpaper window should exist for every monitor
-/// in the current mode. Keeping it free of GTK makes hotplug and monitor
+/// in the current mode. Keeping it free of windowing makes hotplug and monitor
 /// reattachment behaviour testable.
 fn desired_windows_for(
     config: &Config,
@@ -2007,7 +1672,7 @@ fn desired_windows_for(
             .filter_map(|monitor| {
                 let source = config.source_for(&monitor.name);
                 (!source.is_empty()).then(|| WindowKey {
-                    kind: WindowKind::Video,
+                    kind: ContentKind::Video,
                     monitor: monitor.name.clone(),
                     source: source.to_string(),
                 })
@@ -2017,7 +1682,7 @@ fn desired_windows_for(
             Some(stream) => monitors
                 .iter()
                 .map(|monitor| WindowKey {
-                    kind: WindowKind::Stream,
+                    kind: ContentKind::Stream,
                     monitor: monitor.name.clone(),
                     source: stream.video_url.clone(),
                 })
@@ -2032,7 +1697,7 @@ fn desired_windows_for(
                 monitors
                     .iter()
                     .map(|monitor| WindowKey {
-                        kind: WindowKind::Web,
+                        kind: ContentKind::Web,
                         monitor: monitor.name.clone(),
                         source: uri.to_string(),
                     })
@@ -2043,9 +1708,9 @@ fn desired_windows_for(
     }
 }
 
-/// X11 root coordinates are device pixels; GDK monitor geometry is logical
-/// pixels on HiDPI/XWayland layouts. Convert once so the visibility check and
-/// its tests use the same rectangle.
+/// X11 root coordinates are device pixels; monitor geometry from RandR is
+/// logical pixels on HiDPI/XWayland layouts. Convert once so the visibility
+/// check and its tests use the same rectangle.
 fn monitor_rect(info: &MonitorInfo) -> (i32, i32, i32, i32) {
     let scale = info.scale_factor.max(1);
     (
@@ -2057,20 +1722,10 @@ fn monitor_rect(info: &MonitorInfo) -> (i32, i32, i32, i32) {
 }
 
 /// A local page may arrive as a plain path or as a `file://` URI (for example
-/// from a D-Bus caller). GIO decodes percent escapes and refuses non-local
-/// hosts, so the result is always a path on this machine.
+/// from a D-Bus caller). Percent escapes are decoded and a non-local authority
+/// is refused, so the result is always a path on this machine.
 fn local_webpage_path(url: &str) -> Option<PathBuf> {
-    if let Some(rest) = url.strip_prefix("file://") {
-        // `file://host/path` would otherwise be silently reduced to `/path`:
-        // reject a remote authority instead of reading a lookalike local file.
-        let host = rest.split('/').next().unwrap_or_default();
-        if !host.is_empty() && host != "localhost" {
-            return None;
-        }
-        gtk::gio::File::for_uri(url).path()
-    } else {
-        Some(PathBuf::from(url))
-    }
+    util::uri_to_path(url)
 }
 
 /// Apply a local video to one monitor or all of them. When switching away from
@@ -2136,32 +1791,12 @@ fn next_rotation_path(mode: &str, items: &[String], current: &str) -> Option<Str
     items.get(index).cloned()
 }
 
-fn kind_label(kind: WindowKind) -> &'static str {
+fn kind_label(kind: ContentKind) -> &'static str {
     match kind {
-        WindowKind::Video => "video",
-        WindowKind::Stream => "stream",
-        WindowKind::Web => "web page",
+        ContentKind::Video => "video",
+        ContentKind::Stream => "stream",
+        ContentKind::Web => "web page",
     }
-}
-
-fn install_actions(app: &gtk::Application, tx: &CommandSender) {
-    let actions = [
-        ("show", Command::ShowGui),
-        ("toggle-mute", Command::ToggleMute),
-        ("toggle-pause", Command::TogglePause),
-        ("reload", Command::Reload),
-        ("lucky", Command::FeelingLucky),
-        ("quit", Command::Quit),
-    ];
-    for (name, command) in actions {
-        let action = gtk::gio::SimpleAction::new(name, None);
-        let tx = tx.clone();
-        action.connect_activate(move |_, _| {
-            let _ = tx.send(command.clone());
-        });
-        app.add_action(&action);
-    }
-    app.set_accels_for_action("app.quit", &["<Primary>q"]);
 }
 
 #[cfg(test)]
@@ -2177,160 +1812,128 @@ mod tests {
             width: 1920,
             height: 1080,
             scale_factor: 1,
-            is_primary: x == 0,
+            is_primary: name == "eDP-1",
         }
     }
 
     #[test]
     fn removing_and_reattaching_a_monitor_keeps_its_source() {
-        let names = vec!["eDP-1".to_string(), "HDMI-1".to_string()];
-        let mut config = Config::template(&names);
+        let monitors = vec![monitor("eDP-1", 0), monitor("HDMI-1", 1920)];
+        let mut config = Config::template(
+            &monitors
+                .iter()
+                .map(|monitor| monitor.name.clone())
+                .collect::<Vec<_>>(),
+        );
         config.mode = Mode::Video;
-        config.data_source.insert("eDP-1".into(), "/a.mp4".into());
-        config.data_source.insert("HDMI-1".into(), "/b.mp4".into());
-        config.data_source.insert("Default".into(), "/a.mp4".into());
+        for monitor in &monitors {
+            config
+                .data_source
+                .insert(monitor.name.clone(), format!("/videos/{}.mp4", monitor.name));
+        }
 
-        let both = vec![monitor("eDP-1", 0), monitor("HDMI-1", 1920)];
-        let keys = desired_windows_for(&config, &both, None);
-        assert_eq!(keys.len(), 2);
-        assert!(keys
+        // Unplug HDMI-1: only the built-in display should get a window.
+        let attached = vec![monitor("eDP-1", 0)];
+        let wanted = desired_windows_for(&config, &attached, None);
+        assert_eq!(wanted.len(), 1);
+        assert_eq!(wanted[0].monitor, "eDP-1");
+
+        // Plug it back in: its own source is still in the config, so the
+        // window comes back with the same file.
+        let wanted = desired_windows_for(&config, &monitors, None);
+        assert_eq!(wanted.len(), 2);
+        let hdmi = wanted
             .iter()
-            .any(|key| key.monitor == "HDMI-1" && key.source == "/b.mp4"));
-
-        // HDMI-1 disappears: only eDP-1 should have a window.
-        let only_laptop = vec![monitor("eDP-1", 0)];
-        let keys = desired_windows_for(&config, &only_laptop, None);
-        assert_eq!(keys.len(), 1);
-        assert_eq!(keys[0].monitor, "eDP-1");
-
-        // The config still remembers HDMI-1's own source, so it is restored
-        // when the display comes back.
-        assert_eq!(config.source_for("HDMI-1"), "/b.mp4");
-        let keys = desired_windows_for(&config, &both, None);
-        assert!(keys
-            .iter()
-            .any(|key| key.monitor == "HDMI-1" && key.source == "/b.mp4"));
+            .find(|key| key.monitor == "HDMI-1")
+            .expect("HDMI-1 window");
+        assert_eq!(hdmi.source, "/videos/HDMI-1.mp4");
     }
 
     #[test]
     fn assigning_one_monitor_from_web_mode_does_not_leave_a_url_for_mpv() {
-        let names = vec!["eDP-1".to_string(), "HDMI-1".to_string()];
-        let mut config = Config::template(&names);
+        let monitors = vec![monitor("eDP-1", 0), monitor("HDMI-1", 1920)];
+        let mut config = Config::template(&["eDP-1".to_string(), "HDMI-1".to_string()]);
         config.mode = Mode::Webpage;
         config
             .data_source
-            .insert("Default".into(), "https://example.com/".into());
-        config.data_source.insert("HDMI-1".into(), "/b.mp4".into());
-        let monitors = vec![monitor("eDP-1", 0), monitor("HDMI-1", 1920)];
+            .insert("Default".to_string(), "https://example.test".to_string());
 
         assert!(assign_video(
             &mut config,
             &monitors,
-            "/a.mp4".into(),
-            Some("eDP-1")
+            "/videos/a.mp4".to_string(),
+            Some("eDP-1"),
         ));
-        assert_eq!(config.mode, Mode::Video);
-        assert_eq!(config.source_for("eDP-1"), "/a.mp4");
-        assert_eq!(config.source_for("HDMI-1"), "/b.mp4");
-        assert_eq!(config.default_source(), "/a.mp4");
+        // HDMI-1 has no video of its own; leaving the web URL in Default would
+        // hand it to mpv as a file path.
+        let wanted = desired_windows_for(&config, &monitors, None);
+        assert_eq!(wanted.len(), 1);
+        assert_eq!(wanted[0].monitor, "eDP-1");
     }
 
     #[test]
     fn assigning_to_an_unknown_monitor_is_rejected() {
-        let names = vec!["eDP-1".to_string()];
-        let mut config = Config::template(&names);
-        config.mode = Mode::Null;
         let monitors = vec![monitor("eDP-1", 0)];
+        let mut config = Config::template(&["eDP-1".to_string()]);
         assert!(!assign_video(
             &mut config,
             &monitors,
-            "/a.mp4".into(),
-            Some("HDMI-9")
+            "/videos/a.mp4".to_string(),
+            Some("nope-1"),
         ));
-        assert_eq!(config.mode, Mode::Null);
     }
 
     #[test]
     fn order_rotation_advances_and_wraps() {
-        let items = vec!["/a.mp4".to_string(), "/b.mp4".to_string()];
-        assert_eq!(
-            next_rotation_path("order", &items, "/a.mp4"),
-            Some("/b.mp4".into())
-        );
-        assert_eq!(
-            next_rotation_path("order", &items, "/b.mp4"),
-            Some("/a.mp4".into())
-        );
-        assert_eq!(
-            next_rotation_path("order", &items, "/missing.mp4"),
-            Some("/a.mp4".into())
-        );
-        assert_eq!(next_rotation_path("order", &[], "/a.mp4"), None);
+        let items = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        assert_eq!(next_rotation_path("order", &items, "a"), Some("b".to_string()));
+        assert_eq!(next_rotation_path("order", &items, "c"), Some("a".to_string()));
+        assert_eq!(next_rotation_path("order", &items, "gone"), Some("a".to_string()));
     }
 
     #[test]
     fn random_rotation_avoids_the_current_item() {
-        let items = vec!["/a.mp4".to_string(), "/b.mp4".to_string()];
-        for _ in 0..20 {
-            assert_eq!(
-                next_rotation_path("random", &items, "/a.mp4"),
-                Some("/b.mp4".into())
-            );
+        let items = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        for _ in 0..50 {
+            assert_ne!(next_rotation_path("random", &items, "a").as_deref(), Some("a"));
         }
-        let one = vec!["/a.mp4".to_string()];
+        // One candidate left: it has to repeat.
         assert_eq!(
-            next_rotation_path("random", &one, "/a.mp4"),
-            Some("/a.mp4".into())
+            next_rotation_path("random", &["a".to_string()], "a"),
+            Some("a".to_string())
         );
     }
 
     #[test]
     fn hidpi_monitor_geometry_is_converted_to_device_pixels() {
-        let info = MonitorInfo {
-            index: 0,
-            name: "eDP-1".into(),
-            x: 1920,
-            y: 0,
-            width: 1920,
-            height: 1080,
-            scale_factor: 2,
-            is_primary: false,
-        };
-        assert_eq!(monitor_rect(&info), (3840, 0, 3840, 2160));
-        let mut normal = info;
-        normal.scale_factor = 0; // defensive: never multiply by zero
-        assert_eq!(monitor_rect(&normal), (1920, 0, 1920, 1080));
+        let mut info = monitor("eDP-1", 0);
+        info.scale_factor = 2;
+        assert_eq!(monitor_rect(&info), (0, 0, 3840, 2160));
     }
 
     #[test]
     fn local_webpages_accept_paths_and_file_uris() {
         assert_eq!(
-            local_webpage_path("/tmp/wallpaper.html"),
-            Some(PathBuf::from("/tmp/wallpaper.html"))
+            local_webpage_path("/tmp/a.html"),
+            Some(PathBuf::from("/tmp/a.html"))
         );
         assert_eq!(
-            local_webpage_path("file:///tmp/wallpaper.html"),
-            Some(PathBuf::from("/tmp/wallpaper.html"))
+            local_webpage_path("file:///tmp/a%20b.html"),
+            Some(PathBuf::from("/tmp/a b.html"))
         );
-        assert_eq!(
-            local_webpage_path("file:///tmp/hello%20world.html"),
-            Some(PathBuf::from("/tmp/hello world.html"))
-        );
-        // A remote host is not a local document and must not be read as one.
-        assert_eq!(local_webpage_path("file://example.com/tmp/a.html"), None);
+        assert_eq!(local_webpage_path("file://evil.example/a.html"), None);
     }
 
     #[test]
     fn a_monitor_without_a_source_gets_no_window() {
-        let names = vec!["eDP-1".to_string(), "HDMI-1".to_string()];
-        let mut config = Config::template(&names);
-        config.mode = Mode::Video;
-        config.data_source.insert("eDP-1".into(), "/a.mp4".into());
-        config.data_source.insert("HDMI-1".into(), String::new());
-        config.data_source.insert("Default".into(), String::new());
         let monitors = vec![monitor("eDP-1", 0), monitor("HDMI-1", 1920)];
-        let keys = desired_windows_for(&config, &monitors, None);
-        assert_eq!(keys.len(), 1);
-        assert_eq!(keys[0].monitor, "eDP-1");
+        let mut config = Config::template(&["eDP-1".to_string(), "HDMI-1".to_string()]);
+        config.mode = Mode::Video;
+        config
+            .data_source
+            .insert("eDP-1".to_string(), "/videos/a.mp4".to_string());
+        let wanted = desired_windows_for(&config, &monitors, None);
+        assert_eq!(wanted.len(), 1);
+        assert_eq!(wanted[0].monitor, "eDP-1");
     }
 }

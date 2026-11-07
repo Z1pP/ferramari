@@ -36,8 +36,8 @@ The interface has a hand-tuned dark palette as well as the light one:
 - Performance page with live CPU, RAM, thread, process and (where available)
   GPU metrics
 - Hardware decoding selector (Auto / VA-API / Off)
-- WebKit hardening: denied permissions, no pop-ups, optional network access for
-  Web wallpapers
+- Web wallpapers via optional `web-wallpaper` feature (WebKitGTK 2.x gated
+  behind feature flag; see `docs/GTK_REMOVAL_AUDIT.md` §4 for alternatives)
 - Reproducible benchmark harness (`make bench`) for startup, CPU, RAM,
   processes, GPU and mpv recovery
 - `--doctor` diagnostics for session/backend, desktop, media tools, DRM nodes,

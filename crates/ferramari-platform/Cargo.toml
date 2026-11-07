@@ -1,0 +1,23 @@
+[package]
+name = "ferramari-platform"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Ferramari platform layer: system tray, D-Bus, session watchers, monitors, GNOME background"
+
+[dependencies]
+ferramari-core = { path = "../ferramari-core" }
+
+
+anyhow = "1"
+log = "0.4"
+rand = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+x11rb = { version = "0.14", features = ["randr"] }
+zbus = "5"
+ksni = { version = "0.3", default-features = false, features = ["blocking", "async-io"] }
+
+[dev-dependencies]
+ferramari-media = { path = "../ferramari-media" }

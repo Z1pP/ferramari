@@ -1,45 +1,31 @@
 //! Ferramari — video wallpaper for Linux, written in Rust.
+//!
+//! The server owns the wallpaper players and answers D-Bus. It has no GUI:
+//! the control surface is a separate binary (`ferramari-ui`) that talks to
+//! this process over the session bus, so nothing here links a toolkit.
+
+// Business logic, the command bus and the data models live in `ferramari-core`.
+// The binary re-exports the modules under their historic names so that `app.rs`
+// keeps referring to `crate::paths`, `crate::util`, … unchanged.
+pub use ferramari_core::{
+    bus, catalog_api, catalogue, cli, config, eco, error, library, metrics, package, paths,
+    plugin, power, signing, supervisor, thumbnails, util, wake, x11, ytdlp,
+};
+pub use ferramari_core::MonitorInfo;
+pub use ferramari_core::bus::{Command, CommandReceiver, CommandSender, PackageReport, Snapshot};
+pub use ferramari_media::mpv;
+pub use ferramari_platform::{autostart, dbus, desktop, gnome_bg, handlers, monitors, tray};
+// The static-background module kept its historic name in the binary.
+pub use ferramari_platform::gnome_bg as wallpaper;
 
 mod app;
-mod autostart;
-mod catalog_api;
-mod catalogue;
-mod cli;
-mod config;
-mod dbus;
-mod desktop;
-mod eco;
-mod error;
-mod fade;
-mod handlers;
-mod library;
-mod metrics;
-mod monitors;
-mod mpv;
-mod package;
-mod paths;
-mod plugin;
-mod power;
-mod signing;
-mod supervisor;
-mod thumbnails;
-mod tray;
-mod ui;
-mod util;
-mod wake;
-mod wallpaper;
-mod x11;
-mod ytdlp;
 
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use clap::Parser;
-use gtk::prelude::*;
 
-use app::{App, Command, CommandSender, Snapshot};
+use app::App;
 use cli::PackageCommand;
 
 fn main() {
@@ -89,7 +75,7 @@ fn main() {
         paths::is_flatpak()
     );
 
-    let (command_tx, rx) = mpsc::channel();
+    let (command_tx, rx) = std::sync::mpsc::channel();
     let tx = CommandSender::new(command_tx);
     let snapshot = Arc::new(Mutex::new(Snapshot::default()));
 
@@ -118,57 +104,53 @@ fn main() {
         }
     };
 
-    let gtk_app =
-        gtk::Application::new(Some(paths::APP_ID), gtk::gio::ApplicationFlags::FLAGS_NONE);
-
-    let state: Rc<RefCell<Option<Rc<RefCell<App>>>>> = Rc::new(RefCell::new(None));
-    let receiver = RefCell::new(Some(rx));
-
-    {
-        let state = Rc::clone(&state);
-        let tx = tx.clone();
-        let snapshot = Arc::clone(&snapshot);
-        let args = args.clone();
-        gtk_app.connect_startup(move |gtk_app| {
-            let rx = receiver
-                .borrow_mut()
-                .take()
-                .expect("startup handler runs exactly once");
-            let app = App::new(gtk_app, &args, tx.clone(), rx, Arc::clone(&snapshot));
-            *state.borrow_mut() = Some(app);
-        });
-    }
-    {
-        let state = Rc::clone(&state);
-        gtk_app.connect_activate(move |_| {
-            if let Some(app) = state.borrow().as_ref() {
-                app.borrow_mut().activate();
-            }
-        });
-    }
-    {
-        let state = Rc::clone(&state);
-        gtk_app.connect_shutdown(move |_| {
-            if let Some(app) = state.borrow().as_ref() {
-                app.borrow_mut().shutdown();
-            }
-        });
-    }
-
-    for signal in [libc::SIGINT, libc::SIGTERM] {
-        let tx = tx.clone();
-        glib::unix_signal_add(signal, move || {
-            let _ = tx.send(Command::Quit);
-            glib::ControlFlow::Continue
-        });
-    }
+    install_signal_handlers(&tx);
 
     log::info!("[Server] Started");
-    gtk_app.run_with_args::<&str>(&[]);
-
-    // Keep the D-Bus connection alive until the GTK loop has finished.
-    drop(dbus_connection);
+    let app = App::new(&args, tx.clone(), Arc::clone(&snapshot));
+    // Start the players (and the control surface unless `--background`)
+    // before waiting for commands, exactly as the GTK activate handler did.
+    app.borrow_mut().activate();
+    App::run(&app, rx);
     log::info!("[Server] Stopped");
+
+    // Keep the D-Bus connection alive until the loop has finished.
+    drop(dbus_connection);
+}
+
+/// SIGINT/SIGTERM are blocked process-wide and delivered by one thread.
+///
+/// Blocking them before any thread starts is what makes this work: without
+/// it the default action would kill the process mid-fade, and a handler
+/// could not send on the command channel without risking an async-signal-
+/// unsafe call. `sigwait` returns only for the signals we asked for.
+fn install_signal_handlers(tx: &CommandSender) {
+    let tx = tx.clone();
+    std::thread::Builder::new()
+        .name("ferramari-signal".to_string())
+        .spawn(move || {
+            let signals = [libc::SIGINT, libc::SIGTERM];
+            let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };
+            unsafe {
+                libc::sigemptyset(&mut set);
+                for signal in signals {
+                    libc::sigaddset(&mut set, signal);
+                    libc::sigprocmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
+                }
+            }
+            let mut received = 0;
+            loop {
+                if unsafe { libc::sigwait(&set, &mut received) } != 0 {
+                    log::warn!("[Signal] sigwait failed, stopping signal thread");
+                    return;
+                }
+                log::info!("[Signal] {received}");
+                if tx.send(Command::Quit).is_err() {
+                    return;
+                }
+            }
+        })
+        .ok();
 }
 
 fn init_logging(debug: bool) {
@@ -209,7 +191,7 @@ fn locale_dir() -> std::path::PathBuf {
 }
 
 /// `ferramari package …`: creator-facing tooling for `.ferramari` packages.
-/// Runs before GTK starts, so it works over SSH and in a headless session.
+/// Runs before the server starts, so it works over SSH and headless.
 fn run_package_command(command: PackageCommand) -> i32 {
     match command {
         PackageCommand::Key { name, export } => {

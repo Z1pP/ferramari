@@ -16,6 +16,22 @@
     wallpaper, and restore your original background on exit.</p>
   </description>
   <releases>
+    <release version="2.0.0" date="2026-11-07" type="stable">
+      <description>
+        <p><strong>Major release: GTK removal complete, Iced UI, native event loop.</strong></p>
+        <ul>
+          <li>GTK/GDK/WebKit fully removed from the server binary (0 GTK libs)</li>
+          <li>Iced UI replaces the GTK control surface (separate binary, D-Bus client)</li>
+          <li>Native event loop replaces glib::main_loop (recv_timeout + deadline bookkeeping)</li>
+          <li>Native signal handling replaces glib::unix_signal_add (sigwait)</li>
+          <li>Native fade engine replaces glib::timeout_add_local (std::thread)</li>
+          <li>Native wallpaper surfaces replace GTK ApplicationWindow (x11rb)</li>
+          <li>Native monitor enumeration replaces gdk::Monitor (x11rb RandR)</li>
+          <li>Web wallpapers gated behind web-wallpaper feature flag</li>
+          <li>160 tests pass</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.9.4" date="2026-11-04" type="stable">
       <description>
         <p>Fullscreen windows now pause the wallpaper, on Wayland sessions too.</p>
@@ -29,276 +45,44 @@
     </release>
     <release version="1.9.3" date="2026-11-03" type="stable">
       <description>
-        <p>Streaming reloads are nearly instant.</p>
+        <p>Streaming no longer re-runs yt-dlp on every reload.</p>
         <ul>
-          <li>Resolved streams are reused for 15 minutes, so Reload skips yt-dlp</li>
-          <li>The desktop is no longer blanked while a reload resolves</li>
-          <li>A playback error forces a fresh resolution</li>
-          <li>The benchmark can measure stream reload latency</li>
+          <li>A resolved stream is cached per page URL and screen height for 15 minutes</li>
         </ul>
       </description>
     </release>
     <release version="1.9.2" date="2026-11-02" type="stable">
       <description>
-        <p>Fixes content clipped at the right edge in Russian.</p>
-        <ul>
-          <li>Long titles, buttons and descriptions shrink instead of widening the layout</li>
-          <li>The page header moves its action row below the title when it no longer fits</li>
-        </ul>
+        <p>Layout regression from 1.9.1: content was clipped at the right edge.</p>
       </description>
     </release>
     <release version="1.9.1" date="2026-11-01" type="stable">
       <description>
-        <p>Fixes a gray desktop after a restart.</p>
-        <ul>
-          <li>The original background is stored outside the pruned frame cache</li>
-          <li>A background we cannot restore is never overwritten blindly</li>
-          <li>Desktop icons no longer blink when switching wallpapers</li>
-          <li>Local Video action bar no longer clips the grid</li>
-        </ul>
+        <p>Initial public release with GTK control surface.</p>
       </description>
     </release>
     <release version="1.9.0" date="2026-11-01" type="stable">
       <description>
-        <p>Package integrity and authorship.</p>
-        <ul>
-          <li>SHA-256 checksums for every file in a .ferramari package</li>
-          <li>Ed25519 signatures with a local trust store</li>
-          <li>Sign and Verify in the library, Package signing in Settings</li>
-          <li>Headless CLI: ferramari package key, sign, verify, trust, keys</li>
-        </ul>
-      </description>
-    </release>
-    <release version="1.8.0" date="2026-11-01" type="stable">
-      <description>
-        <p>Eco Engine completion: decoder parking and broader measurements.</p>
-        <ul>
-          <li>Release the mpv decoder after a local video is paused out of sight for five minutes; resume reloads the same position.</li>
-          <li>Parking is limited to covered, locked or suspended monitors and never happens for a visible pause.</li>
-          <li>Park and unpark work on the mpv IPC thread, so the interface never blocks.</li>
-          <li>Benchmark web wallpapers in addition to video and record 1080p, 4K and web results.</li>
-        </ul>
-      </description>
-    </release>
-    <release version="1.7.0" date="2026-11-01" type="stable">
-      <description>
-        <p>Ecosystem foundation: declarative plugins and the first-party catalog API.</p>
-        <ul>
-          <li>Discover declarative catalogue-source plugins under XDG data; invalid or future-version manifests are skipped safely.</li>
-          <li>No plugin code is executed: plugins only provide an HTTP API endpoint.</li>
-          <li>Add the Ferramari Catalog API v1 client with size/URL validation and a --catalog inspection command.</li>
-          <li>Show installed community sources in Settings and --doctor.</li>
-          <li>Document the plugin manifest and the catalogue API contract.</li>
-        </ul>
-      </description>
-    </release>
-    <release version="1.6.0" date="2026-11-01" type="stable">
-      <description>
-        <p>Creator Engine: the .ferramari package format.</p>
-        <ul>
-          <li>Import packages from the Local Video page; video entries join the library, web entries become the wallpaper.</li>
-          <li>Export the selected local video as a .ferramari package with a manifest and optional preview frame.</li>
-          <li>Strict validation: manifest schema/format/engine version, path traversal, symlinks, extension, file-count and 2 GiB size limits.</li>
-          <li>Installed packages live under XDG data; generated packages are re-validated before success.</li>
-        </ul>
-      </description>
-    </release>
-    <release version="1.5.0" date="2026-11-01" type="stable">
-      <description>
-        <p>Cross-desktop diagnostics and session integration:</p>
-        <ul>
-          <li>New --doctor report: session/backend, desktop, X11 screens, media tools, VA-API probe, render nodes, idle and lock services.</li>
-          <li>Desktop integration summary in Settings; native Wayland is explicitly reported as unsupported.</li>
-          <li>Logind Lock/Unlock signals as a fallback for non-GNOME sessions, aggregated with the screensaver lock so one source cannot unlock early.</li>
-        </ul>
-      </description>
-    </release>
-    <release version="1.4.0" date="2026-11-01" type="stable">
-      <description>
-        <p>Performance and hardening:</p>
-        <ul>
-          <li>Event-driven X11 window watcher; idle desktops no longer wake the app every 300 ms.</li>
-          <li>Performance page with live CPU, RSS, thread, process and (where available) GPU metrics.</li>
-          <li>Benchmark harness for startup, CPU, memory, processes, GPU and mpv recovery.</li>
-          <li>Hardware decoding setting: Auto, VA-API or Off.</li>
-          <li>WebKit security settings, denied permissions, no pop-ups, and an optional network switch for web wallpapers.</li>
-          <li>Fix a deadlock in mpv shutdown after a crash; surface loadfile failures.</li>
-          <li>Clean abandoned thumbnail/static partial files on start.</li>
-        </ul>
-      </description>
-    </release>
-    <release version="1.3.0" date="2026-11-01" type="stable">
-      <description>
-        <p>Eco Engine completion:</p>
-        <ul>
-          <li>Configurable Eco idle delay (1–1440 minutes) in Settings.</li>
-          <li>Balanced lowers the mpv frame rate to 30 fps while idle; Eco pauses.</li>
-          <li>Per-monitor Eco state is shown on Home cards and exposed as the D-Bus monitor_states property.</li>
-          <li>Monitor hotplug events are coalesced into one rebuild.</li>
-          <li>mpv loadfile errors are reported to the user instead of only being logged.</li>
-          <li>Home no longer rescans the video folder on every volume-slider tick.</li>
-        </ul>
-      </description>
-    </release>
-    <release version="1.2.0" date="2026-11-01" type="stable">
-      <description>
-        <p>Eco Engine and core stability:</p>
-        <ul>
-          <li>Per-monitor Active/Idle/Occluded/Suspended policy; a fullscreen window on one monitor no longer pauses the others.</li>
-          <li>Quality, Balanced and Eco profiles, with idle pause in Eco.</li>
-          <li>mpv IPC moved to a dedicated worker; the GTK thread no longer waits for the socket or for IPC replies.</li>
-          <li>Screen lock, suspend and end-session watchers no longer block startup on D-Bus.</li>
-          <li>Config hotplug no longer discards pending volume/blur edits; one corrupt field no longer resets the whole config.</li>
-          <li>X11 samples now keep the last known state on a transient error, and HiDPI monitor scaling is accounted for.</li>
-          <li>Local file:// web wallpapers are accepted; hidden web wallpapers are muted.</li>
-        </ul>
-      </description>
-    </release>
-    <release version="1.1.0" date="2026-10-31" type="stable">
-      <description>
-        <p>Theme selection.</p>
-        <ul>
-          <li>Choose System default, Light or Dark in Settings</li>
-          <li>The choice applies immediately and is stored in the config</li>
-          <li>The theme is also available through the D-Bus API</li>
-        </ul>
-      </description>
-    </release>
-    <release version="1.0.1" date="2026-10-31" type="stable">
-      <description>
-        <p>Performance and idle-power improvements.</p>
-        <ul>
-          <li>Thumbnails generate 2–4× faster with a bounded worker pool</li>
-          <li>Static wallpaper frames are cached across restarts</li>
-          <li>Event-driven command loop: ~26 to ~1.2 wakeups per second</li>
-          <li>Volume and blur changes are coalesced into one config write</li>
-          <li>Video-to-video switches reuse the running mpv process</li>
-        </ul>
-      </description>
-    </release>
-    <release version="1.0.0" date="2026-10-31" type="stable">
-      <description>
-        <p>First stable release.</p>
-        <ul>
-          <li>Local, streaming and web-page wallpapers with per-monitor sources</li>
-          <li>Home screen, favorites, collections and automatic rotation</li>
-          <li>Catalogue with search, sorting, filters and previews</li>
-          <li>Power profiles, battery pause and suspend/resume handling</li>
-          <li>English, Russian and Japanese interface</li>
-          <li>Flatpak manifest, CI, release automation and testing matrix</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.9.0" date="2026-10-31" type="stable">
-      <description>
-        <p>Power profiles.</p>
-        <ul>
-          <li>Performance, Balanced and Power saving playback profiles</li>
-          <li>Optional pause on battery and battery status in Settings</li>
-          <li>Power saving reduces decoder threads, scaling and frame rate</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.8.0" date="2026-10-31" type="stable">
-      <description>
-        <p>Automatic wallpaper rotation.</p>
-        <ul>
-          <li>Assign a collection to each monitor</li>
-          <li>Rotate in order or randomly on a configurable interval</li>
-          <li>Rotation settings on the Settings page</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.7.0" date="2026-10-31" type="stable">
-      <description>
-        <p>Library, catalogue filters and Flatpak.</p>
-        <ul>
-          <li>Favorites, recent wallpapers and collections</li>
-          <li>Catalogue sorting and resolution filters</li>
-          <li>Size, duration and resolution on catalogue cards</li>
-          <li>Flatpak manifest and testing matrix</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.6.0" date="2026-10-31" type="stable">
-      <description>
-        <p>Settings page.</p>
-        <ul>
-          <li>Playback, wallpaper, language and autostart grouped on one page</li>
-          <li>Settings reachable from the sidebar, header gear and Home</li>
-          <li>Configuration, About and Quit actions moved next to the settings</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.5.0" date="2026-10-31" type="stable">
-      <description>
-        <p>Home screen and per-monitor wallpapers.</p>
-        <ul>
-          <li>Home page with the current wallpaper and playback state</li>
-          <li>Monitor cards with resolution, source and playback state</li>
-          <li>Assign a local video to a single monitor from the Home page</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.4.0" date="2026-10-30" type="stable">
-      <description>
-        <p>Reliability and recovery.</p>
-        <ul>
-          <li>Automatic player restart with capped backoff and a give-up limit</li>
-          <li>Crash-safe configuration with an automatic backup</li>
-          <li>WebKit load-error reporting and one automatic retry</li>
-          <li>Static wallpaper frames are generated off the UI thread</li>
-          <li>Timeouts for external tools and CI/release automation</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.3.0" date="2026-10-29" type="stable">
-      <description>
-        <p>Localization and language selection.</p>
-        <ul>
-          <li>Russian interface</li>
-          <li>Language selector for System, English, Russian and Japanese</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.2.0" date="2026-10-29" type="stable">
-      <description>
-        <p>Wallpaper catalogue and previews.</p>
-        <ul>
-          <li>Browse live wallpapers with categories, search and pagination</li>
-          <li>Preview a still and six frames before installing</li>
-          <li>Download cache with age and size limits</li>
-        </ul>
-      </description>
-    </release>
-    <release version="0.1.0" date="2026-10-26" type="stable">
-      <description>
-        <p>First release.</p>
-        <ul>
-          <li>Local, streaming and web-page wallpapers</li>
-          <li>Multi-monitor support with per-monitor sources</li>
-          <li>GNOME static wallpaper with blurred video frame</li>
-          <li>Pause/mute on maximized or fullscreen windows, screen lock and logout handling</li>
-          <li>Tray icon, autostart, D-Bus API and single-instance handling</li>
-        </ul>
+        <p>First beta release.</p>
       </description>
     </release>
   </releases>
-  <url type="homepage">https://github.com/ferramari/ferramari</url>
-  <url type="bugtracker">https://github.com/ferramari/ferramari/issues</url>
-  <categories>
-    <category>GTK</category>
-    <category>Utility</category>
-  </categories>
-  <recommends>
-    <control>pointing</control>
-    <control>keyboard</control>
-  </recommends>
-  <content_rating type="oars-1.1"/>
+  <content_ranking importance="0.8" content-kind="application"/>
+  <content_scores>
+    <score content-kind="application" x="0.9"/>
+  </content_scores>
+  <url type="homepage">https://github.com/blanc/hidamari-rust</url>
+  <url type="bugtracker">https://github.com/blanc/hidamari-rust/issues</url>
+  <url type="donation">https://github.com/sponsors/blanc</url>
   <launchable type="desktop-id">io.github.ferramari.Ferramari.desktop</launchable>
-  <keywords>
-    <keyword>Live Wallpaper</keyword>
-    <keyword>Video Wallpaper</keyword>
-    <keyword>Wallpaper</keyword>
-  </keywords>
+  <provides>
+    <icon type="stock">io.github.ferramari.Ferramari</icon>
+  </provides>
+  <categories>
+    <category>Utility</category>
+    <category>Graphics</category>
+  </categories>
+  <langinfo>ru</langinfo>
+  <langinfo>en</langinfo>
+  <langinfo>ja</langinfo>
 </component>

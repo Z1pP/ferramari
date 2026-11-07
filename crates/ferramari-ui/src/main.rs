@@ -128,6 +128,7 @@ enum Message {
     RemoveFromCollection(String, String),
     Play(String),
     PlayOnMonitor(String, String),
+    SetMonitorRotation(String, String),
     OpenFolder,
     PackageSourceChanged(String),
     PackageParentChanged(String),
@@ -511,6 +512,15 @@ impl App {
             Message::PlayOnMonitor(path, monitor) => {
                 play_video_on_monitor(self.server.as_ref(), path, monitor)
             }
+            Message::SetMonitorRotation(monitor, collection) => {
+                let Some(server) = self.server.clone() else {
+                    return Task::none();
+                };
+                Task::perform(
+                    async move { server.set_monitor_rotation(monitor, collection).await },
+                    Message::CommandFinished,
+                )
+            }
             Message::OpenFolder => {
                 let dir = paths::video_wallpaper_dir();
                 let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
@@ -863,6 +873,14 @@ impl App {
         );
 
         let mut monitors = Column::new().spacing(10);
+        let mut rotation_options = vec![CollectionChoice {
+            id: String::new(),
+            name: tr("No rotation"),
+        }];
+        rotation_options.extend(self.library.collections().iter().map(|collection| CollectionChoice {
+            id: collection.id.clone(),
+            name: collection.name.clone(),
+        }));
         let mut names: Vec<&String> = self.state.monitor_states.keys().collect();
         names.sort();
         if names.is_empty() {
@@ -886,6 +904,12 @@ impl App {
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| tr("No wallpaper set"));
+                let selected_rotation = self.state.rotations.get(name).cloned().unwrap_or_default();
+                let selected_choice = rotation_options
+                    .iter()
+                    .find(|choice| choice.id == selected_rotation)
+                    .cloned();
+                let monitor_name = name.clone();
                 monitors = monitors.push(
                     Row::new()
                         .spacing(12)
@@ -897,7 +921,13 @@ impl App {
                                 .push(text(name.clone()).size(13).color(sem.text))
                                 .push(text(file).size(11).color(sem.text_muted)),
                         )
-                        .push(chip(state, sem)),
+                        .push(chip(state, sem))
+                        .push(text(tr("Rotation")).size(10).color(sem.text_muted))
+                        .push(pick_list(
+                            rotation_options.clone(),
+                            selected_choice,
+                            move |choice| Message::SetMonitorRotation(monitor_name.clone(), choice.id),
+                        )),
                 );
             }
         }

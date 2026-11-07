@@ -1021,25 +1021,15 @@ name = "ferramari"
 version = "2.0.0"
 dependencies = [
  "anyhow",
- "base64",
  "clap",
  "env_logger",
  "ferramari-core",
  "ferramari-media",
  "ferramari-platform",
  "gettext-rs",
- "ksni",
  "libc",
  "log",
  "rand",
- "regex",
- "ring",
- "serde",
- "serde_json",
- "ureq",
- "x11rb 0.14.0",
- "zbus",
- "zip",
 ]
 
 [[package]]

@@ -27,9 +27,8 @@ use crate::autostart;
 use crate::config::{Config, Mode};
 use crate::eco;
 use crate::error::{ErrorKind, UserError};
-use crate::handlers;
 use crate::library::Library;
-use crate::monitors::{self, MonitorInfo};
+use crate::monitors::MonitorInfo;
 use crate::package;
 use crate::paths;
 use crate::power;
@@ -38,7 +37,7 @@ use crate::supervisor::{RestartPolicy, Retry, MAX_RETRIES};
 use crate::tray;
 use crate::util;
 use crate::wallpaper::GnomeBackground;
-use crate::x11::{self, WindowState};
+use crate::window::WindowState;
 use crate::ytdlp;
 
 use ferramari_media::engine::{ContentKind, Engine, WindowKey};
@@ -70,6 +69,8 @@ pub struct App {
     tx: CommandSender,
     surface_provider: Box<dyn ferramari_core::platform::WallpaperSurfaceProvider>,
     display_provider: Box<dyn ferramari_core::platform::DisplayProvider>,
+    platform_event_source: Box<dyn ferramari_core::platform::PlatformEventSource>,
+    platform_watchers: Option<Box<dyn ferramari_core::platform::PlatformWatchers>>,
     weak_self: Weak<RefCell<App>>,
     background: bool,
     paused_by_user: bool,
@@ -103,10 +104,6 @@ pub struct App {
     /// Pending debounced config save; volume and blur sliders change fast.
     config_dirty_at: Option<Instant>,
     policies: HashMap<WindowKey, RestartPolicy>,
-    /// Kept alive so the EWMH watcher stops with the app.
-    window_watcher: Option<x11::Watcher>,
-    /// Kept alive so the RandR hotplug watcher stops with the app.
-    monitor_watcher: Option<monitors::Watcher>,
     /// When a debounced hotplug should be applied, from `Command::MonitorsChanged`.
     monitor_due: Option<Instant>,
     quit_requested: bool,
@@ -122,6 +119,7 @@ impl App {
         snapshot: Arc<Mutex<Snapshot>>,
         surface_provider: Box<dyn ferramari_core::platform::WallpaperSurfaceProvider>,
         display_provider: Box<dyn ferramari_core::platform::DisplayProvider>,
+        platform_event_source: Box<dyn ferramari_core::platform::PlatformEventSource>,
     ) -> Rc<RefCell<Self>> {
         paths::ensure_dirs();
         thread::Builder::new()
@@ -154,6 +152,8 @@ impl App {
             tx: tx.clone(),
             surface_provider,
             display_provider,
+            platform_event_source,
+            platform_watchers: None,
             weak_self: Weak::new(),
             background: args.background,
             paused_by_user: false,
@@ -177,8 +177,6 @@ impl App {
             pending_icon_refresh: false,
             config_dirty_at: None,
             policies: HashMap::new(),
-            window_watcher: None,
-            monitor_watcher: None,
             monitor_due: None,
             quit_requested: false,
             gui_shown: false,
@@ -267,22 +265,10 @@ impl App {
     }
 
     fn start_external_watchers(&mut self) {
-        let tx = self.tx.clone();
-        let idle_threshold = Arc::clone(&self.idle_threshold);
-
-        handlers::start_screen_lock_watcher(tx.clone());
-        handlers::start_end_session_watcher(tx.clone());
-        handlers::start_sleep_watcher(tx.clone());
-        handlers::start_logind_lock_watcher(tx.clone());
-        handlers::start_idle_watcher(tx.clone(), idle_threshold);
-        // The app always runs as an X11/XWayland client, so the EWMH watcher is
-        // useful on a Wayland session too: X11 fullscreen windows are listed
-        // in _NET_CLIENT_LIST even there. `x11::start` returns `None` when no
-        // X server answers at all, which is the only real failure mode.
-        self.window_watcher = x11::start(tx.clone());
-        // RandR replaces the GDK monitor signals: the watcher thread only ever
-        // touches the command channel.
-        self.monitor_watcher = monitors::start(tx);
+        self.platform_watchers = Some(self.platform_event_source.start(
+            self.tx.clone(),
+            Arc::clone(&self.idle_threshold),
+        ));
     }
 
     pub fn activate(&mut self) {
@@ -296,8 +282,7 @@ impl App {
         self.flush_config();
         self.close_windows();
         self.background_wallpaper.restore();
-        self.window_watcher = None;
-        self.monitor_watcher = None;
+        self.platform_watchers = None;
     }
 
     fn handle(&mut self, command: Command) {

@@ -10,11 +10,11 @@
   `ferramari-media` and `ferramari-ui`.
 - `ferramari-ui` uses Iced 0.14 and communicates with the wallpaper server
   through the session D-Bus. It is a separate executable.
-- The default build does not directly depend on GTK/GDK. The root manifest
-  still declares optional `webkit2gtk` under `web-wallpaper`; enabling that
-  feature reintroduces the GTK/WebKitGTK dependency chain. The feature is
-  currently misleading because `ferramari-media::engine::Engine::web`
-  returns an explicit unsupported-engine error even when the feature exists.
+- GTK/GDK and WebKitGTK have now been removed from the workspace manifests and
+  lockfile. The dead `web-wallpaper` feature and its optional `webkit2gtk`
+  dependency were deleted; 42 packages used only by that dependency chain
+  were pruned from `Cargo.lock`. CI checks the all-features workspace graph
+  for GTK/GDK-family dependencies.
 - The old GTK WebKit renderer is gone. Web-page wallpapers are not currently
   supported; do not advertise the optional feature as a working renderer.
 - The wallpaper surface implementation in `ferramari-media` is currently
@@ -29,11 +29,11 @@
 
 ## Required completion checks
 
-1. Remove the unused `webkit2gtk` optional dependency and feature, then
-   regenerate and commit `Cargo.lock`. Do this together so `--locked`
-   builds remain reproducible.
+1. <underline>Completed:</underline> remove the unused `webkit2gtk` optional
+   dependency and feature, regenerate `Cargo.lock`, and prune the 42 packages
+   used only by the legacy GTK/WebKitGTK chain.
 2. Confirm the default and all-feature dependency trees contain no GTK/GDK/
-   WebKitGTK crates once the legacy feature is removed.
+   WebKitGTK crates; the CI all-features dependency guard now enforces this.
 3. Run `cargo build --workspace --release --locked`,
    `cargo test --workspace --locked`, and
    `cargo clippy --workspace --all-targets --locked -- -D warnings`.

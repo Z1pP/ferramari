@@ -42,9 +42,20 @@ validation are complete. A successful compile alone is not a runtime pass.
 ## 3. Define and enforce the platform boundary
 
 - [ ] Define stable platform-neutral contracts for displays, wallpaper surfaces,
-      window tracking, session state, idle state and power events (display, surface,
-      power and event-source lifecycle contracts exist; remaining signals still need
-      richer typed models).
+      window tracking, session state, idle state and power events. Four of the six
+      categories now have a typed core model that a backend reports into and only
+      core interprets: `MonitorInfo` + `DisplayIdentity` + `display_ids` (display),
+      `WallpaperSurface(Provider)` with an opaque `u64` handle (surface),
+      `WindowState`/`WindowRect`/`MonitorVisibility` (window tracking), and
+      `session::LockState`/`LockSource` plus `session::IdleState`
+      (`Active`/`Idle`/`Unknown`) for session and idle state — the aggregate lock
+      rule is stated once so one facility's unlock cannot cancel another's lock, and
+      a vanished idle service now reports silence instead of a guess about the user.
+      Open, so the item cannot be called done: power *events*. `PowerStatus`
+      describes a snapshot only; a backend that learns about charger changes from
+      UPower/logind signals has no typed contract to report into, so `--doctor`
+      keeps power events at `Partial` (sysfs polling) instead of pretending the
+      lifecycle is modelled.
 - [x] Add explicit capability states: Supported, Partial and Unsupported, and report detected support levels in `--doctor`.
 - [x] Keep native handles and native API types inside platform/media adapters.
 - [x] Ensure core models and policies do not import X11, Win32, Cocoa, D-Bus or

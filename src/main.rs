@@ -11,7 +11,7 @@ pub use ferramari_core::bus::{Command, CommandReceiver, CommandSender, PackageRe
 pub use ferramari_core::MonitorInfo;
 pub use ferramari_core::{
     bus, catalog_api, catalogue, cli, config, display_ids, eco, error, library, metrics, package,
-    paths, plugin, signing, supervisor, thumbnails, util, window, ytdlp,
+    paths, plugin, session, signing, supervisor, thumbnails, util, window, ytdlp,
 };
 pub use ferramari_media::mpv;
 pub use ferramari_platform::{

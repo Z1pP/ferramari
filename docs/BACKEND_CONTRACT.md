@@ -40,6 +40,12 @@ Startup injection (`src/main.rs`), each one a `Box<dyn …>` from core:
 | `DisplayProvider` | enumerate connected displays | XRandR (`monitors::list`) |
 | `WallpaperSurfaceProvider` / `WallpaperSurface` | create and own a surface fit for embedding | X11 desktop-type window |
 | `PowerProvider` | current power-supply state | sysfs polling |
+
+Power *events* have no contract yet. `PowerStatus` is a snapshot; there is no
+typed way for a backend to report a charger change it learned from UPower or
+logind rather than from a poll, so a signal-based platform cannot express what
+it knows and the capability stays `Partial`. Adding that contract is open work,
+not a limitation of the Linux backend.
 | `PlatformEventSource` / `PlatformWatchers` | start OS event sources, hand back a teardown token | X11 EWMH + RandR watchers, D-Bus session/lock/sleep/idle watchers |
 | `PlatformCapabilities` | what is actually reachable in this session | `desktop::platform_capabilities` |
 
@@ -105,9 +111,23 @@ Guarantees the core relies on, which a new backend must keep:
    debounced config first, then reloads, so a fast slider edit is not lost to
    a file that does not contain it yet.
 5. **Session signals are aggregated, never overwritten.** Lock state comes
-   from more than one source (screensaver services and logind); the app keeps
-   each source's last value and treats any locked source as locked, so one
-   source's unlock cannot cancel another's lock.
+   from more than one source (screensaver services and logind); the backend
+   reports `Command::LockChanged { source, active }` and
+   `session::LockState` owns the rule, so one source's unlock cannot cancel a
+   lock another source still holds. A backend must not merge the sources
+   itself: merging is what makes the answer a second platform can get wrong.
+
+   Idle is reported as `session::IdleState` with three values, not a boolean.
+   A service that is not running does not answer, and answering for it is a
+   claim about the user nobody observed; `Unknown` exists so the difference
+   survives the hop into the bus. `IdleState::pauses_playback` resolves it
+   conservatively: an unmeasurable desktop counts as occupied, so a vanished
+   screensaver stops the wallpaper from pausing forever. A backend polls or
+   subscribes as it likes and reports the reading; the threshold comparison
+   belongs to core (`from_seconds` / `from_millis`), which keeps the boundary
+   inclusive in every backend. The Linux watcher's miss tolerance (four
+   unanswered polls before `Unknown`) is in `IdlePoller`, separate from the
+   thread so it can be tested without real services.
 6. **Terminal events are commands too.** `Command::Quit` from an end-session
    signal or a Unix signal goes through the same loop, so every shutdown path
    runs the same teardown.

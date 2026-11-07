@@ -10,6 +10,7 @@ use std::sync::mpsc::{self, Receiver, Sender as StdSender};
 
 use crate::config::Mode;
 use crate::package;
+use crate::session::{IdleState, LockSource};
 use crate::signing;
 use crate::window::WindowState;
 use crate::ytdlp;
@@ -52,10 +53,17 @@ pub enum Command {
     SetStaticWallpaper(bool),
     SetPauseWhenMaximized(bool),
     SetMuteWhenMaximized(bool),
-    ScreenLockActive(bool),
-    SessionLock(bool),
+    /// A lock facility reported its state. The source is part of the message
+    /// because a session can have several, and one source's unlock must not
+    /// cancel a lock another still holds; see `session::LockState`.
+    LockChanged {
+        source: LockSource,
+        active: bool,
+    },
     WindowState(WindowState),
-    Idle(bool),
+    /// Desktop activity as reported by the session's idle facility.
+    /// `Unknown` is a distinct answer, not a false: the service may be gone.
+    Idle(IdleState),
     MonitorsChanged,
     MonitorsChangedNow,
     SetAutostart(bool),

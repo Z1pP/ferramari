@@ -22,6 +22,7 @@ pub mod paths;
 pub mod platform;
 pub mod plugin;
 pub mod power;
+pub mod session;
 pub mod signing;
 pub mod supervisor;
 pub mod thumbnails;

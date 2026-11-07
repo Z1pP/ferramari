@@ -32,6 +32,7 @@ use crate::library::Library;
 use crate::monitors::MonitorInfo;
 use crate::package;
 use crate::paths;
+use crate::session::{IdleState, LockState};
 use crate::signing;
 use crate::supervisor::{RestartPolicy, Retry, MAX_RETRIES};
 use crate::tray;
@@ -78,13 +79,15 @@ pub struct App {
     weak_self: Weak<RefCell<App>>,
     background: bool,
     paused_by_user: bool,
-    /// Aggregate lock state; a lock from either source keeps it true.
-    screen_locked: bool,
-    screensaver_locked: bool,
-    logind_locked: bool,
+    /// Lock state aggregated over every facility the session exposes: a lock
+    /// from either source keeps it locked, and one source's unlock cannot
+    /// cancel a lock another still holds.
+    lock: LockState,
     suspended: bool,
-    /// Set from desktop idle time; only the Eco profile stops for it.
-    idle: bool,
+    /// Desktop activity from the session's idle facility. `Unknown` is not
+    /// `Active`: a service that vanished says nothing, and guessing would be
+    /// a claim about the user. Only Eco pauses for real idle.
+    idle: IdleState,
     /// Latest per-window occlusion sample from the X11 watcher.
     window_state: WindowState,
     /// Last Eco decision applied to each monitor, so a state change only touches
@@ -166,11 +169,9 @@ impl App {
             weak_self: Weak::new(),
             background: args.background,
             paused_by_user: false,
-            screen_locked: false,
-            screensaver_locked: false,
-            logind_locked: false,
+            lock: LockState::default(),
             suspended: false,
-            idle: false,
+            idle: IdleState::default(),
             window_state: WindowState::default(),
             last_plans: HashMap::new(),
             stream: None,
@@ -365,17 +366,16 @@ impl App {
                 self.save_config();
                 self.apply_mute_states();
             }
-            Command::ScreenLockActive(active) => {
-                log::debug!("[ScreenLock] screensaver active={active}");
-                self.screensaver_locked = active;
-                self.screen_locked = self.screensaver_locked || self.logind_locked;
-                self.apply_playback_states();
-            }
-            Command::SessionLock(active) => {
-                log::debug!("[ScreenLock] logind lock active={active}");
-                self.logind_locked = active;
-                self.screen_locked = self.screensaver_locked || self.logind_locked;
-                self.apply_playback_states();
+            Command::LockChanged { source, active } => {
+                let changed = self.lock.set(source, active);
+                log::debug!(
+                    "[ScreenLock] active={active} from {source}, locked={}, changed={changed}",
+                    self.lock.locked(),
+                    source = source.as_str(),
+                );
+                if changed {
+                    self.apply_playback_states();
+                }
             }
             Command::WindowState(state) => {
                 if state == self.window_state {
@@ -391,7 +391,11 @@ impl App {
             }
             Command::Idle(idle) => {
                 if self.idle != idle {
-                    log::debug!("[Eco] idle={idle}");
+                    log::debug!(
+                        "[Eco] idle={} (pauses={})",
+                        idle.as_str(),
+                        idle.pauses_playback()
+                    );
                     self.idle = idle;
                     self.apply_playback_states();
                 }
@@ -1392,10 +1396,10 @@ impl App {
             self.config.is_pause_when_maximized,
             eco::Signals {
                 user_paused: self.paused_by_user,
-                screen_locked: self.screen_locked,
+                screen_locked: self.lock.locked(),
                 suspended: self.suspended,
                 battery_paused: self.config.pause_on_battery && self.on_battery,
-                idle: self.idle,
+                idle: self.idle.pauses_playback(),
                 covered: visibility.covered,
                 fullscreen: visibility.fullscreen,
             },
@@ -1410,7 +1414,7 @@ impl App {
         if self.paused_by_user {
             return false;
         }
-        if self.screen_locked || self.suspended {
+        if self.lock.locked() || self.suspended {
             return true;
         }
         let visibility = self.monitor_visibility(monitor);
@@ -1983,6 +1987,7 @@ fn kind_label(kind: ContentKind) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ferramari_core::session::LockSource;
     use ferramari_core::DisplayIdentity;
 
     fn monitor(name: &str, x: i32) -> MonitorInfo {
@@ -2143,10 +2148,10 @@ mod tests {
 
     struct EcoTestHarness {
         paused_by_user: bool,
-        screen_locked: bool,
+        lock: LockState,
         suspended: bool,
         on_battery: bool,
-        idle: bool,
+        idle: IdleState,
         window_state: WindowState,
         monitors: Vec<MonitorInfo>,
         playback_profile: String,
@@ -2182,10 +2187,10 @@ mod tests {
             ];
             Self {
                 paused_by_user: false,
-                screen_locked: false,
+                lock: LockState::default(),
                 suspended: false,
                 on_battery: false,
-                idle: false,
+                idle: IdleState::Active,
                 window_state: WindowState::default(),
                 monitors,
                 playback_profile: config_mode.to_string(),
@@ -2202,10 +2207,10 @@ mod tests {
                 self.is_pause_when_maximized,
                 eco::Signals {
                     user_paused: self.paused_by_user,
-                    screen_locked: self.screen_locked,
+                    screen_locked: self.lock.locked(),
                     suspended: self.suspended,
                     battery_paused: self.pause_on_battery && self.on_battery,
-                    idle: self.idle,
+                    idle: self.idle.pauses_playback(),
                     covered: visibility.covered,
                     fullscreen: visibility.fullscreen,
                 },
@@ -2240,7 +2245,7 @@ mod tests {
             assert!(!p.play);
 
             let mut h = EcoTestHarness::new(profile);
-            h.screen_locked = true;
+            h.lock.set(LockSource::ScreenSaver, true);
             let p = h.plan("eDP-1");
             assert_eq!(p.state, eco::State::Suspended, "{profile}: lock");
             assert!(!p.play);
@@ -2312,7 +2317,7 @@ mod tests {
             height: 1080,
             ..Default::default()
         });
-        h.idle = true;
+        h.idle = IdleState::Idle;
 
         let edp = h.plan("eDP-1");
         let hdmi = h.plan("HDMI-1");
@@ -2330,7 +2335,7 @@ mod tests {
     fn quality_still_plays_through_idle_but_blocks_through_occlusion() {
         let mut h = EcoTestHarness::new("quality");
         // Idle alone doesn't stop Quality.
-        h.idle = true;
+        h.idle = IdleState::Idle;
         let p_idle = h.plan("eDP-1");
         assert_eq!(p_idle.state, eco::State::Active);
         assert!(p_idle.play);

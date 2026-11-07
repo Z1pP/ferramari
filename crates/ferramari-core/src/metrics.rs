@@ -163,6 +163,7 @@ fn parse_status(text: &str) -> Status {
     status
 }
 
+#[cfg(unix)]
 fn clock_ticks() -> u64 {
     let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
     if ticks > 0 {
@@ -170,6 +171,12 @@ fn clock_ticks() -> u64 {
     } else {
         100
     }
+}
+
+#[cfg(not(unix))]
+fn clock_ticks() -> u64 {
+    // /proc-based process sampling is currently unavailable on Windows.
+    100
 }
 
 fn gpu_percent(root: &Path) -> Option<f64> {

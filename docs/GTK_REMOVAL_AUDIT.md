@@ -16,7 +16,7 @@
   were pruned from `Cargo.lock`. CI checks the all-features workspace graph
   for GTK/GDK-family dependencies.
 - The old GTK WebKit renderer is gone. Web-page wallpapers are not currently
-  supported; do not advertise the optional feature as a working renderer.
+  supported; do not advertise this capability until a replacement renderer exists.
 - The wallpaper surface implementation in `ferramari-media` is currently
   X11-only (`x11rb`, mpv `--wid`). This is not a cross-platform surface API.
 - `ferramari-platform` contains Linux-specific modules (RandR, D-Bus,

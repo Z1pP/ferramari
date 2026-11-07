@@ -10,6 +10,7 @@ use std::fmt::Write as _;
 use std::process::Command;
 use std::time::Duration;
 
+use ferramari_core::platform::{PlatformCapabilities, SupportLevel};
 use x11rb::connection::Connection as _;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -140,8 +141,74 @@ impl Environment {
 
 /// Human-readable diagnostics. Safe to call without GTK or a D-Bus session;
 /// every probe degrades to a missing line instead of failing.
+/// Report capabilities that are actually reachable in the current session.
+///
+/// XWayland support is deliberately Partial: native Wayland windows are not
+/// visible to the X11/EWMH watcher, even though X11 clients still work.
+pub fn platform_capabilities() -> PlatformCapabilities {
+    let environment = detect();
+    let x11_available = x11rb::connect(None).is_ok();
+    let x11_level = if !x11_available {
+        SupportLevel::Unsupported
+    } else if environment.session == SessionKind::WaylandXWayland {
+        SupportLevel::Partial
+    } else {
+        SupportLevel::Supported
+    };
+
+    let has_displays = x11_available && !crate::monitors::list().is_empty();
+    let display_level = if has_displays {
+        x11_level
+    } else {
+        SupportLevel::Unsupported
+    };
+    let lock = lock_services();
+    let idle = first_owned_session_service(&[
+        "org.gnome.Mutter.IdleMonitor",
+        "org.freedesktop.ScreenSaver",
+        "org.kde.screensaver",
+        "org.xfce.ScreenSaver",
+    ]);
+    let service_available = |value: &str| {
+        value != "not found" && value != "session bus unavailable"
+    };
+
+    PlatformCapabilities {
+        wallpaper_surface: x11_level,
+        display_enumeration: display_level,
+        display_hotplug: display_level,
+        window_tracking: x11_level,
+        session_lock: if service_available(&lock) {
+            SupportLevel::Supported
+        } else {
+            SupportLevel::Unsupported
+        },
+        // Battery state is currently sampled periodically from sysfs rather
+        // than delivered as an event stream, so report Partial.
+        power_events: if Path::new("/sys/class/power_supply").is_dir() {
+            SupportLevel::Partial
+        } else {
+            SupportLevel::Unsupported
+        },
+        idle_detection: if service_available(&idle) {
+            SupportLevel::Supported
+        } else {
+            SupportLevel::Unsupported
+        },
+    }
+}
+
+fn support_name(level: SupportLevel) -> &'static str {
+    match level {
+        SupportLevel::Supported => "supported",
+        SupportLevel::Partial => "partial",
+        SupportLevel::Unsupported => "unsupported",
+    }
+}
+
 pub fn doctor() -> String {
     let environment = detect();
+    let capabilities = platform_capabilities();
     let mut report = String::new();
     let _ = writeln!(report, "Ferramari {}", env!("CARGO_PKG_VERSION"));
     let _ = writeln!(report, "session: {}", environment.session.as_str());
@@ -184,6 +251,17 @@ pub fn doctor() -> String {
         report,
         "background: {}",
         crate::gnome_bg::background_diagnostic()
+    );
+    let _ = writeln!(
+        report,
+        "capabilities: wallpaper={}, displays={}, hotplug={}, window tracking={}, lock={}, power={}, idle={}",
+        support_name(capabilities.wallpaper_surface),
+        support_name(capabilities.display_enumeration),
+        support_name(capabilities.display_hotplug),
+        support_name(capabilities.window_tracking),
+        support_name(capabilities.session_lock),
+        support_name(capabilities.power_events),
+        support_name(capabilities.idle_detection),
     );
     let _ = writeln!(report, "X11 screens: {}", x11_screen_count());
     let _ = writeln!(report, "mpv: {}", tool_version("mpv", &["--version"]));

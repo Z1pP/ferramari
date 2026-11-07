@@ -25,11 +25,11 @@ jobs:
         run: |
           cargo fmt --all
           git diff --check
-      - name: Assert the default workspace build is GTK-free
+      - name: Assert all workspace feature sets are GTK-free
         run: |
-          if cargo tree --workspace --locked -e normal | \
+          if cargo tree --workspace --locked --all-features -e normal | \
             grep -E '(^| )(gtk|gdk|webkit2gtk|gdk-pixbuf|glib|gio|pango|cairo-rs) v'; then
-            echo "GTK/GDK-family dependency found in the default build graph"
+            echo "GTK/GDK-family dependency found in a workspace feature graph"
             exit 1
           fi
       - name: Lint every workspace target

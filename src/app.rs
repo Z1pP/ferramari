@@ -69,6 +69,7 @@ pub struct App {
     pub snapshot: Arc<Mutex<Snapshot>>,
     tx: CommandSender,
     surface_provider: Box<dyn ferramari_core::platform::WallpaperSurfaceProvider>,
+    display_provider: Box<dyn ferramari_core::platform::DisplayProvider>,
     weak_self: Weak<RefCell<App>>,
     background: bool,
     paused_by_user: bool,
@@ -118,6 +119,7 @@ impl App {
         tx: CommandSender,
         snapshot: Arc<Mutex<Snapshot>>,
         surface_provider: Box<dyn ferramari_core::platform::WallpaperSurfaceProvider>,
+        display_provider: Box<dyn ferramari_core::platform::DisplayProvider>,
     ) -> Rc<RefCell<Self>> {
         paths::ensure_dirs();
         thread::Builder::new()
@@ -128,7 +130,7 @@ impl App {
                 util::cleanup_partial_files(&paths::static_cache_dir(), age);
             })
             .ok();
-        let monitors = monitors::list();
+        let monitors = display_provider.displays();
         let names: Vec<String> = monitors
             .iter()
             .map(|monitor| monitor.name.clone())
@@ -149,6 +151,7 @@ impl App {
             snapshot,
             tx: tx.clone(),
             surface_provider,
+            display_provider,
             weak_self: Weak::new(),
             background: args.background,
             paused_by_user: false,
@@ -709,7 +712,7 @@ impl App {
                 // `Config::load` re-reads the file, which does not contain it
                 // yet. Flush first, then merge the new monitor names.
                 self.flush_config();
-                self.monitors = monitors::list();
+                self.monitors = self.display_provider.displays();
                 let names: Vec<String> = self
                     .monitors
                     .iter()

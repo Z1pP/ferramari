@@ -36,6 +36,11 @@ pub struct PlatformCapabilities {
     pub idle_detection: SupportLevel,
 }
 
+/// Enumerates connected displays using stable backend identities where available.
+pub trait DisplayProvider {
+    fn displays(&self) -> Vec<MonitorInfo>;
+}
+
 /// Reads the current power-supply state from the operating system.
 pub trait PowerProvider {
     fn status(&self) -> PowerStatus;

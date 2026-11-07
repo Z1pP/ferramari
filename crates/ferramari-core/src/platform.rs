@@ -31,6 +31,11 @@ pub struct PlatformCapabilities {
     pub idle_detection: SupportLevel,
 }
 
+/// Reads the current power-supply state from the operating system.
+pub trait PowerProvider {
+    fn status(&self) -> PowerStatus;
+}
+
 /// Owns the lifetime of platform event subscriptions and watcher threads.
 pub trait PlatformWatchers {}
 

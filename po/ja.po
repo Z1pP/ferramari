@@ -578,8 +578,14 @@ msgstr "利用不可"
 msgid "Waiting for the first sample…"
 msgstr "最初のサンプルを待っています…"
 
-msgid "Metrics cover the Ferramari process and its mpv/WebKit children. GPU usage is read from sysfs and is unavailable on drivers that do not expose gpu_busy_percent."
-msgstr "計測対象は Ferramari プロセスとその mpv/WebKit 子プロセスです。GPU 使用率は sysfs から読み取り、gpu_busy_percent を公開しないドライバーでは利用できません。"
+msgid "Metrics cover the Ferramari server and its mpv children."
+msgstr "計測対象は Ferramari サーバーとその mpv 子プロセスです。"
+
+msgid "Not measurable here"
+msgstr "この環境では計測不可"
+
+msgid "Measuring…"
+msgstr "計測中…"
 
 msgid "Live resource use"
 msgstr "リアルタイムのリソース使用量"

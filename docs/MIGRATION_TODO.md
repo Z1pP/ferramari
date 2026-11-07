@@ -128,7 +128,13 @@ Current boundary progress:
 - [x] Feed platform-neutral window/session/power events into the existing Eco policy — `App::eco_plan_for()` builds `eco::Signals` from `self.screen_locked`, `self.suspended`, `self.on_battery`, `self.idle`, plus per-monitor occlusion/fullscreen state from `window_state.visibility_at()`.
 - [x] Verify Active, Idle, Occluded and Suspended transitions per monitor — 7 integration tests in `src/app.rs` covering session signal override, battery pause per-profile, fullscreen/maximized occlusion, per-monitor independence (eDP-1 covered vs HDMI-1 idle).
 - [x] Verify Quality, Balanced and Eco profiles, battery pause and decoder parking — all three profiles verified against every signal combinator; parking guard tested in `eco.rs`.
-- [ ] Unify CPU/RAM/process/GPU metrics with explicit unsupported values.
+- [x] Unify CPU/RAM/process/GPU metrics with explicit unsupported values.
+      `metrics::Metric<T>` replaces the single `available` flag: each reading is
+      `Value`, `Unsupported` (no sampler on this platform, or a driver without
+      `gpu_busy_percent`), `Unavailable` (the server process tree is gone) or
+      `Pending` (a rate needs two samples). The Performance page labels the
+      reason instead of printing zeroes, and a dead tree resets the CPU
+      interval rather than reporting a spike across the gap.
 - [ ] Benchmark one, two and multiple monitors on representative hardware.
 - [ ] Record idle CPU, active CPU, memory, decoder count and wakeups.
 

@@ -29,7 +29,7 @@ use iced::{
 use ferramari_core::catalogue::{self, Category, Listing, Wallpaper};
 use ferramari_core::config::Config;
 use ferramari_core::library::Library;
-use ferramari_core::metrics::{Monitor, Sample};
+use ferramari_core::metrics::{Metric, Monitor, Sample};
 use ferramari_core::paths;
 use ferramari_core::thumbnails;
 use ferramari_core::util::tr;
@@ -1539,31 +1539,13 @@ impl App {
             .into();
         };
 
-        let unavailable = tr("Unavailable");
-        let cpu = if sample.available {
-            format!("{:.1}%", sample.cpu_percent)
-        } else {
-            unavailable.clone()
-        };
-        let memory = if sample.available {
-            format!("{} MiB", sample.rss_bytes / 1_048_576)
-        } else {
-            unavailable.clone()
-        };
-        let threads = if sample.available {
-            sample.threads.to_string()
-        } else {
-            unavailable.clone()
-        };
-        let processes = if sample.available {
-            sample.processes.to_string()
-        } else {
-            unavailable.clone()
-        };
-        let gpu = sample
-            .gpu_percent
-            .map(|value| format!("{value:.1}%"))
-            .unwrap_or(unavailable);
+        // Each metric says why it is empty: no sampler here, no such driver,
+        // the server is gone, or the first sample has no interval yet.
+        let cpu = metric(&sample.cpu, |value| format!("{value:.1}%"));
+        let memory = metric(&sample.memory, |bytes| format!("{} MiB", bytes / 1_048_576));
+        let threads = metric(&sample.threads, |value| value.to_string());
+        let processes = metric(&sample.processes, |value| value.to_string());
+        let gpu = metric(&sample.gpu, |value| format!("{value:.1}%"));
 
         let stats = Row::new()
             .spacing(10)
@@ -2104,6 +2086,21 @@ fn column_section<'a, M: Clone + 'a>(
         }
     }
     card(body, sem).into()
+}
+
+/// Render one metric, naming the reason when there is no measurement. A dash
+/// with no explanation reads like a bug; the reason tells the user whether a
+/// restart, a driver or a second sample would fix it.
+fn metric<T, F>(metric: &Metric<T>, format: F) -> String
+where
+    F: FnOnce(&T) -> String,
+{
+    match metric {
+        Metric::Value(value) => format(value),
+        Metric::Unsupported => tr("Not measurable here"),
+        Metric::Unavailable => tr("Unavailable"),
+        Metric::Pending => tr("Measuring…"),
+    }
 }
 
 fn stat<M: 'static>(label: String, value: String, sem: &'static Semantics) -> Element<'static, M> {

@@ -385,8 +385,9 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
   sources are assigned independently. Web-page wallpapers are temporarily
   unavailable in 2.0.0.
 - The Performance page reports GPU usage only where the driver exposes
-  `gpu_busy_percent` (currently AMDGPU). NVIDIA/Intel utilisation is shown as
-  unavailable.
+  `gpu_busy_percent` (currently AMDGPU). NVIDIA/Intel utilisation is labelled
+  *not measurable here* rather than zero, and the same page distinguishes a
+  platform with no process sampler from a server that is not running.
 - Multi-monitor, 4K/60, locked-screen and long-idle benchmarks are not yet
   measured on the single-display test machine. Single-monitor 1080p, synthetic
   4K and local-canvas web results are in `docs/BENCHMARKS.md`.

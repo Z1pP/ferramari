@@ -129,6 +129,26 @@ impl Server {
             .map_err(|e| e.to_string())
     }
 
+    pub async fn import_package(&self, source: String) -> Result<(), String> {
+        self.command_args("import_package", &(source,)).await
+    }
+
+    pub async fn export_package(&self, video: String, parent: String) -> Result<(), String> {
+        self.command_args("export_package", &(video, parent)).await
+    }
+
+    pub async fn sign_package(&self, directory: String) -> Result<(), String> {
+        self.command_args("sign_package", &(directory,)).await
+    }
+
+    pub async fn verify_package(&self, directory: String) -> Result<(), String> {
+        self.command_args("verify_package", &(directory,)).await
+    }
+
+    pub async fn trust_key(&self, source: String) -> Result<(), String> {
+        self.command_args("trust_key", &(source,)).await
+    }
+
     /// Write one server property through the standard Properties interface.
     pub async fn set_property(&self, property: &str, value: Value<'_>) -> Result<(), String> {
         let owned = OwnedValue::try_from(value).map_err(|e| e.to_string())?;

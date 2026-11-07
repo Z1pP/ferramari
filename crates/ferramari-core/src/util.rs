@@ -135,7 +135,7 @@ fn matches_container(magic: &[u8]) -> bool {
     // ISO-BMFF (mp4/mov/m4v/webm-vp9 container): 4cc at offset 4 is `ftyp`.
     magic.len() >= 12 && &magic[4..8] == b"ftyp"
     // EBML (matroska/webm): 0x1A45DFA3.
-    || magic.len() >= 4 && &magic[0..4] == [0x1a, 0x45, 0xdf, 0xa3]
+    || magic.len() >= 4 && magic[0..4] == [0x1a, 0x45, 0xdf, 0xa3]
     // Ogg.
     || magic.len() >= 4 && &magic[0..4] == b"OggS"
 }

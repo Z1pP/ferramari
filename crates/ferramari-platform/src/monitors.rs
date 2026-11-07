@@ -235,3 +235,14 @@ mod tests {
         assert_eq!(super::window_scale(), 1);
     }
 }
+
+
+/// XRandR-backed display provider for Linux X11/XWayland sessions.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct X11DisplayProvider;
+
+impl ferramari_core::platform::DisplayProvider for X11DisplayProvider {
+    fn displays(&self) -> Vec<MonitorInfo> {
+        list()
+    }
+}

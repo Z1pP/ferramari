@@ -136,11 +136,10 @@ Uninstall with `sudo make uninstall` (same `PREFIX`).
 
 ### Flatpak
 
-A self-hosted Flatpak manifest is available in `flatpak/`. It builds the app
-against the GNOME runtime and uses the host's `mpv`, `ffmpeg` and `yt-dlp`
-through `flatpak-spawn`; a Flathub submission with bundled media tools is not
-ready yet. See [`flatpak/README.md`](flatpak/README.md) for build and test
-instructions.
+A self-hosted manifest is present in `flatpak/`, but it targets the pre-Iced
+GTK/WebKitGTK build. It has not been migrated to the 2.0 split server/UI
+workspace and should not be used for 2.0 packaging yet. See
+[`flatpak/README.md`](flatpak/README.md) for the historical setup notes.
 
 ## Usage
 

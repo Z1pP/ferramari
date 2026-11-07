@@ -205,6 +205,7 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
+    #[cfg(unix)]
     #[test]
     fn plugin_manifests_are_not_executed_or_symlinked() {
         let root = temp_dir("symlink");

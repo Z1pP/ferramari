@@ -4,7 +4,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use crate::paths;
+use ferramari_core::paths;
 
 /// GNOME Shell reports extension state as an integer; 1 means enabled.
 /// GNOME Shell reports extension state as an integer; 1 means enabled.

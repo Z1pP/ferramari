@@ -223,7 +223,7 @@ impl App {
                 self.ticks = self.ticks.wrapping_add(1);
                 let Some(server) = self.server.clone() else {
                     // Reconnect every few seconds while the server is down.
-                    if self.ticks % 5 == 0 {
+                    if self.ticks.is_multiple_of(5) {
                         return Task::perform(Server::connect(), Message::Connected);
                     }
                     return Task::none();

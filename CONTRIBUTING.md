@@ -1,33 +1,29 @@
 # Contributing
 
-Ferramari is a GTK 3 / Rust desktop application. Keep changes small and
+Ferramari is a Rust desktop application with an Iced control surface and a separate wallpaper server. Keep changes small and
 measurable; a feature that cannot be tested should be behind a clear
 limitation, not presented as supported.
 
 ## Setup
 
 ```sh
-cargo build
-cargo test
+cargo build --workspace --locked
+cargo test --workspace --locked
 ```
 
-The runtime needs GTK 3, WebKitGTK 4.1, `mpv`, `ffmpeg`/`ffprobe` and (for
-streaming) `yt-dlp`. The release build is `cargo build --release`.
+The runtime needs `mpv`, `ffmpeg`/`ffprobe` and (for streaming) `yt-dlp`. Web-page wallpapers are temporarily unavailable. Build both application binaries with `cargo build --workspace --release --locked`.
 
-The application runs on X11/XWayland by design. It sets `GDK_BACKEND=x11`
-before GTK starts; desktop-type windows and mpv `--wid` embedding are X11
-features. Do not claim native Wayland support without implementing and testing
-a wallpaper surface first.
+The wallpaper server currently creates desktop surfaces through X11/XWayland; the Iced control surface is separate and communicates over D-Bus. Do not claim native Wayland support without implementing and testing a compositor-specific wallpaper surface first.
 
 ## Before opening a pull request
 
 Run all of these:
 
 ```sh
-cargo fmt --check
-cargo clippy --all-targets --locked -- -D warnings
-cargo test --locked
-cargo build --release --locked
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+cargo build --workspace --release --locked
 ```
 
 For translation changes also run:
@@ -45,16 +41,14 @@ desktop-file-validate data/io.github.ferramari.Ferramari.desktop
 
 ## Architecture rules
 
-- The GTK main loop owns every widget. Never move a `gtk::Widget`, `Rc` or
-  `Rc<RefCell<_>>` containing widgets into a worker thread.
-- Background work (network, ffmpeg, thumbnails, catalogues) communicates with
-  the main loop through `std::sync::mpsc` and a GLib timeout.
+- The Iced UI owns its widget tree on its event-loop thread. Never move UI state or widget handles into background workers.
+- The wallpaper server owns media engines on its command-loop thread. The UI and server communicate through the stable session D-Bus API.
+- Background work (network, ffmpeg, thumbnails, catalogues) returns plain data through channels or Iced tasks; do not reintroduce a GLib main loop.
 - External commands must have a deadline and must be reaped. Use
   `util::wait_with_timeout`, `util::output_with_timeout` or
   `util::run_with_timeout`.
 - Configuration and library data are written atomically, with a `.bak` copy.
-- Do not add a runtime dependency without a concrete reason. Prefer the
-  existing GTK/mpv/ffmpeg stack.
+- Do not add a runtime dependency without a concrete reason. Prefer the existing Iced/mpv/ffmpeg stack and avoid GTK/GDK dependencies.
 
 ## Translations
 
@@ -81,7 +75,7 @@ isolated `dbus-run-session` so the host wallpaper is not disturbed.
 
 - [ ] The change has a test for its critical logic, or a documented reason why
       it cannot be tested headlessly.
-- [ ] The GTK main loop is not blocked.
+- [ ] Neither the Iced event loop nor the wallpaper-server command loop is blocked.
 - [ ] External processes have timeouts and are reaped.
 - [ ] Existing configuration remains backward compatible.
 - [ ] User-visible strings are in `tr()` and the catalogs still compile.

@@ -4,6 +4,11 @@
 //! D-Bus types. A platform backend owns native handles and their lifetime;
 //! media receives only an embedding handle and keeps the surface alive.
 
+use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
+
+use crate::bus::CommandSender;
+use crate::power::PowerStatus;
 use crate::MonitorInfo;
 
 /// How completely a backend can provide a capability in the current session.

@@ -315,11 +315,9 @@ The application is split into a wallpaper server and a separate Iced control sur
 | `crates/ferramari-media/src/engine.rs` | per-monitor wallpaper playback engine |
 | `crates/ferramari-media/src/surface.rs` | native X11 wallpaper windows and mpv embed IDs |
 
-Threading rule: GTK widgets never leave the main thread. Background work
-(yt-dlp, HTTP checks, thumbnails, X11 polling, D-Bus, tray) sends commands or
-messages into the main loop.
+Threading rule: the Iced UI owns its widget tree on its event-loop thread. The wallpaper server owns media engines on its command-loop thread. The processes exchange commands and snapshots over the session D-Bus; background work returns plain data through channels or Iced tasks.
 
-The control window's Liquid Glass design system (tokens, material layers,
+The Iced control window's Liquid Glass design system (tokens, material layers,
 typography, motion and accessibility rules) is documented in
 [`docs/DESIGN.md`](docs/DESIGN.md). The stylesheet lives in
 `data/ui/ferramari.css` and is compiled into the binary.
@@ -381,8 +379,7 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
   single-display test machine.
 - Streaming and web wallpapers use one shared source for all monitors; only
   local video sources are assigned independently.
-- WebKitGTK has no public freeze API, so a hidden web wallpaper is muted but
-  its JavaScript timers and animations are only throttled, not stopped.- The Performance page reports GPU usage only where the driver exposes
+- The Performance page reports GPU usage only where the driver exposes
   `gpu_busy_percent` (currently AMDGPU). NVIDIA/Intel utilisation is shown as
   unavailable.
 - Multi-monitor, 4K/60, locked-screen and long-idle benchmarks are not yet
@@ -399,9 +396,7 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 
 ## Implementation notes
 
-- GTK 3 is kept on purpose: WebKitGTK 4.1 is the only WebKit line with a
-  maintained Rust binding, and the web-page wallpaper needs it. A GTK4 port is
-  possible once a `webkit6` binding appears.
+- GTK/GDK are no longer used by the default application build. Web-page wallpapers are temporarily disabled because the former WebKitGTK renderer was removed; an alternative browser process/engine has not yet been integrated.
 - Streaming needs a recent `yt-dlp`. The Ubuntu package can be months behind
   and then returns YouTube URLs that mpv cannot open (HTTP 403). The official
   binary is installed next to `ferramari` and is preferred automatically:
@@ -414,8 +409,7 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 
 - `mpv` is embedded with `--wid`, uses `--panscan=1.0` for the center-crop
   effect and is driven through its JSON IPC socket.
-- Everything runs in one process; the D-Bus method and property shape stays
-  stable for scripts and desktop integrations.
+- The server and Iced control surface are separate processes. The existing D-Bus method and property shape stays stable for scripts and desktop integrations.
 - Window state detection uses EWMH atoms over X11.
 - `-b` starts only the wallpaper, `-p` adds a startup delay, and `-r` resets the
   config (only when no instance is running).

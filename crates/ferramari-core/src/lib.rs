@@ -15,6 +15,7 @@ pub mod error;
 pub mod library;
 pub mod metrics;
 pub mod monitor;
+pub mod platform;
 pub mod package;
 pub mod paths;
 pub mod plugin;

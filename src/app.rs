@@ -25,6 +25,7 @@ use rand::seq::SliceRandom;
 
 use crate::autostart;
 use crate::config::{Config, Mode};
+use crate::display_ids::DisplayIdRegistry;
 use crate::eco;
 use crate::error::{ErrorKind, UserError};
 use crate::library::Library;
@@ -63,6 +64,9 @@ pub use crate::bus::{Command, CommandSender, PackageReport, Snapshot};
 pub struct App {
     pub config: Config,
     pub monitors: Vec<MonitorInfo>,
+    /// Which physical screen owns which config key. Kept separate from the
+    /// config so a `--reset-config` cannot orphan a wallpaper assignment.
+    pub display_ids: DisplayIdRegistry,
     pub windows: Vec<Engine>,
     pub snapshot: Arc<Mutex<Snapshot>>,
     tx: CommandSender,
@@ -131,11 +135,9 @@ impl App {
                 util::cleanup_partial_files(&paths::static_cache_dir(), age);
             })
             .ok();
-        let monitors = display_provider.displays();
-        let names: Vec<String> = monitors
-            .iter()
-            .map(|monitor| monitor.name.clone())
-            .collect();
+        let mut monitors = display_provider.displays();
+        let mut display_ids = DisplayIdRegistry::load();
+        let names = bind_display_ids(&mut monitors, &mut display_ids);
         let config = Config::load(&names);
         let background_wallpaper = GnomeBackground::capture();
         // Read the power supply once: two separate `status()` calls can
@@ -148,6 +150,7 @@ impl App {
         let app = Self {
             config,
             monitors,
+            display_ids,
             windows: Vec::new(),
             snapshot,
             tx: tx.clone(),
@@ -749,11 +752,7 @@ impl App {
                 // yet. Flush first, then merge the new monitor names.
                 self.flush_config();
                 self.monitors = self.display_provider.displays();
-                let names: Vec<String> = self
-                    .monitors
-                    .iter()
-                    .map(|monitor| monitor.name.clone())
-                    .collect();
+                let names = bind_display_ids(&mut self.monitors, &mut self.display_ids);
                 self.config = Config::load(&names);
                 self.idle_threshold.store(
                     self.config.idle_timeout_sec.clamp(30, 86_400) as u64,
@@ -1791,6 +1790,25 @@ fn desired_windows_for(
         }
         Mode::Null | Mode::Unknown => Vec::new(),
     }
+}
+
+/// Resolve the durable config key of every connected display and keep the
+/// registry on disk. The enumeration name is only a label; `name` is what the
+/// config is indexed by, so binding it to the remembered key is what stops a
+/// replug or a reordered layout from swapping two wallpapers.
+///
+/// Saving is best-effort: an unwritable registry must not cost the user their
+/// wallpaper, and the next successful bind records it again.
+fn bind_display_ids(monitors: &mut [MonitorInfo], registry: &mut DisplayIdRegistry) -> Vec<String> {
+    if registry.bind(monitors) {
+        if let Err(err) = registry.save() {
+            log::warn!("[DisplayIds] {err}");
+        }
+    }
+    monitors
+        .iter()
+        .map(|monitor| monitor.name.clone())
+        .collect()
 }
 
 /// X11 root coordinates are device pixels; monitor geometry from RandR is

@@ -10,8 +10,8 @@
 pub use ferramari_core::bus::{Command, CommandReceiver, CommandSender, PackageReport, Snapshot};
 pub use ferramari_core::MonitorInfo;
 pub use ferramari_core::{
-    bus, catalog_api, catalogue, cli, config, eco, error, library, metrics, package, paths, plugin,
-    signing, supervisor, thumbnails, util, window, ytdlp,
+    bus, catalog_api, catalogue, cli, config, display_ids, eco, error, library, metrics, package,
+    paths, plugin, signing, supervisor, thumbnails, util, window, ytdlp,
 };
 pub use ferramari_media::mpv;
 pub use ferramari_platform::{

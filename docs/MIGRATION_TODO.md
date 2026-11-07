@@ -49,7 +49,15 @@ validation are complete. A successful compile alone is not a runtime pass.
 - [x] Keep native handles and native API types inside platform/media adapters.
 - [x] Ensure core models and policies do not import X11, Win32, Cocoa, D-Bus or
       toolkit types (verified: no x11rb/zbus/gtk imports in ferramari-core).
-- [ ] Give displays stable persistent IDs while preserving legacy config keys.
+- [x] Give displays stable persistent IDs while preserving legacy config keys.
+      `MonitorInfo.identity` carries connector/EDID/physical size; core derives a
+      `stable_id` from it and `display_ids::DisplayIdRegistry` (`display-ids.json`)
+      maps that identity to the config key the user already has. A first sighting
+      keeps the enumeration name, so 1.9.x configs are never rewritten; a replug,
+      reboot or reordered layout reclaims the same key, and cloned layouts cannot
+      hand one key to two surfaces. `--doctor` reports the identity per display.
+      Under XWayland EDID is hidden by the compositor, so identity is connector-
+      based there and the report says so instead of claiming more.
 - [ ] Specify event ordering, thread affinity, cancellation and backend shutdown.
 - [x] Add contract tests with fake display/window/session providers (see `crates/ferramari-core/src/platform.rs` tests).
 - [ ] Document the backend contract before accepting a second OS implementation.

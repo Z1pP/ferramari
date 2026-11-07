@@ -32,7 +32,7 @@ fn is_json_object(text: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn read_with_backup(path: &Path) -> Option<String> {
+pub(crate) fn read_with_backup(path: &Path) -> Option<String> {
     fs::read_to_string(path)
         .ok()
         .or_else(|| fs::read_to_string(backup_path(path)).ok())
@@ -41,7 +41,7 @@ fn read_with_backup(path: &Path) -> Option<String> {
 /// Write through a temporary file and rename it over the target, keeping the
 /// previous copy as `config.json.bak`. The rename is atomic on one filesystem,
 /// so a crash never leaves a half-written config behind.
-fn write_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+pub(crate) fn write_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }

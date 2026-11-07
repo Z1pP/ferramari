@@ -264,6 +264,7 @@ pub fn doctor() -> String {
         support_name(capabilities.idle_detection),
     );
     let _ = writeln!(report, "X11 screens: {}", x11_screen_count());
+    let _ = writeln!(report, "display identities: {}", display_report());
     let _ = writeln!(report, "mpv: {}", tool_version("mpv", &["--version"]));
     let _ = writeln!(report, "ffmpeg: {}", tool_version("ffmpeg", &["-version"]));
     let _ = writeln!(
@@ -336,6 +337,52 @@ fn tool_version(program: &str, arguments: &[&str]) -> String {
         }
         _ => "not found".to_string(),
     }
+}
+
+/// Per-display identity summary: which config key each connected screen owns
+/// and how well this session can prove that it is the same screen as before.
+/// Under XWayland the compositor hides EDID, so the identity is connector-
+/// based there and the line says so instead of implying more.
+fn display_report() -> String {
+    let mut registry = ferramari_core::display_ids::DisplayIdRegistry::load();
+    let mut monitors = crate::monitors::list();
+    if monitors.is_empty() {
+        return if registry.is_empty() {
+            "none".to_string()
+        } else {
+            format!("{} remembered, none connected", registry.records.len())
+        };
+    }
+    let known: Vec<String> = registry
+        .records
+        .iter()
+        .map(|record| record.stable_id.clone())
+        .collect();
+    // Bind against this local copy only; the diagnostic must not rewrite the
+    // registry file, which is the server's job.
+    registry.bind(&mut monitors);
+    let mut lines = Vec::new();
+    for monitor in &monitors {
+        let identity = match (
+            monitor.identity.edid.as_ref().map(Vec::len),
+            &monitor.identity.connector,
+        ) {
+            (Some(bytes), _) if bytes > 0 => format!("edid {bytes} B"),
+            (_, Some(connector)) => format!("connector {connector}"),
+            _ => "no identity".to_string(),
+        };
+        let remembered = monitor.stable_id().is_some_and(|id| known.contains(&id));
+        lines.push(format!(
+            "{name} [{identity}] ({})",
+            if remembered {
+                "key remembered"
+            } else {
+                "new screen"
+            },
+            name = monitor.name
+        ));
+    }
+    lines.join("; ")
 }
 
 fn x11_screen_count() -> String {

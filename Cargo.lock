@@ -1062,7 +1062,6 @@ dependencies = [
  "sha2",
  "ureq",
  "url",
- "x11rb 0.14.0",
  "zbus",
  "zip",
 ]

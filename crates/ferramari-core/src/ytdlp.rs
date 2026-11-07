@@ -7,6 +7,7 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::io::Read;
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::{Mutex, OnceLock};
@@ -288,11 +289,12 @@ fn run_with_timeout(
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        // Own process group: killing the deadline also kills helpers such as
-        // ffmpeg, which would otherwise keep the pipes open and stall the
-        // reader threads.
-        .process_group(0);
+        .stderr(Stdio::piped());
+    // On Unix, own a process group so a timeout also kills helpers such as
+    // ffmpeg. Other platforms currently terminate the direct child; their
+    // native process-tree/job-object support belongs in the platform layer.
+    #[cfg(unix)]
+    command.process_group(0);
     let mut child = command
         .spawn()
         .map_err(|err| format!("could not run {label}: {err}"))?;
@@ -331,10 +333,15 @@ fn run_with_timeout(
 }
 
 fn kill_tree(child: &mut Child) {
-    // Negative pid = the whole process group created by `process_group(0)`.
-    unsafe {
-        libc::kill(-(child.id() as i32), libc::SIGKILL);
+    #[cfg(unix)]
+    {
+        // Negative pid = the whole process group created by `process_group(0)`.
+        unsafe {
+            libc::kill(-(child.id() as i32), libc::SIGKILL);
+        }
     }
+    // On non-Unix targets this kills the direct child. Platform-specific
+    // process-tree termination can replace this fallback when implemented.
     let _ = child.kill();
     let _ = child.wait();
 }

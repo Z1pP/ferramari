@@ -41,7 +41,8 @@ The interface has a hand-tuned dark palette as well as the light one:
 - Reproducible benchmark harness (`make bench`) for startup, CPU, RAM,
   processes, GPU and mpv recovery
 - `--doctor` diagnostics for session/backend, desktop, media tools, DRM nodes,
-  idle and lock services
+  idle and lock services, the decoder that is really running, and a per-feature
+  support level with the reason for anything that is only partial
 - Logind lock/unlock fallback, aggregated with screensaver lock state
 - `.ferramari` package import/export with strict metadata, path, symlink, file
   count and size validation, plus SHA-256 checksums and Ed25519 signatures

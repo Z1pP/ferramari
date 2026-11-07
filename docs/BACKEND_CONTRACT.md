@@ -43,6 +43,14 @@ Startup injection (`src/main.rs`), each one a `Box<dyn …>` from core:
 | `PlatformEventSource` / `PlatformWatchers` | start OS event sources, hand back a teardown token | X11 EWMH + RandR watchers, D-Bus session/lock/sleep/idle watchers |
 | `PlatformCapabilities` | what is actually reachable in this session | `desktop::platform_capabilities` |
 
+Capability levels are decided per capability from probed evidence, never by
+applying one session-wide label: under XWayland the surface is Partial (the
+compositor owns the desktop layer) while enumeration and hotplug are Supported
+(the compositor's outputs are mirrored), and window tracking is Partial
+because EWMH lists X11 clients only. Every level that is not Supported has to
+come with the reason it got there, which `--doctor` prints as an indented note
+under the summary line.
+
 Rules that apply to all of them:
 
 1. **No native leakage.** An embedding handle crosses the boundary as `u64`

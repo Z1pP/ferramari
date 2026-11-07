@@ -89,7 +89,21 @@ Current boundary progress:
 - [x] Move X11 wallpaper surface creation and native connection ownership into the platform crate.
 - [x] Inject a platform surface provider into the media engine; remove x11rb from media.
 - [ ] Add non-X11 surface providers for macOS and Windows.
-- [ ] Implement backend capability reporting for X11 and XWayland.
+- [x] Implement backend capability reporting for X11 and XWayland.
+      `desktop::capability_report` decides each capability from its own evidence
+      (server reachable, negotiated RandR version, EWMH present, monitors actually
+      reported, session services, sysfs) instead of one blanket X11 level, and every
+      non-supported level carries the reason it got there. `--doctor` prints the
+      levels plus one indented note per limitation. On the XWayland test session:
+      wallpaper surface = partial (compositor owns the desktop layer), display
+      enumeration and hotplug = supported (the compositor's outputs are mirrored,
+      not downgraded), window tracking = partial (EWMH hides native Wayland
+      windows), power = partial (sysfs polling, not events). The rules are a pure
+      function of `SessionEvidence`, so all of it is covered by 10 unit tests for
+      sessions CI cannot start (`cargo test -p ferramari-platform -- desktop::tests`),
+      including the RandR negotiation trap: querying
+      version 1.2 makes a 1.6 server answer 1.2, so the probe asks for the newest
+      minor it knows and reads the reply.
 - [ ] Test wallpaper stacking below desktop icons and above the root background.
 - [ ] Test mpv embedding, surface destruction and recovery after player crashes.
 - [ ] Test monitor hotplug, clone displays, stable naming and mixed DPI.

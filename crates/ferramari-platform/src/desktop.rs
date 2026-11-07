@@ -142,60 +142,282 @@ impl Environment {
 
 /// Human-readable diagnostics. Safe to call without GTK or a D-Bus session;
 /// every probe degrades to a missing line instead of failing.
-/// Report capabilities that are actually reachable in the current session.
+/// Report the capabilities that are actually reachable in this session, each
+/// with the reason for its level.
 ///
-/// XWayland support is deliberately Partial: native Wayland windows are not
-/// visible to the X11/EWMH watcher, even though X11 clients still work.
+/// Every capability is decided on its own evidence rather than one blanket
+/// level. Under XWayland the wallpaper surface and the display enumeration
+/// work, but window tracking only sees X11 clients and stacking below desktop
+/// icons is the compositor's decision. Reporting all of those as "partial"
+/// would hide which of them a user can do something about.
 pub fn platform_capabilities() -> PlatformCapabilities {
-    let environment = detect();
-    let x11_available = x11rb::connect(None).is_ok();
-    let x11_level = if !x11_available {
-        SupportLevel::Unsupported
-    } else if environment.session == SessionKind::WaylandXWayland {
-        SupportLevel::Partial
-    } else {
-        SupportLevel::Supported
+    capabilities().levels
+}
+
+/// Levels plus reasons, kept together so `--doctor` cannot drift from what
+/// the app was actually told.
+pub struct CapabilityReport {
+    pub levels: PlatformCapabilities,
+    /// `(capability name, level, reason)`, only for entries that are not
+    /// fully supported or that deserve an explanation.
+    pub notes: Vec<(&'static str, SupportLevel, String)>,
+}
+
+/// The X11 facts the capability decision needs, read over one connection.
+/// The default is a probe that reached no server, which makes every X11
+/// capability unsupported.
+#[derive(Default)]
+pub struct X11Probe {
+    /// An X server answered at all.
+    pub connected: bool,
+    /// RandR protocol version, or `None` when RandR is missing.
+    pub randr: Option<(u32, u32)>,
+    /// A window manager following EWMH is present (`_NET_SUPPORTING_WM_CHECK`).
+    pub ewmh: bool,
+}
+
+impl X11Probe {
+    fn take() -> Self {
+        let Ok((connection, screen)) = x11rb::connect(None) else {
+            return Self::default();
+        };
+        use x11rb::protocol::randr::ConnectionExt as _;
+        use x11rb::protocol::xproto::{AtomEnum, ConnectionExt as _};
+        let root = connection.setup().roots[screen].root;
+        // RandR negotiates: the reply is the server's highest version *not
+        // above what was asked*, so querying 1.2 answers 1.2 even on a 1.6
+        // server and makes every version check meaningless. Ask for the
+        // newest minor this client knows and read the server's real answer.
+        let randr = connection
+            .randr_query_version(1, 7)
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .map(|reply| (reply.major_version, reply.minor_version));
+        // A compliant window manager sets `_NET_SUPPORTING_WM_CHECK` on its
+        // own window and copies the id to the root window. Only the standard
+        // atoms exist in `AtomEnum`, so this one is interned by name.
+        let check = connection
+            .intern_atom(true, b"_NET_SUPPORTING_WM_CHECK")
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .map(|reply| reply.atom)
+            .unwrap_or(0);
+        let ewmh = check != 0
+            && connection
+                .get_property(false, root, check, AtomEnum::WINDOW, 0, 1)
+                .ok()
+                .and_then(|cookie| cookie.reply().ok())
+                .is_some_and(|reply| !reply.value.is_empty());
+        Self {
+            connected: true,
+            randr,
+            ewmh,
+        }
+    }
+
+    /// RandR 1.5 is the version that reports monitors — the objects whose
+    /// names become config keys — and 1.2 is the first with output notify
+    /// events. Anything older cannot enumerate or watch displays, which is
+    /// what the surface code actually calls.
+    fn has_randr_monitors(&self) -> bool {
+        self.randr
+            .is_some_and(|(major, minor)| major > 1 || (major == 1 && minor >= 5))
+    }
+}
+
+/// Everything the level rules read, passed in rather than probed, so the
+/// rules can be tested for sessions CI cannot start.
+pub struct SessionEvidence<'a> {
+    pub kind: SessionKind,
+    pub x11: &'a X11Probe,
+    /// Whether enumeration actually returned a monitor. RandR answering with
+    /// an empty layout is a different limitation from not answering at all,
+    /// and the report has to say which one the user is looking at.
+    pub monitors_reported: bool,
+    /// `lock_services()` and `idle_service()` output: `None` when the service
+    /// is absent or the bus could not be reached.
+    pub lock_service: Option<String>,
+    pub idle_service: Option<String>,
+    pub battery_visible: bool,
+}
+
+const NO_X_SERVER: &str = "no X server reachable";
+const NO_RANDR: &str = "no RandR 1.5+ monitor information";
+const NO_MONITORS: &str = "RandR reported no monitors";
+const XWAYLAND_STACKING: &str =
+    "XWayland shows the wallpaper, but the compositor decides the desktop layer";
+const XWAYLAND_WINDOWS: &str = "EWMH lists X11 clients only; native Wayland windows are invisible";
+const NO_EWMH: &str = "no EWMH window manager on this display";
+
+/// Decide every capability from the evidence.
+fn capability_report(evidence: &SessionEvidence) -> CapabilityReport {
+    let xwayland = evidence.kind == SessionKind::WaylandXWayland;
+    let mut notes: Vec<(&'static str, SupportLevel, String)> = Vec::new();
+
+    let mut decide = |name: &'static str, level: SupportLevel, reason: Option<&str>| {
+        if let Some(reason) = reason {
+            notes.push((name, level, reason.to_string()));
+        }
+        level
     };
 
-    let has_displays = x11_available && !crate::monitors::list().is_empty();
-    let display_level = if has_displays {
-        x11_level
+    // Wallpaper surface: works wherever X does; under XWayland the stacking
+    // order relative to desktop icons is the compositor's, not ours.
+    let surface = if !evidence.x11.connected {
+        decide(
+            "wallpaper surface",
+            SupportLevel::Unsupported,
+            Some(NO_X_SERVER),
+        )
+    } else if xwayland {
+        decide(
+            "wallpaper surface",
+            SupportLevel::Partial,
+            Some(XWAYLAND_STACKING),
+        )
     } else {
-        SupportLevel::Unsupported
+        decide("wallpaper surface", SupportLevel::Supported, None)
     };
-    let lock = lock_services();
-    let idle = first_owned_session_service(&[
+
+    // Enumeration and hotplug come from the same RandR query; XWayland mirrors
+    // the compositor's outputs, so they are not downgraded there.
+    // Enumeration and hotplug come from the same RandR query, and XWayland
+    // mirrors the compositor's outputs, so neither is downgraded there. They
+    // differ on one point: subscribing to layout changes is still worth doing
+    // when the current layout is empty, while claiming displays are
+    // enumerable without a single reported monitor would promise something
+    // with nothing behind it.
+    let randr = evidence.x11.connected && evidence.x11.has_randr_monitors();
+    let hotplug = if !evidence.x11.connected {
+        decide(
+            "display hotplug",
+            SupportLevel::Unsupported,
+            Some(NO_X_SERVER),
+        )
+    } else if !randr {
+        decide("display hotplug", SupportLevel::Unsupported, Some(NO_RANDR))
+    } else {
+        decide("display hotplug", SupportLevel::Supported, None)
+    };
+    let enumeration = if !evidence.x11.connected {
+        decide(
+            "display enumeration",
+            SupportLevel::Unsupported,
+            Some(NO_X_SERVER),
+        )
+    } else if !randr {
+        decide(
+            "display enumeration",
+            SupportLevel::Unsupported,
+            Some(NO_RANDR),
+        )
+    } else if !evidence.monitors_reported {
+        decide(
+            "display enumeration",
+            SupportLevel::Unsupported,
+            Some(NO_MONITORS),
+        )
+    } else {
+        decide("display enumeration", SupportLevel::Supported, None)
+    };
+
+    // The capability that genuinely differs by session: without an EWMH
+    // manager there is no client list at all, and on XWayland the list
+    // misses every native Wayland window.
+    let tracking = if !evidence.x11.connected {
+        decide(
+            "window tracking",
+            SupportLevel::Unsupported,
+            Some(NO_X_SERVER),
+        )
+    } else if !evidence.x11.ewmh {
+        decide("window tracking", SupportLevel::Unsupported, Some(NO_EWMH))
+    } else if xwayland {
+        decide(
+            "window tracking",
+            SupportLevel::Partial,
+            Some(XWAYLAND_WINDOWS),
+        )
+    } else {
+        decide("window tracking", SupportLevel::Supported, None)
+    };
+
+    let lock = match &evidence.lock_service {
+        Some(_) => decide("session lock", SupportLevel::Supported, None),
+        None => decide(
+            "session lock",
+            SupportLevel::Unsupported,
+            Some("no ScreenSaver service and no logind on the bus"),
+        ),
+    };
+
+    // Battery state is polled from sysfs rather than delivered as events, so
+    // the level is Partial even when the file is there.
+    let power = if evidence.battery_visible {
+        decide(
+            "power events",
+            SupportLevel::Partial,
+            Some("battery state is polled from sysfs, not delivered as events"),
+        )
+    } else {
+        decide(
+            "power events",
+            SupportLevel::Unsupported,
+            Some("no /sys/class/power_supply"),
+        )
+    };
+
+    let idle = match &evidence.idle_service {
+        Some(_) => decide("idle detection", SupportLevel::Supported, None),
+        None => decide(
+            "idle detection",
+            SupportLevel::Unsupported,
+            Some("no idle-aware screensaver service on the session bus"),
+        ),
+    };
+
+    CapabilityReport {
+        levels: PlatformCapabilities {
+            wallpaper_surface: surface,
+            display_enumeration: enumeration,
+            display_hotplug: hotplug,
+            window_tracking: tracking,
+            session_lock: lock,
+            power_events: power,
+            idle_detection: idle,
+        },
+        notes,
+    }
+}
+
+/// Probe the live session and decide.
+fn capabilities() -> CapabilityReport {
+    let environment = detect();
+    let probe = X11Probe::take();
+    let found = |value: String| {
+        (value != "not found" && value != "session bus unavailable").then_some(value)
+    };
+    // Enumerating the displays here is deliberate: an empty layout has to be
+    // reported as the limitation it is, rather than inferred from the fact
+    // that a RandR version number came back.
+    let monitors_reported = !crate::monitors::list().is_empty();
+    capability_report(&SessionEvidence {
+        kind: environment.session,
+        x11: &probe,
+        monitors_reported,
+        lock_service: found(lock_services()),
+        idle_service: found(idle_service()),
+        battery_visible: Path::new("/sys/class/power_supply").is_dir(),
+    })
+}
+
+fn idle_service() -> String {
+    first_owned_session_service(&[
         "org.gnome.Mutter.IdleMonitor",
         "org.freedesktop.ScreenSaver",
         "org.kde.screensaver",
         "org.xfce.ScreenSaver",
-    ]);
-    let service_available =
-        |value: &str| value != "not found" && value != "session bus unavailable";
-
-    PlatformCapabilities {
-        wallpaper_surface: x11_level,
-        display_enumeration: display_level,
-        display_hotplug: display_level,
-        window_tracking: x11_level,
-        session_lock: if service_available(&lock) {
-            SupportLevel::Supported
-        } else {
-            SupportLevel::Unsupported
-        },
-        // Battery state is currently sampled periodically from sysfs rather
-        // than delivered as an event stream, so report Partial.
-        power_events: if Path::new("/sys/class/power_supply").is_dir() {
-            SupportLevel::Partial
-        } else {
-            SupportLevel::Unsupported
-        },
-        idle_detection: if service_available(&idle) {
-            SupportLevel::Supported
-        } else {
-            SupportLevel::Unsupported
-        },
-    }
+    ])
 }
 
 fn support_name(level: SupportLevel) -> &'static str {
@@ -208,7 +430,8 @@ fn support_name(level: SupportLevel) -> &'static str {
 
 pub fn doctor() -> String {
     let environment = detect();
-    let capabilities = platform_capabilities();
+    let evidence = capabilities();
+    let capabilities = evidence.levels;
     let mut report = String::new();
     let _ = writeln!(report, "Ferramari {}", env!("CARGO_PKG_VERSION"));
     let _ = writeln!(report, "session: {}", environment.session.as_str());
@@ -263,6 +486,11 @@ pub fn doctor() -> String {
         support_name(capabilities.power_events),
         support_name(capabilities.idle_detection),
     );
+    // One reason per limitation, so a report answers "why is this partial"
+    // without anyone having to read the code.
+    for (name, level, reason) in &evidence.notes {
+        let _ = writeln!(report, "  - {name}: {} ({reason})", support_name(*level));
+    }
     let _ = writeln!(report, "X11 screens: {}", x11_screen_count());
     let _ = writeln!(report, "display identities: {}", display_report());
     let _ = writeln!(report, "mpv: {}", tool_version("mpv", &["--version"]));
@@ -644,5 +872,219 @@ mod tests {
             let occlusion = matches!(session, SessionKind::X11 | SessionKind::WaylandXWayland);
             assert_eq!(occlusion, expected, "session {session:?}");
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // Capability levels. The rules are a pure function of the evidence, so
+    // the sessions a CI runner cannot start are still covered.
+    // ---------------------------------------------------------------------
+
+    fn probe(connected: bool, randr: Option<(u32, u32)>, ewmh: bool) -> X11Probe {
+        X11Probe {
+            connected,
+            randr,
+            ewmh,
+        }
+    }
+
+    fn evidence(kind: SessionKind, x11: &X11Probe) -> SessionEvidence<'_> {
+        SessionEvidence {
+            kind,
+            x11,
+            // A session with a server reports at least one monitor; the
+            // empty-layout case is exercised on its own.
+            monitors_reported: x11.connected,
+            lock_service: Some("org.gnome.ScreenSaver".to_string()),
+            idle_service: Some("org.gnome.Mutter.IdleMonitor".to_string()),
+            battery_visible: true,
+        }
+    }
+
+    #[test]
+    fn a_plain_x11_session_reports_what_it_truly_has() {
+        let x11 = probe(true, Some((1, 6)), true);
+        let report = capability_report(&evidence(SessionKind::X11, &x11));
+        assert_eq!(report.levels.wallpaper_surface, SupportLevel::Supported);
+        assert_eq!(report.levels.display_enumeration, SupportLevel::Supported);
+        assert_eq!(report.levels.display_hotplug, SupportLevel::Supported);
+        assert_eq!(report.levels.window_tracking, SupportLevel::Supported);
+        // Every X11 capability is honoured, and power is only polled, so one
+        // note is expected: the sysfs sampling.
+        let names: Vec<&str> = report.notes.iter().map(|note| note.0).collect();
+        assert_eq!(names, vec!["power events"], "{names:?}");
+    }
+
+    #[test]
+    fn xwayland_is_partial_for_stacking_and_window_tracking_only() {
+        let x11 = probe(true, Some((1, 6)), true);
+        let report = capability_report(&evidence(SessionKind::WaylandXWayland, &x11));
+        // The compositor decides the desktop layer, and EWMH hides native
+        // Wayland windows…
+        assert_eq!(report.levels.wallpaper_surface, SupportLevel::Partial);
+        assert_eq!(report.levels.window_tracking, SupportLevel::Partial);
+        // …but mirroring the compositor's outputs is not a downgrade, so
+        // enumerating monitors and hearing about replugs stays Supported.
+        assert_eq!(report.levels.display_enumeration, SupportLevel::Supported);
+        assert_eq!(report.levels.display_hotplug, SupportLevel::Supported);
+
+        let tracking = report
+            .notes
+            .iter()
+            .find(|note| note.0 == "window tracking")
+            .expect("window tracking must explain itself");
+        assert!(
+            tracking.2.contains("native Wayland windows"),
+            "{}",
+            tracking.2
+        );
+    }
+
+    #[test]
+    fn no_x_server_unsupports_every_x_capability_with_one_reason() {
+        let x11 = probe(false, None, false);
+        let report = capability_report(&evidence(SessionKind::WaylandNoDisplay, &x11));
+        assert_eq!(report.levels.wallpaper_surface, SupportLevel::Unsupported);
+        assert_eq!(report.levels.display_enumeration, SupportLevel::Unsupported);
+        assert_eq!(report.levels.display_hotplug, SupportLevel::Unsupported);
+        assert_eq!(report.levels.window_tracking, SupportLevel::Unsupported);
+        // A session without DISPLAY is not XWayland, so the XWayland notes
+        // must not appear: the reason is the missing server, nothing else.
+        for note in report.notes.iter().filter(|note| {
+            note.0.starts_with("wallpaper")
+                || note.0.starts_with("display")
+                || note.0 == "window tracking"
+        }) {
+            assert_eq!(note.2, NO_X_SERVER, "{}", note.0);
+        }
+    }
+
+    #[test]
+    fn without_randr_monitors_cannot_be_found_or_watched() {
+        let x11 = probe(true, None, true);
+        let report = capability_report(&evidence(SessionKind::X11, &x11));
+        assert_eq!(report.levels.display_enumeration, SupportLevel::Unsupported);
+        assert_eq!(report.levels.display_hotplug, SupportLevel::Unsupported);
+        // The surface itself only needs a server, so it is unaffected; a
+        // RandR-less server is ancient, and the note says exactly that.
+        assert_eq!(report.levels.wallpaper_surface, SupportLevel::Supported);
+        assert!(report.notes.iter().all(|note| note.2 != NO_X_SERVER));
+        assert!(report
+            .notes
+            .iter()
+            .any(|note| note.0 == "display enumeration" && note.2 == NO_RANDR));
+    }
+
+    #[test]
+    fn randr_below_1_5_cannot_report_monitors() {
+        // RandR 1.2..1.4 know outputs but not the monitor objects whose names
+        // become config keys, so enumeration and hotplug are genuinely
+        // unavailable. The version also has to be read as negotiated (ask for
+        // the newest minor we know), which is what X11Probe.take does.
+        for minor in [0u32, 1, 2, 3, 4] {
+            let x11 = probe(true, Some((1, minor)), true);
+            let report = capability_report(&evidence(SessionKind::X11, &x11));
+            assert_eq!(
+                report.levels.display_enumeration,
+                SupportLevel::Unsupported,
+                "RandR 1.{minor} must not claim monitors"
+            );
+            assert_eq!(report.levels.display_hotplug, SupportLevel::Unsupported);
+        }
+        // 1.5 is the first usable version; 1.6 is what Xorg and Xwayland
+        // report today.
+        for minor in [5u32, 6, 7] {
+            let x11 = probe(true, Some((1, minor)), true);
+            let report = capability_report(&evidence(SessionKind::X11, &x11));
+            assert_eq!(
+                report.levels.display_enumeration,
+                SupportLevel::Supported,
+                "RandR 1.{minor} should be enough"
+            );
+            assert_eq!(report.levels.display_hotplug, SupportLevel::Supported);
+        }
+    }
+
+    #[test]
+    fn no_ewmh_manager_means_no_window_tracking_at_all() {
+        let x11 = probe(true, Some((1, 6)), false);
+        let report = capability_report(&evidence(SessionKind::X11, &x11));
+        assert_eq!(report.levels.window_tracking, SupportLevel::Unsupported);
+        assert!(report
+            .notes
+            .iter()
+            .any(|note| note.0 == "window tracking" && note.2 == NO_EWMH));
+        // Surfaces do not need a manager that follows EWMH, so a bare X
+        // server still gets a wallpaper.
+        assert_eq!(report.levels.wallpaper_surface, SupportLevel::Supported);
+    }
+
+    #[test]
+    fn a_session_bus_without_the_services_is_reported_as_unsupported() {
+        let x11 = probe(true, Some((1, 6)), true);
+        let mut evidence = evidence(SessionKind::X11, &x11);
+        evidence.lock_service = None;
+        evidence.idle_service = None;
+        evidence.battery_visible = false;
+        let report = capability_report(&evidence);
+        assert_eq!(report.levels.session_lock, SupportLevel::Unsupported);
+        assert_eq!(report.levels.idle_detection, SupportLevel::Unsupported);
+        assert_eq!(report.levels.power_events, SupportLevel::Unsupported);
+        // Each one explains itself; a silent unsupported is how a limitation
+        // ends up filed as "works on my machine".
+        let explained: Vec<&str> = report.notes.iter().map(|note| note.0).collect();
+        assert!(
+            explained.contains(&"session lock")
+                && explained.contains(&"idle detection")
+                && explained.contains(&"power events"),
+            "{explained:?}"
+        );
+    }
+
+    #[test]
+    fn polled_battery_power_is_partial_with_a_reason() {
+        let x11 = probe(true, Some((1, 6)), true);
+        let report = capability_report(&evidence(SessionKind::X11, &x11));
+        assert_eq!(report.levels.power_events, SupportLevel::Partial);
+        let note = report
+            .notes
+            .iter()
+            .find(|note| note.0 == "power events")
+            .expect("a polled sampler must say so");
+        assert!(note.2.contains("polled"), "{}", note.2);
+    }
+
+    #[test]
+    fn an_empty_layout_is_not_something_to_enumerate_but_is_worth_watching() {
+        // RandR answers correctly and the layout is empty (a headless Xorg,
+        // a compositor that has not mapped outputs yet). Listing displays
+        // would be a promise with nothing behind it; the subscription to
+        // layout changes is still exactly what such a session needs.
+        let x11 = probe(true, Some((1, 6)), true);
+        let mut evidence = evidence(SessionKind::X11, &x11);
+        evidence.monitors_reported = false;
+        let report = capability_report(&evidence);
+        assert_eq!(report.levels.display_enumeration, SupportLevel::Unsupported);
+        assert_eq!(report.levels.display_hotplug, SupportLevel::Supported);
+        let note = report
+            .notes
+            .iter()
+            .find(|note| note.0 == "display enumeration")
+            .expect("an empty layout must be explained");
+        assert_eq!(note.2, NO_MONITORS);
+    }
+
+    #[test]
+    fn a_supported_capability_needs_no_apology() {
+        // Notes are the exception list; inventing one per supported feature
+        // would make `--doctor` unreadable.
+        let x11 = probe(true, Some((1, 6)), true);
+        let report = capability_report(&evidence(SessionKind::X11, &x11));
+        for (name, level, _) in &report.notes {
+            assert_ne!(*level, SupportLevel::Supported, "{name} is supported");
+        }
+        assert!(report
+            .notes
+            .iter()
+            .all(|(_, level, _)| matches!(level, SupportLevel::Partial)));
     }
 }

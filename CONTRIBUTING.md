@@ -1,7 +1,7 @@
 # Contributing
 
-Ferramari is a Rust desktop application with an Iced control surface and a separate wallpaper server. Keep changes small and
-measurable; a feature that cannot be tested should be behind a clear
+Ferramari is a Rust desktop application with an Iced control surface and a
+separate wallpaper server. Keep changes small and measurable; a feature that cannot be tested should be behind a clear
 limitation, not presented as supported.
 
 ## Setup
@@ -59,11 +59,10 @@ language to `po/LINGUAS` only after the catalog is complete enough to be useful.
 
 ## Flatpak
 
-`flatpak/io.github.ferramari.Ferramari.yml` is a self-hosted manifest. It uses
-the GNOME runtime, the Rust SDK extension and host media tools through
-`flatpak-spawn`. See `flatpak/README.md`. A Flathub submission needs bundled
-media tools and vendored Cargo sources; do not describe the current bundle as
-Flathub-ready.
+The existing Flatpak manifest targets the pre-Iced GNOME/WebKitGTK build and
+has not been migrated or validated for the 2.0 workspace. Treat Flatpak
+packaging as unavailable until its manifest builds and launches both binaries
+without reintroducing GTK. See `flatpak/README.md` for the historical setup.
 
 ## Performance
 

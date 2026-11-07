@@ -42,7 +42,6 @@ use crate::x11::{self, WindowState};
 use crate::ytdlp;
 
 use ferramari_media::engine::{ContentKind, Engine, WindowKey};
-use ferramari_platform::surface::X11SurfaceProvider;
 
 /// How long a hidden local video must stay paused before its decoder is
 /// released. Five minutes keeps short game alt-tabs and lock-screen blips from
@@ -69,6 +68,7 @@ pub struct App {
     pub windows: Vec<Engine>,
     pub snapshot: Arc<Mutex<Snapshot>>,
     tx: CommandSender,
+    surface_provider: Box<dyn ferramari_core::platform::WallpaperSurfaceProvider>,
     weak_self: Weak<RefCell<App>>,
     background: bool,
     paused_by_user: bool,
@@ -117,6 +117,7 @@ impl App {
         args: &crate::cli::Args,
         tx: CommandSender,
         snapshot: Arc<Mutex<Snapshot>>,
+        surface_provider: Box<dyn ferramari_core::platform::WallpaperSurfaceProvider>,
     ) -> Rc<RefCell<Self>> {
         paths::ensure_dirs();
         thread::Builder::new()
@@ -147,6 +148,7 @@ impl App {
             windows: Vec::new(),
             snapshot,
             tx: tx.clone(),
+            surface_provider,
             weak_self: Weak::new(),
             background: args.background,
             paused_by_user: false,
@@ -1017,13 +1019,13 @@ impl App {
         let profile = self.config.playback_profile.as_str();
         let hwdec = self.config.hwdec.as_str();
         match key.kind {
-            ContentKind::Video => Engine::video(&X11SurfaceProvider, monitor, &key.source, volume, muted, profile, hwdec),
+            ContentKind::Video => Engine::video(self.surface_provider.as_ref(), monitor, &key.source, volume, muted, profile, hwdec),
             ContentKind::Stream => {
                 let stream = self
                     .stream
                     .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("stream is not resolved yet"))?;
-                Engine::stream(&X11SurfaceProvider, monitor, stream, volume, muted, profile, hwdec)
+                Engine::stream(self.surface_provider.as_ref(), monitor, stream, volume, muted, profile, hwdec)
             }
             ContentKind::Web => Engine::web(monitor, &key.source),
         }

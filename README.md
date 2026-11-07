@@ -4,7 +4,7 @@ Video wallpaper for Linux, written in Rust.
 
 <img src="data/icons/hicolor/scalable/apps/io.github.ferramari.Ferramari.svg" width="128" height="128" alt="Ferramari icon: a crab holding the sun">
 
-Ferramari makes video and web content your desktop wallpaper. The name nods to
+Ferramari makes video content your desktop wallpaper. Web-page wallpapers are temporarily unavailable during the GTK-free migration. The name nods to
 iron (*ferrum*) and Rust's crab mascot.
 
 ## Screenshots
@@ -36,8 +36,7 @@ The interface has a hand-tuned dark palette as well as the light one:
 - Performance page with live CPU, RAM, thread, process and (where available)
   GPU metrics
 - Hardware decoding selector (Auto / VA-API / Off)
-- Web wallpapers via optional `web-wallpaper` feature (WebKitGTK 2.x gated
-  behind feature flag; see `docs/GTK_REMOVAL_AUDIT.md` §4 for alternatives)
+- Web-page wallpapers are temporarily unavailable while a GTK-free browser engine is evaluated; the current media backend reports this explicitly instead of silently failing
 - Reproducible benchmark harness (`make bench`) for startup, CPU, RAM,
   processes, GPU and mpv recovery
 - `--doctor` diagnostics for session/backend, desktop, media tools, DRM nodes,
@@ -75,39 +74,35 @@ The interface has a hand-tuned dark palette as well as the light one:
 
 | Dependency | Why |
 | --- | --- |
-| GTK 3 + WebKitGTK 4.1 (>= 2.40) | windows and the web-page wallpaper |
 | `mpv` | video playback (embedded through `--wid` and controlled via JSON IPC) |
 | `ffmpeg` / `ffprobe` | static wallpaper frame, thumbnails |
 | `yt-dlp` | only for streaming mode; use a current release (distro packages are often too old for YouTube) |
 
-An X11 session is used directly; on Wayland the app runs through XWayland
-(`GDK_BACKEND=x11` is set automatically).
+The current wallpaper surface backend uses X11 directly. On Wayland sessions it relies on XWayland; native Wayland wallpaper surfaces are not implemented.
 
 ### Build
 
 - Rust 1.88+ (a `rust-toolchain.toml` pins stable)
 - `pkg-config`, a C compiler
-- GTK 3 development headers
-- WebKitGTK 4.1 development headers (>= 2.40)
 - gettext (`msgfmt`) to build the translations; without it the app still
   builds and runs, but only the source (English) strings are installed
 
 Debian/Ubuntu:
 
 ```sh
-sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev gettext
+sudo apt install build-essential pkg-config gettext
 ```
 
 Fedora:
 
 ```sh
-sudo dnf install gcc pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel gettext
+sudo dnf install gcc pkgconf-pkg-config gettext
 ```
 
 Arch Linux:
 
 ```sh
-sudo pacman -S base-devel pkgconf gtk3 webkit2gtk-4.1 gettext
+sudo pacman -S base-devel pkgconf gettext
 ```
 
 ## Build, test, install
@@ -160,8 +155,7 @@ ferramari --catalog https://catalog.example.org/v1  # inspect a Catalog API
 ferramari package --help    # checksum, sign and verify .ferramari packages
 ```
 
-A second `ferramari` invocation does not start another server: it asks the
-running instance to show its control window and exits.
+A second `ferramari` invocation does not start another wallpaper server: it asks the running server to launch the separate `ferramari-ui` control-surface binary and exits. Both binaries must be installed side by side.
 
 Local videos are read from `$XDG_VIDEOS_DIR/Ferramari` (usually
 `~/Videos/Ferramari`). The control window can open that folder, refresh the
@@ -287,24 +281,27 @@ compiles them with `msgfmt`.
 
 ## Architecture
 
-One process, one GTK main loop, and a single command channel:
+The application is split into a wallpaper server and a separate Iced control surface. The server owns media playback and system integration; the UI is an ordinary D-Bus client:
 
 ```
-GUI / tray / D-Bus / X11 watcher / screen-lock watcher
-                      │  Command
-                      ▼
-                 ┌─────────┐
-                 │   App   │  (GTK main thread, owns all widgets)
-                 └────┬────┘
-      ┌───────────────┼────────────────┐
-      ▼               ▼                ▼
-WallpaperWindow   Config/D-Bus    GNOME background
- (mpv / WebKit)    snapshot       (ffmpeg + gsettings)
+             ferramari-ui (Iced)
+                    │
+             session D-Bus API
+                    │
+             ferramari server
+          ┌─────────┼──────────┐
+          ▼         ▼          ▼
+       Core      Platform    Media
+       policy    Linux/X11   mpv + X11
 ```
 
 | Path | Responsibility |
 | --- | --- |
-| `src/app.rs` | application state, command handling, mode switching |
+| `src/app.rs` | wallpaper-server state, command handling and mode switching |
+| `crates/ferramari-ui` | separate Iced control surface and D-Bus client |
+| `crates/ferramari-core` | shared configuration, policy, catalogue, packages and data models |
+| `crates/ferramari-platform` | Linux session, tray, D-Bus, monitor and desktop integration |
+| `crates/ferramari-media` | mpv process control and native X11 wallpaper surfaces |
 | `src/config.rs` | schema-v4 config, validation, 3.x migration |
 | `src/mpv.rs` | mpv process + a dedicated JSON IPC worker (volume, mute, pause, profiles) |
 | `src/eco.rs` | pure per-monitor Eco Engine policy and profiles |
@@ -369,7 +366,7 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 
 ## Known limitations
 
-- The app always runs on X11/XWayland (`GDK_BACKEND=x11`): a wallpaper window is
+- The wallpaper server currently uses X11/XWayland: a wallpaper window is
   a `DESKTOP`-type X11 toplevel and mpv embeds into it with `--wid`. Native
   Wayland has no background role in `xdg-shell`, and `wlr-layer-shell` is not
   available on GNOME, so native Wayland windows are not an option.

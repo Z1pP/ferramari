@@ -36,7 +36,7 @@ use crate::supervisor::{RestartPolicy, Retry, MAX_RETRIES};
 use crate::tray;
 use crate::util;
 use crate::wallpaper::GnomeBackground;
-use crate::window::WindowState;
+use crate::window::{MonitorVisibility as WindowVisibility, WindowState};
 use crate::ytdlp;
 
 use ferramari_media::engine::{ContentKind, Engine, WindowKey};
@@ -1290,7 +1290,7 @@ impl App {
         }
     }
 
-    fn monitor_visibility(&self, monitor: &str) -> x11::MonitorVisibility {
+    fn monitor_visibility(&self, monitor: &str) -> WindowVisibility {
         self.monitors
             .iter()
             .find(|info| info.name == monitor)

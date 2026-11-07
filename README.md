@@ -111,7 +111,7 @@ sudo pacman -S base-devel pkgconf gettext
 cargo build --workspace --release --locked
 cargo test --workspace --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo fmt --all -- --check
+cargo fmt --all
 ```
 
 Install (binary, desktop entry, AppStream metadata, icon, translations):

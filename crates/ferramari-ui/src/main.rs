@@ -1198,10 +1198,11 @@ impl App {
                         .on_input(Message::PackageParentChanged)
                         .padding(9)
                         .width(Length::Fill))
-                    .push(Row::new().spacing(8).wrap()
+                    .push(Row::new().spacing(8)
                         .push(secondary_button(tr("Import package"), Message::ImportPackage, sem))
                         .push(secondary_button(tr("Export video package"), Message::ExportPackage, sem))
-                        .push(secondary_button(tr("Sign package"), Message::SignPackage, sem))
+                        .push(secondary_button(tr("Sign package"), Message::SignPackage, sem)))
+                    .push(Row::new().spacing(8)
                         .push(secondary_button(tr("Verify package"), Message::VerifyPackage, sem))
                         .push(secondary_button(tr("Trust package key"), Message::TrustPackageKey, sem))),
                 sem,

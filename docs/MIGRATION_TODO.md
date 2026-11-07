@@ -41,8 +41,9 @@ validation are complete. A successful compile alone is not a runtime pass.
 ## 3. Define and enforce the platform boundary
 
 - [ ] Define stable platform-neutral contracts for displays, wallpaper surfaces,
-      window tracking, session state, idle state and power events (display, surface and
-      event-source lifecycle contracts exist; remaining signals still need typed models).
+      window tracking, session state, idle state and power events (display, surface,
+      power and event-source lifecycle contracts exist; remaining signals still need
+      richer typed models).
 - [ ] Add explicit capability states: Supported, Partial and Unsupported.
 - [ ] Keep native handles and native API types inside platform/media adapters.
 - [ ] Ensure core models and policies do not import X11, Win32, Cocoa, D-Bus or
@@ -56,12 +57,13 @@ Current boundary progress:
 - Window rectangles and occlusion evaluation now live in ferramari-core.
 - The EWMH watcher now lives in ferramari-platform.
 - A platform-neutral DisplayProvider contract exists; the X11 implementation is injected at startup.
-- WallpaperSurfaceProvider is injected at startup and into the media engine.
+- WallpaperSurfaceProvider and PowerProvider are injected at startup and into the media/application layers.
+- PlatformEventSource owns Linux session/window/hotplug watcher startup and teardown; it sends normalized core commands.
 - GNOME Shell D-Bus integration and zbus dependency have been moved out of ferramari-core.
 - The obsolete GTK wakeup pipe was removed; std::sync::mpsc already wakes the command loop.
 - Monitor enumeration and wallpaper surface creation are still backed only by Linux/X11.
 - Linux session/window watcher startup and teardown now sit behind an injected PlatformEventSource.
-- Power-supply polling and desktop background handling still live in the application/Linux-specific modules.
+- Power-supply polling is now a Linux platform provider; desktop background handling and some path/metrics code remain Linux-specific.
 
 ## 4. Finish Linux backend
 

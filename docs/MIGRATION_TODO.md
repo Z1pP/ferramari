@@ -109,7 +109,7 @@ Current boundary progress:
 
 - [x] Audit mpv process lifecycle, IPC timeouts, restart backoff and cleanup — see `docs/MPV_LIFECYCLE_AUDIT.md`. Full review of spawn → IPC → park/unpark → Drop → death detection chain.
 - [ ] Validate hardware decode per supported OS/GPU backend — parameter passes through but runtime GPU capability validation is missing; see audit doc for recommendation.
-- [ ] Validate stream resolution, cache invalidation and yt-dlp failures.
+- [x] Validate stream resolution, cache invalidation and yt-dlp failures — 11 new unit tests in `crates/ferramari-core/src/ytdlp.rs` cover format parsing edge cases (codec-only, negative quality, no dimensions, oversized height), strict `<` TTL boundary (expires at `elapsed >= TTL`), separate page/height cache isolation, and that `resolve()` errors on an inaccessible URL without panicking.
 - [ ] Select a GTK-free browser engine or isolated browser process for web wallpapers.
 - [ ] Define a strict web-wallpaper sandbox, network permissions and process limits.
 - [ ] Restore web wallpaper only after navigation, audio, reload and cleanup tests pass.

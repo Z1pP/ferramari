@@ -1,34 +1,35 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>io.github.ferramari.Ferramari</id>
   <name>Ferramari</name>
-  <summary>Video wallpaper for Linux</summary>
+  <summary>Video wallpapers for Linux desktops</summary>
   <developer id="io.github.ferramari">
     <name>Ferramari contributors</name>
   </developer>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <description>
-    <p>Ferramari is a video wallpaper for Linux, written in Rust. 🦀</p>
-    <p>Play local videos, streaming URLs or web pages as your desktop
-    wallpaper, one source per monitor. It can pause or mute itself when a
-    window is maximized, apply a blurred video frame as the GNOME static
-    wallpaper, and restore your original background on exit.</p>
+    <p>Ferramari turns local videos into animated desktop wallpapers on Linux. It provides per-monitor playback, a library, a community catalogue and power-aware playback controls.</p>
+    <p>The application uses mpv for video playback and an Iced control window for managing wallpapers. X11 is supported directly; Wayland sessions currently use XWayland for wallpaper surfaces.</p>
   </description>
+  <launchable type="desktop-id">io.github.ferramari.Ferramari.desktop</launchable>
+  <url type="homepage">https://github.com/Z1pP/ferramari</url>
+  <url type="bugtracker">https://github.com/Z1pP/ferramari/issues</url>
+  <content_rating type="oars-1.1"/>
+  <categories>
+    <category>Utility</category>
+    <category>Graphics</category>
+  </categories>
   <releases>
     <release version="2.0.0" date="2026-11-07" type="stable">
       <description>
-        <p><strong>Major release: GTK removal complete, Iced UI, native event loop.</strong></p>
+        <p>Major architecture update: GTK-free Iced control surface and native Linux wallpaper surfaces.</p>
         <ul>
-          <li>GTK/GDK/WebKit fully removed from the server binary (0 GTK libs)</li>
-          <li>Iced UI replaces the GTK control surface (separate binary, D-Bus client)</li>
-          <li>Native event loop replaces glib::main_loop (recv_timeout + deadline bookkeeping)</li>
-          <li>Native signal handling replaces glib::unix_signal_add (sigwait)</li>
-          <li>Native fade engine replaces glib::timeout_add_local (std::thread)</li>
-          <li>Native wallpaper surfaces replace GTK ApplicationWindow (x11rb)</li>
-          <li>Native monitor enumeration replaces gdk::Monitor (x11rb RandR)</li>
-          <li>Web wallpapers gated behind web-wallpaper feature flag</li>
-          <li>160 tests pass</li>
+          <li>Replaced the GTK control window with a separate Iced application communicating with the server over D-Bus.</li>
+          <li>Removed GTK, GDK and WebKitGTK from the workspace dependencies.</li>
+          <li>Moved wallpaper surface creation to the media layer using X11.</li>
+          <li>Kept the existing library, catalogue, playback and power-management services in the server.</li>
+          <li>Web-page wallpapers are temporarily unavailable while a replacement browser engine is evaluated.</li>
         </ul>
       </description>
     </release>
@@ -36,10 +37,10 @@
       <description>
         <p>Fullscreen windows now pause the wallpaper, on Wayland sessions too.</p>
         <ul>
-          <li>The occlusion watcher runs on XWayland, so X11 games and players pause playback</li>
-          <li>Pausing really stops decoding: the player no longer runs invisibly at zero volume</li>
-          <li>The pause/mute switches are visible on Wayland sessions</li>
-          <li>A crashed web-process page is detected and reloaded instead of leaving a blank desktop</li>
+          <li>The occlusion watcher runs on XWayland, so X11 games and players pause playback.</li>
+          <li>Pausing stops decoding instead of leaving the player running silently.</li>
+          <li>The pause and mute switches are visible on Wayland sessions.</li>
+          <li>A crashed web-process page is detected and reloaded instead of leaving a blank desktop.</li>
         </ul>
       </description>
     </release>
@@ -47,18 +48,18 @@
       <description>
         <p>Streaming no longer re-runs yt-dlp on every reload.</p>
         <ul>
-          <li>A resolved stream is cached per page URL and screen height for 15 minutes</li>
+          <li>A resolved stream is cached per page URL and screen height for 15 minutes.</li>
         </ul>
       </description>
     </release>
     <release version="1.9.2" date="2026-11-02" type="stable">
       <description>
-        <p>Layout regression from 1.9.1: content was clipped at the right edge.</p>
+        <p>Fixed a layout regression that clipped content at the right edge.</p>
       </description>
     </release>
     <release version="1.9.1" date="2026-11-01" type="stable">
       <description>
-        <p>Initial public release with GTK control surface.</p>
+        <p>Initial public release with the GTK control surface.</p>
       </description>
     </release>
     <release version="1.9.0" date="2026-11-01" type="stable">
@@ -67,22 +68,4 @@
       </description>
     </release>
   </releases>
-  <content_ranking importance="0.8" content-kind="application"/>
-  <content_scores>
-    <score content-kind="application" x="0.9"/>
-  </content_scores>
-  <url type="homepage">https://github.com/blanc/hidamari-rust</url>
-  <url type="bugtracker">https://github.com/blanc/hidamari-rust/issues</url>
-  <url type="donation">https://github.com/sponsors/blanc</url>
-  <launchable type="desktop-id">io.github.ferramari.Ferramari.desktop</launchable>
-  <provides>
-    <icon type="stock">io.github.ferramari.Ferramari</icon>
-  </provides>
-  <categories>
-    <category>Utility</category>
-    <category>Graphics</category>
-  </categories>
-  <langinfo>ru</langinfo>
-  <langinfo>en</langinfo>
-  <langinfo>ja</langinfo>
 </component>

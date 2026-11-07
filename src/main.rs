@@ -9,12 +9,12 @@
 // keeps referring to `crate::paths`, `crate::util`, … unchanged.
 pub use ferramari_core::{
     bus, catalog_api, catalogue, cli, config, eco, error, library, metrics, package, paths,
-    plugin, power, signing, supervisor, thumbnails, util, window, ytdlp,
+    plugin, signing, supervisor, thumbnails, util, window, ytdlp,
 };
 pub use ferramari_core::MonitorInfo;
 pub use ferramari_core::bus::{Command, CommandReceiver, CommandSender, PackageReport, Snapshot};
 pub use ferramari_media::mpv;
-pub use ferramari_platform::{autostart, dbus, desktop, event_source, gnome_bg, gnome_extensions, handlers, monitors, surface, tray, x11};
+pub use ferramari_platform::{autostart, dbus, desktop, event_source, gnome_bg, gnome_extensions, handlers, monitors, power, surface, tray, x11};
 // The static-background module kept its historic name in the binary.
 pub use ferramari_platform::gnome_bg as wallpaper;
 
@@ -113,6 +113,7 @@ fn main() {
         Arc::clone(&snapshot),
         Box::new(surface::X11SurfaceProvider),
         Box::new(monitors::X11DisplayProvider),
+        Box::new(power::LinuxPowerProvider),
         Box::new(event_source::LinuxPlatformEventSource),
     );
     // Start the players (and the control surface unless `--background`)

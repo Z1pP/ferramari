@@ -133,6 +133,40 @@ impl ServerInterface {
         send(&self.tx, Command::Webpage { url: webpage_url });
     }
 
+    // Package operations use the same command queue as CLI and internal
+    // callers. Paths are plain strings on D-Bus so clients need no shared
+    // Rust types or direct filesystem access to the server process.
+    #[zbus(name = "import_package")]
+    fn import_package(&self, source: String) {
+        send(&self.tx, Command::ImportPackage(source.into()));
+    }
+
+    #[zbus(name = "export_package")]
+    fn export_package(&self, video: String, parent: String) {
+        send(
+            &self.tx,
+            Command::ExportPackage {
+                video: video.into(),
+                parent: parent.into(),
+            },
+        );
+    }
+
+    #[zbus(name = "sign_package")]
+    fn sign_package(&self, directory: String) {
+        send(&self.tx, Command::SignPackage(directory.into()));
+    }
+
+    #[zbus(name = "verify_package")]
+    fn verify_package(&self, directory: String) {
+        send(&self.tx, Command::VerifyPackage(directory.into()));
+    }
+
+    #[zbus(name = "trust_key")]
+    fn trust_key(&self, source: String) {
+        send(&self.tx, Command::TrustKey(source.into()));
+    }
+
     #[zbus(name = "pause_playback")]
     fn pause_playback(&self) {
         send(&self.tx, Command::PausePlayback);

@@ -38,7 +38,6 @@ run:
 	$(CARGO) run -p ferramari -- -d
 
 # Usage: make bench VIDEO=/path/to/video.mp4 [PROFILE=balanced] [SECONDS=10]
-#        make bench MODE=web WEB=/path/to/page.html [SECONDS=10]
 VIDEO ?=
 WEB ?=
 MODE ?= video

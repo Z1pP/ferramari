@@ -26,7 +26,7 @@ fn main() -> anyhow::Result<()> {
     assert!(ferramari_platform::surface::available(), "no X server reachable");
     let monitor = root_monitor()?;
 
-    let surface = ferramari_media::surface::create(&monitor)?;
+    let surface = ferramari_platform::surface::create(&monitor)?;
     println!("created window {:#x} for {}", surface.xid, monitor.name);
 
     // Verify the window properties the WM will use to place it, over the

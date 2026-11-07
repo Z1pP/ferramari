@@ -49,6 +49,13 @@ Build the complete 2.0 workspace with `cargo build --workspace --release --locke
 - [ ] Repeat the kill until the give-up limit; no endless restart loop and a
       visible error is shown.
 
+### Iced library and favourites
+- [ ] Add a recently used video to favourites; it appears in the Favorites
+      section without restarting the UI.
+- [ ] Remove it from favourites; it disappears from the section.
+- [ ] Restart Ferramari; the favourites list is preserved in library.json.
+- [ ] Play a favourite; the selected video is applied through the D-Bus server.
+
 ### Static wallpaper and desktop background
 - [ ] Enable static wallpaper; a blurred frame appears and
       `background-original.json` records the previous background.

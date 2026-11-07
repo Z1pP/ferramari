@@ -63,6 +63,8 @@ pub struct ServerState {
     pub hwdec: String,
     pub web_allow_network: bool,
     pub autostart_enabled: bool,
+    pub operation_status: String,
+    pub operation_error: bool,
 }
 
 /// Cloneable handle to the session bus, addressed at the Ferramari server.
@@ -211,6 +213,8 @@ impl Server {
             state.hwdec = string_of(&values, "hwdec");
             state.web_allow_network = bool_of(&values, "web_allow_network");
             state.autostart_enabled = bool_of(&values, "autostart_enabled");
+            state.operation_status = string_of(&values, "operation_status");
+            state.operation_error = bool_of(&values, "operation_error");
         }
         if let Some(values) = self.get_all(PLAYER_PATH, PLAYER_INTERFACE).await {
             state.data_source = string_map_of(&values, "data_source");

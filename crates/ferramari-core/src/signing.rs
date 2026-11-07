@@ -17,8 +17,10 @@
 
 use std::collections::BTreeMap;
 use std::fs;
+#[cfg(unix)]
 use std::fs::Permissions;
 use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -504,7 +506,13 @@ fn write_json<T: Serialize>(path: &Path, value: &T, mode: u32) -> Result<(), Str
     let text = serde_json::to_string_pretty(value)
         .map_err(|err| format!("cannot serialize {}: {err}", path.display()))?;
     write_text(path, &text)?;
+    #[cfg(unix)]
     let _ = fs::set_permissions(path, Permissions::from_mode(mode));
+    // On Windows, the file inherits the user's profile-directory ACL. The
+    // Unix mode bits are not meaningful there; callers still get a private
+    // per-user location rather than a world-readable shared directory.
+    #[cfg(not(unix))]
+    let _ = mode;
     Ok(())
 }
 
@@ -720,6 +728,7 @@ mod tests {
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[cfg(unix)]
     #[test]
     fn the_local_key_is_created_once_and_kept() {
         let dir = temp_dir("localkey");

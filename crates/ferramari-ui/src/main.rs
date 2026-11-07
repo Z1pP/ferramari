@@ -118,6 +118,7 @@ enum Message {
     ToggleAutostart(bool),
 
     RefreshLibrary,
+    ToggleFavorite(String),
     Play(String),
     OpenFolder,
 
@@ -368,6 +369,16 @@ impl App {
             // --- Library ---------------------------------------------------- //
             Message::RefreshLibrary => {
                 self.library = Library::load();
+                Task::none()
+            }
+            Message::ToggleFavorite(path) => {
+                self.library.toggle_favorite(&path);
+                if let Err(error) = self.library.save() {
+                    self.status = Some(StatusLine {
+                        text: error,
+                        error: true,
+                    });
+                }
                 Task::none()
             }
             Message::Play(path) => play_video(self.server.as_ref(), path),
@@ -844,8 +855,55 @@ impl App {
                                 .push(text(entry.path.clone()).size(10).color(sem.text_muted)),
                         )
                         .push(secondary_button(
+                            tr(if self.library.is_favorite(&entry.path) {
+                                "Remove favorite"
+                            } else {
+                                "Add to favorites"
+                            }),
+                            Message::ToggleFavorite(entry.path.clone()),
+                            sem,
+                        ))
+                        .push(secondary_button(
                             tr("Play"),
                             Message::Play(entry.path.clone()),
+                            sem,
+                        )),
+                );
+            }
+        }
+
+        let mut favorites = Column::new().spacing(8);
+        if self.library.favorites().is_empty() {
+            favorites = favorites.push(
+                text(tr("No favorite videos"))
+                    .size(12)
+                    .color(sem.text_muted),
+            );
+        } else {
+            for path in self.library.favorites() {
+                let title = PathBuf::from(path)
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.clone());
+                favorites = favorites.push(
+                    Row::new()
+                        .spacing(10)
+                        .align_y(Alignment::Center)
+                        .push(
+                            Column::new()
+                                .spacing(2)
+                                .width(Length::Fill)
+                                .push(text(title).size(13).color(sem.text))
+                                .push(text(path.clone()).size(10).color(sem.text_muted)),
+                        )
+                        .push(secondary_button(
+                            tr("Play"),
+                            Message::Play(path.clone()),
+                            sem,
+                        ))
+                        .push(secondary_button(
+                            tr("Remove"),
+                            Message::ToggleFavorite(path.clone()),
                             sem,
                         )),
                 );
@@ -903,6 +961,13 @@ impl App {
                             .push(actions),
                     )
                     .push(body),
+                sem,
+            ))
+            .push(card(
+                Column::new()
+                    .spacing(10)
+                    .push(section_title(tr("Favorites"), sem))
+                    .push(favorites),
                 sem,
             ))
             .push(card(

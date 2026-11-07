@@ -20,7 +20,7 @@ The wallpaper server currently creates desktop surfaces through X11/XWayland; th
 Run all of these:
 
 ```sh
-cargo fmt --all -- --check
+cargo fmt --all
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 cargo build --workspace --release --locked

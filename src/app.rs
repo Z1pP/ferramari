@@ -1716,15 +1716,31 @@ fn launch_control_surface() -> anyhow::Result<()> {
     // `ferramari-ui` exits immediately when another instance owns its name.
     // Spawning a process is quick and returning the error here lets
     // show_gui() report a missing or non-executable UI binary to the log.
-    std::process::Command::new(&program)
+    let mut child = std::process::Command::new(&program)
         .spawn()
-        .map(|_| ())
         .map_err(|err| {
             anyhow::anyhow!(
                 "could not launch control surface {}: {err}",
                 program.display()
             )
-        })
+        })?;
+    // The UI may exit a few milliseconds after it starts (another window
+    // already owns the instance name). Nothing else waits on it, so without
+    // a reaper every closed control surface would linger as a zombie for
+    // the whole lifetime of the server. We move the Child into a dedicated
+    // background thread that calls `wait()` on drop.
+    let pid = child.id();
+    let _reaper = thread::Builder::new()
+        .name("ferramari-ui-reaper".to_string())
+        .spawn(move || -> Result<(), std::io::Error> {
+            let status = child.wait()?;
+            if !status.success() {
+                log::debug!("[GUI] Control surface exited with status {status}");
+            }
+            Ok(())
+        });
+    log::trace!("[GUI] Launched control surface PID {pid}");
+    Ok(())
 }
 
 /// Pure planning step: which wallpaper window should exist for every monitor

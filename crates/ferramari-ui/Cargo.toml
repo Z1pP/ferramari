@@ -11,6 +11,11 @@ ferramari-core = { path = "../ferramari-core" }
 
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 iced = { version = "0.14", features = ["tokio"] }
+# XDG Desktop Portal on Linux; native system dialogs on macOS and Windows.
+# This dependency intentionally uses no GTK feature.
+# The Linux backend is the XDG Desktop Portal, not a toolkit binding.
+# Default features do not enable GTK bindings.
+rfd = "0.17.2"
 serde = "1"
 tokio = { version = "1", features = ["rt-multi-thread"] }
 zbus = "5"

@@ -1,14 +1,17 @@
 # Testing matrix
 
 Ferramari is a desktop application, so CI can only cover the parts that do not
-need a live session. This document records what was actually exercised and
-what is still unverified.
+need a live session. This document contains historical live-session results
+for the 1.9.x GTK build. They are not evidence that the 2.0.0 Iced migration
+has passed equivalent smoke tests. The 2.0 workspace must be tested separately
+using the checklist below; do not carry forward old “tested” labels as 2.0
+certification.
 
 ## Environment matrix
 
 | Environment | Status | Notes |
 | --- | --- | --- |
-| GNOME 50, Wayland session, running through XWayland | **tested** 2026-11-02, 1.9.2 | Main development environment |
+| GNOME 50, Wayland session, running through XWayland | **tested on 1.9.2 only** 2026-11-02 | Historical GTK build; 2.0 Iced UI not yet smoke-tested |
 | GNOME 50, X11 session | not tested | The same X11 backend is used, but the session has not been exercised |
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |
@@ -20,7 +23,7 @@ there and the result is recorded in this table.
 
 ## Smoke checklist
 
-Run from a checkout with `cargo build --release`, or from an installed build.
+Build the complete 2.0 workspace with `cargo build --workspace --release --locked`, then run from the checkout or an installed build. Several UI-specific checklist items below describe the former GTK UI and need explicit re-verification against Iced.
 
 ### Startup and shutdown
 - [ ] App starts with no existing config and shows the Home page.
@@ -46,6 +49,16 @@ Run from a checkout with `cargo build --release`, or from an installed build.
 - [ ] Repeat the kill until the give-up limit; no endless restart loop and a
       visible error is shown.
 
+### Iced library, favourites and collections
+- [ ] Add a recently used video to favourites; it appears in the Favorites
+      section without restarting the UI.
+- [ ] Remove it from favourites; it disappears from the section.
+- [ ] Restart Ferramari; favourites are preserved in library.json.
+- [ ] Create, rename and delete a collection; each change persists after restart.
+- [ ] Add a recent video to a collection, play it from the collection, then
+      remove it from that collection.
+- [ ] Play a favourite; the selected video is applied through the D-Bus server.
+
 ### Static wallpaper and desktop background
 - [ ] Enable static wallpaper; a blurred frame appears and
       `background-original.json` records the previous background.
@@ -64,8 +77,8 @@ Run from a checkout with `cargo build --release`, or from an installed build.
 - [ ] Quit; the original background is restored and stale frames are removed.
 
 ### Web and streaming
-- [ ] Open a web page; it renders and the right-click menu works.
-- [ ] Open an invalid URL; one retry, then one clear error.
+- [ ] Web-page wallpapers are currently unavailable in 2.0.0; confirm the UI and server show the explicit unsupported-engine error without crashing.
+- [ ] When a replacement web engine is integrated, restore the web-page rendering, security-policy and reload checks from the 1.9.x test baseline.
 - [ ] Resolve a streaming URL with `yt-dlp`; play/pause and mute work.
 - [ ] Press Reload in stream mode twice within 15 minutes: the wallpaper comes
       back in well under a second, `[Stream] Reusing the cached resolution`

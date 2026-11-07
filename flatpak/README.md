@@ -1,5 +1,9 @@
 # Flatpak
 
+> **Legacy packaging note:** This manifest describes the pre-Iced GTK/WebKitGTK
+> build (1.9.x). It has not been migrated to the 2.0 split server + Iced UI
+> workspace and is not a supported 2.0 installation path.
+
 `io.github.ferramari.Ferramari.yml` builds a **self-hosted** Flatpak bundle.
 It is not a Flathub submission yet.
 

@@ -19,40 +19,20 @@ readme = "README.md"
 keywords = ["wallpaper", "video", "linux"]
 categories = ["multimedia::video", "graphics"]
 
-[features]
-default = []
-# Webpage wallpapers need a browser engine. WebKitGTK 2.x is only published
-# with GTK 3 bindings, so enabling this feature pulls the whole GTK line back
-# in. The default build has no toolkit at all; see docs/GTK_REMOVAL_AUDIT.md
-# §4 for the engine candidates that would let this feature go away.
-web-wallpaper = ["dep:webkit2gtk"]
-
 [dependencies]
 ferramari-core = { path = "crates/ferramari-core" }
 ferramari-platform = { path = "crates/ferramari-platform" }
 ferramari-media = { path = "crates/ferramari-media" }
 
-webkit2gtk = { version = "2.0", features = ["v2_40"], optional = true }
-
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 env_logger = "0.11"
-base64 = "0.22"
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
-ksni = { version = "0.3", default-features = false, features = ["blocking", "async-io"] }
 libc = "0.2"
 log = "0.4"
 rand = "0.8"
-regex = "1"
 # Ed25519 for `.ferramari` package signatures. `ring` is already in the tree
 # through `ureq`/rustls, so this adds no new native dependency.
-ring = "0.17"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-ureq = "2"
-x11rb = { version = "0.14", features = ["randr"] }
-zbus = "5"
-zip = { version = "9", default-features = false, features = ["deflate"] }
 
 [profile.release]
 lto = "thin"

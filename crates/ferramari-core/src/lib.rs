@@ -15,6 +15,7 @@ pub mod error;
 pub mod library;
 pub mod metrics;
 pub mod monitor;
+pub mod platform;
 pub mod package;
 pub mod paths;
 pub mod plugin;
@@ -23,8 +24,7 @@ pub mod signing;
 pub mod supervisor;
 pub mod thumbnails;
 pub mod util;
-pub mod wake;
-pub mod x11;
+pub mod window;
 pub mod ytdlp;
 
 // Convenience aliases so call sites read the way the modules are known.

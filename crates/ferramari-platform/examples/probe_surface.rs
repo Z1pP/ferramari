@@ -1,7 +1,7 @@
 //! One-shot probe: create a real desktop-layer wallpaper window on the live X
 //! server, verify its EWMH properties, and destroy it.
 //!
-//! Run: `DISPLAY=:0 cargo run -p ferramari-media --example probe_surface`
+//! Run: `DISPLAY=:0 cargo run -p ferramari-platform --example probe_surface`
 
 use x11rb::connection::Connection as _;
 use x11rb::protocol::xproto::ConnectionExt as _;
@@ -23,10 +23,10 @@ fn root_monitor() -> anyhow::Result<ferramari_core::MonitorInfo> {
 }
 
 fn main() -> anyhow::Result<()> {
-    assert!(ferramari_media::surface::available(), "no X server reachable");
+    assert!(ferramari_platform::surface::available(), "no X server reachable");
     let monitor = root_monitor()?;
 
-    let surface = ferramari_media::surface::create(&monitor)?;
+    let surface = ferramari_platform::surface::create(&monitor)?;
     println!("created window {:#x} for {}", surface.xid, monitor.name);
 
     // Verify the window properties the WM will use to place it, over the

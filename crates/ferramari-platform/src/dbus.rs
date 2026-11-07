@@ -133,6 +133,45 @@ impl ServerInterface {
         send(&self.tx, Command::Webpage { url: webpage_url });
     }
 
+    // Package operations use the same command queue as CLI and internal
+    // callers. Paths are plain strings on D-Bus so clients need no shared
+    // Rust types or direct filesystem access to the server process.
+    #[zbus(name = "import_package")]
+    fn import_package(&self, source: String) {
+        send(&self.tx, Command::ImportPackage(source.into()));
+    }
+
+    #[zbus(name = "export_package")]
+    fn export_package(&self, video: String, parent: String) {
+        send(
+            &self.tx,
+            Command::ExportPackage {
+                video: video.into(),
+                parent: parent.into(),
+            },
+        );
+    }
+
+    #[zbus(name = "sign_package")]
+    fn sign_package(&self, directory: String) {
+        send(&self.tx, Command::SignPackage(directory.into()));
+    }
+
+    #[zbus(name = "verify_package")]
+    fn verify_package(&self, directory: String) {
+        send(&self.tx, Command::VerifyPackage(directory.into()));
+    }
+
+    #[zbus(name = "trust_key")]
+    fn trust_key(&self, source: String) {
+        send(&self.tx, Command::TrustKey(source.into()));
+    }
+
+    #[zbus(name = "library_changed")]
+    fn library_changed(&self) {
+        send(&self.tx, Command::LibraryChanged);
+    }
+
     #[zbus(name = "pause_playback")]
     fn pause_playback(&self) {
         send(&self.tx, Command::PausePlayback);
@@ -342,6 +381,16 @@ impl ServerInterface {
         self.snapshot().autostart_enabled
     }
 
+    #[zbus(property, name = "operation_status")]
+    fn operation_status(&self) -> String {
+        self.snapshot().operation_status
+    }
+
+    #[zbus(property, name = "operation_error")]
+    fn operation_error(&self) -> bool {
+        self.snapshot().operation_error
+    }
+
     #[zbus(property, name = "autostart_enabled")]
     fn set_autostart_enabled(&self, enabled: bool) {
         send(&self.tx, Command::SetAutostart(enabled));
@@ -377,6 +426,17 @@ impl PlayerInterface {
     #[zbus(name = "quit_player")]
     fn quit_player(&self) {
         send(&self.tx, Command::QuitPlayer);
+    }
+
+    #[zbus(name = "set_monitor_rotation")]
+    fn set_monitor_rotation(&self, monitor: String, collection: String) {
+        send(
+            &self.tx,
+            Command::SetMonitorRotation {
+                monitor,
+                collection: (!collection.is_empty()).then_some(collection),
+            },
+        );
     }
 
     #[zbus(name = "reload_config")]
@@ -422,6 +482,11 @@ impl PlayerInterface {
     #[zbus(property, name = "monitor_states")]
     fn monitor_states(&self) -> HashMap<String, String> {
         self.snapshot().monitor_states
+    }
+
+    #[zbus(property, name = "rotations")]
+    fn rotations(&self) -> HashMap<String, String> {
+        self.snapshot().rotations
     }
 }
 

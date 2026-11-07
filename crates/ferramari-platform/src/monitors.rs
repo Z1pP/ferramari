@@ -185,14 +185,11 @@ pub fn start(tx: ferramari_core::CommandSender) -> Option<Watcher> {
         | NotifyMask::CRTC_CHANGE
         | NotifyMask::OUTPUT_CHANGE
         | NotifyMask::RESOURCE_CHANGE;
-    if connection
+    connection
         .randr_select_input(root, mask)
-        .ok()
-        .and_then(|cookie| cookie.check().ok())
-        .is_none()
-    {
-        return None;
-    }
+        .ok()?
+        .check()
+        .ok()?;
 
     let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let thread_stop = std::sync::Arc::clone(&stop);
@@ -236,5 +233,16 @@ mod tests {
     fn scale_falls_back_to_one_when_unset() {
         std::env::remove_var("GDK_SCALE");
         assert_eq!(super::window_scale(), 1);
+    }
+}
+
+
+/// XRandR-backed display provider for Linux X11/XWayland sessions.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct X11DisplayProvider;
+
+impl ferramari_core::platform::DisplayProvider for X11DisplayProvider {
+    fn displays(&self) -> Vec<MonitorInfo> {
+        list()
     }
 }

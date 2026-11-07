@@ -4,7 +4,7 @@ Video wallpaper for Linux, written in Rust.
 
 <img src="data/icons/hicolor/scalable/apps/io.github.ferramari.Ferramari.svg" width="128" height="128" alt="Ferramari icon: a crab holding the sun">
 
-Ferramari makes video and web content your desktop wallpaper. The name nods to
+Ferramari makes video content your desktop wallpaper. Web-page wallpapers are temporarily unavailable during the GTK-free migration. The name nods to
 iron (*ferrum*) and Rust's crab mascot.
 
 ## Screenshots
@@ -36,8 +36,7 @@ The interface has a hand-tuned dark palette as well as the light one:
 - Performance page with live CPU, RAM, thread, process and (where available)
   GPU metrics
 - Hardware decoding selector (Auto / VA-API / Off)
-- Web wallpapers via optional `web-wallpaper` feature (WebKitGTK 2.x gated
-  behind feature flag; see `docs/GTK_REMOVAL_AUDIT.md` §4 for alternatives)
+- Web-page wallpapers are temporarily unavailable while a GTK-free browser engine is evaluated; the current media backend reports this explicitly instead of silently failing
 - Reproducible benchmark harness (`make bench`) for startup, CPU, RAM,
   processes, GPU and mpv recovery
 - `--doctor` diagnostics for session/backend, desktop, media tools, DRM nodes,
@@ -51,7 +50,7 @@ The interface has a hand-tuned dark palette as well as the light one:
 - Browse a catalogue of live wallpapers with categories, search, sorting,
   resolution filters and a six-frame preview before installing
 - Streaming URLs through `yt-dlp` (YouTube and many other sites)
-- Any web page as the wallpaper (WebKitGTK, so WebGL/Unity/Godot work)
+- Web-page wallpapers are currently unavailable; a replacement browser engine is required before this feature can return
 - GNOME static wallpaper with a blurred frame from the video
 - Pause or mute playback per monitor when that monitor is covered by a
   maximized or fullscreen window (X11); the other monitors keep playing
@@ -75,55 +74,51 @@ The interface has a hand-tuned dark palette as well as the light one:
 
 | Dependency | Why |
 | --- | --- |
-| GTK 3 + WebKitGTK 4.1 (>= 2.40) | windows and the web-page wallpaper |
 | `mpv` | video playback (embedded through `--wid` and controlled via JSON IPC) |
 | `ffmpeg` / `ffprobe` | static wallpaper frame, thumbnails |
 | `yt-dlp` | only for streaming mode; use a current release (distro packages are often too old for YouTube) |
 
-An X11 session is used directly; on Wayland the app runs through XWayland
-(`GDK_BACKEND=x11` is set automatically).
+The current wallpaper surface backend uses X11 directly. On Wayland sessions it relies on XWayland; native Wayland wallpaper surfaces are not implemented.
 
 ### Build
 
 - Rust 1.88+ (a `rust-toolchain.toml` pins stable)
 - `pkg-config`, a C compiler
-- GTK 3 development headers
-- WebKitGTK 4.1 development headers (>= 2.40)
 - gettext (`msgfmt`) to build the translations; without it the app still
   builds and runs, but only the source (English) strings are installed
 
 Debian/Ubuntu:
 
 ```sh
-sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev gettext
+sudo apt install build-essential pkg-config gettext
 ```
 
 Fedora:
 
 ```sh
-sudo dnf install gcc pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel gettext
+sudo dnf install gcc pkgconf-pkg-config gettext
 ```
 
 Arch Linux:
 
 ```sh
-sudo pacman -S base-devel pkgconf gtk3 webkit2gtk-4.1 gettext
+sudo pacman -S base-devel pkgconf gettext
 ```
 
 ## Build, test, install
 
 ```sh
-cargo build --release
-cargo test
-cargo clippy --all-targets -- -D warnings
-cargo fmt --check
+cargo build --workspace --release --locked
+cargo test --workspace --locked
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo fmt --all
 ```
 
 Install (binary, desktop entry, AppStream metadata, icon, translations):
 
 ```sh
 # build as your user, then only install as root:
-cargo build --release
+cargo build --workspace --release --locked
 sudo make install CARGO=true            # PREFIX=/usr/local by default
 sudo make install CARGO=true PREFIX=/usr
 
@@ -141,11 +136,10 @@ Uninstall with `sudo make uninstall` (same `PREFIX`).
 
 ### Flatpak
 
-A self-hosted Flatpak manifest is available in `flatpak/`. It builds the app
-against the GNOME runtime and uses the host's `mpv`, `ffmpeg` and `yt-dlp`
-through `flatpak-spawn`; a Flathub submission with bundled media tools is not
-ready yet. See [`flatpak/README.md`](flatpak/README.md) for build and test
-instructions.
+A self-hosted manifest is present in `flatpak/`, but it targets the pre-Iced
+GTK/WebKitGTK build. It has not been migrated to the 2.0 split server/UI
+workspace and should not be used for 2.0 packaging yet. See
+[`flatpak/README.md`](flatpak/README.md) for the historical setup notes.
 
 ## Usage
 
@@ -160,21 +154,25 @@ ferramari --catalog https://catalog.example.org/v1  # inspect a Catalog API
 ferramari package --help    # checksum, sign and verify .ferramari packages
 ```
 
-A second `ferramari` invocation does not start another server: it asks the
-running instance to show its control window and exits.
+A second `ferramari` invocation does not start another wallpaper server: it asks the running server to launch the separate `ferramari-ui` control-surface binary and exits. Both binaries must be installed side by side.
 
 Local videos are read from `$XDG_VIDEOS_DIR/Ferramari` (usually
-`~/Videos/Ferramari`). The control window can open that folder, refresh the
-thumbnail grid, and apply a video to one monitor or all of them.
+`~/Videos/Ferramari`). The Iced library view covers recent videos, favourites
+and collections, supports applying a recent video to a chosen monitor, and lets
+you assign a rotation collection per monitor. Native file pickers and thumbnail
+management are still being restored.
 
 ### Packages
 
-Local Video → **Import…** accepts a `.ferramari` directory. A video package is
-installed under `$XDG_DATA_HOME/ferramari/packages`, applied to all monitors
-and shown in the library progress; a web package is applied as the current web
-wallpaper. Select a video and use **Export .ferramari** to create a package in
-a folder of your choice. The format, manifest fields and security limits are
-documented in [`docs/FERRAMARI_FORMAT.md`](docs/FERRAMARI_FORMAT.md).
+The Iced Library page exposes package import, export, signing, verification
+and key trust through the server. Until native file pickers land, enter absolute
+paths in the package controls. Import accepts a package source; export takes a
+video file and a destination folder. A video package is installed under
+`$XDG_DATA_HOME/ferramari/packages`, applied to the configured monitors and
+reported in the UI with progress, success and actionable errors. Web packages
+remain unavailable while the browser engine is absent. The format, manifest
+fields and security limits are documented in
+[`docs/FERRAMARI_FORMAT.md`](docs/FERRAMARI_FORMAT.md).
 
 Exported and imported packages can carry integrity data. `checksums.json`
 records the SHA-256 of every file, and `signature.json` holds an Ed25519
@@ -287,50 +285,43 @@ compiles them with `msgfmt`.
 
 ## Architecture
 
-One process, one GTK main loop, and a single command channel:
+The application is split into a wallpaper server and a separate Iced control surface. The server owns media playback and system integration; the UI is an ordinary D-Bus client:
 
 ```
-GUI / tray / D-Bus / X11 watcher / screen-lock watcher
-                      │  Command
-                      ▼
-                 ┌─────────┐
-                 │   App   │  (GTK main thread, owns all widgets)
-                 └────┬────┘
-      ┌───────────────┼────────────────┐
-      ▼               ▼                ▼
-WallpaperWindow   Config/D-Bus    GNOME background
- (mpv / WebKit)    snapshot       (ffmpeg + gsettings)
+             ferramari-ui (Iced)
+                    │
+             session D-Bus API
+                    │
+             ferramari server
+          ┌─────────┼──────────┐
+          ▼         ▼          ▼
+       Core      Platform    Media
+       policy    Linux/X11   mpv + X11
 ```
 
 | Path | Responsibility |
 | --- | --- |
-| `src/app.rs` | application state, command handling, mode switching |
-| `src/config.rs` | schema-v4 config, validation, 3.x migration |
-| `src/mpv.rs` | mpv process + a dedicated JSON IPC worker (volume, mute, pause, profiles) |
-| `src/eco.rs` | pure per-monitor Eco Engine policy and profiles |
-| `src/metrics.rs` | `/proc` + sysfs process-tree metrics for the Performance page |
-| `src/desktop.rs` | session/desktop detection and `--doctor` diagnostics |
-| `src/package.rs` | `.ferramari` manifest validation, import and export |
-| `src/plugin.rs` | declarative catalogue-source plugin discovery |
-| `src/catalog_api.rs` | first-party Catalog API v1 client |
-| `src/power.rs` | battery/AC state from `/sys/class/power_supply` |
-| `src/ui/control.rs` | control window (videos, streaming, web page, toggles) |
-| `src/util.rs` | gettext helpers, video discovery, string utilities |
-| `src/ui/online.rs` | wallpaper catalogue and preview/install dialog |
-| `src/catalogue.rs` | catalogue client: listing/search parsing, cache, download, frames |
-| `src/ui/wallpaper.rs` | one desktop-type window per monitor |
-| `src/x11.rs` | EWMH polling for per-monitor window coverage (replaces libwnck) |
-| `src/dbus.rs` | zbus server/player interfaces, single-instance logic |
-| `src/tray.rs` | StatusNotifierItem tray (`ksni`) |
-| `src/wallpaper.rs` | blurred static wallpaper, original-background restore |
-| `src/handlers.rs` | screen-lock and end-session signals |
-| `src/ytdlp.rs` | `yt-dlp -J` parsing and format selection (unit-tested) |
+| `src/app.rs` | wallpaper-server state, command handling and mode switching |
+| `crates/ferramari-ui` | separate Iced control surface and D-Bus client |
+| `crates/ferramari-core` | shared configuration, policy, catalogue, packages and data models |
+| `crates/ferramari-platform` | Linux session, tray, D-Bus, monitor and desktop integration |
+| `crates/ferramari-media` | mpv process control and native X11 wallpaper surfaces |
+| `src/app.rs` | wallpaper-server state machine and command handling |
+| `crates/ferramari-ui/src/main.rs` | Iced pages, UI state and D-Bus client calls |
+| `crates/ferramari-ui/src/client.rs` | D-Bus client and server-state snapshot |
+| `crates/ferramari-core/src/eco.rs` | pure per-monitor Eco Engine policy and profiles |
+| `crates/ferramari-core/src/config.rs` | schema-v4 config, validation and 3.x migration |
+| `crates/ferramari-core/src/package.rs` | `.ferramari` manifest validation, import and export logic |
+| `crates/ferramari-core/src/catalogue.rs` | catalogue listing/search, cache, download and frame generation |
+| `crates/ferramari-platform/src/dbus.rs` | zbus server/player interfaces and single-instance server ownership |
+| `crates/ferramari-platform/src/monitors.rs` | XRandR monitor discovery and hotplug watcher |
+| `crates/ferramari-platform/src/tray.rs` | StatusNotifierItem tray (`ksni`) |
+| `crates/ferramari-media/src/engine.rs` | per-monitor wallpaper playback engine |
+| `crates/ferramari-media/src/surface.rs` | native X11 wallpaper windows and mpv embed IDs |
 
-Threading rule: GTK widgets never leave the main thread. Background work
-(yt-dlp, HTTP checks, thumbnails, X11 polling, D-Bus, tray) sends commands or
-messages into the main loop.
+Threading rule: the Iced UI owns its widget tree on its event-loop thread. The wallpaper server owns media engines on its command-loop thread. The processes exchange commands and snapshots over the session D-Bus; background work returns plain data through channels or Iced tasks.
 
-The control window's Liquid Glass design system (tokens, material layers,
+The Iced control window's Liquid Glass design system (tokens, material layers,
 typography, motion and accessibility rules) is documented in
 [`docs/DESIGN.md`](docs/DESIGN.md). The stylesheet lives in
 `data/ui/ferramari.css` and is compiled into the binary.
@@ -369,7 +360,7 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 
 ## Known limitations
 
-- The app always runs on X11/XWayland (`GDK_BACKEND=x11`): a wallpaper window is
+- The wallpaper server currently uses X11/XWayland: a wallpaper window is
   a `DESKTOP`-type X11 toplevel and mpv embeds into it with `--wid`. Native
   Wayland has no background role in `xdg-shell`, and `wlr-layer-shell` is not
   available on GNOME, so native Wayland windows are not an option.
@@ -390,10 +381,10 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
   autostart inside the sandbox are not verified.
 - Two- and three-monitor performance scenarios are not measured on the current
   single-display test machine.
-- Streaming and web wallpapers use one shared source for all monitors; only
-  local video sources are assigned independently.
-- WebKitGTK has no public freeze API, so a hidden web wallpaper is muted but
-  its JavaScript timers and animations are only throttled, not stopped.- The Performance page reports GPU usage only where the driver exposes
+- Streaming currently uses one shared source for all monitors; local video
+  sources are assigned independently. Web-page wallpapers are temporarily
+  unavailable in 2.0.0.
+- The Performance page reports GPU usage only where the driver exposes
   `gpu_busy_percent` (currently AMDGPU). NVIDIA/Intel utilisation is shown as
   unavailable.
 - Multi-monitor, 4K/60, locked-screen and long-idle benchmarks are not yet
@@ -410,9 +401,7 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 
 ## Implementation notes
 
-- GTK 3 is kept on purpose: WebKitGTK 4.1 is the only WebKit line with a
-  maintained Rust binding, and the web-page wallpaper needs it. A GTK4 port is
-  possible once a `webkit6` binding appears.
+- GTK, GDK and WebKitGTK have been removed from the workspace manifests and lockfile. Web-page wallpapers are temporarily disabled because the former renderer was removed; an alternative browser process/engine has not yet been integrated.
 - Streaming needs a recent `yt-dlp`. The Ubuntu package can be months behind
   and then returns YouTube URLs that mpv cannot open (HTTP 403). The official
   binary is installed next to `ferramari` and is preferred automatically:
@@ -425,17 +414,15 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 
 - `mpv` is embedded with `--wid`, uses `--panscan=1.0` for the center-crop
   effect and is driven through its JSON IPC socket.
-- Everything runs in one process; the D-Bus method and property shape stays
-  stable for scripts and desktop integrations.
+- The server and Iced control surface are separate processes. The existing D-Bus method and property shape stays stable for scripts and desktop integrations.
 - Window state detection uses EWMH atoms over X11.
 - `-b` starts only the wallpaper, `-p` adds a startup delay, and `-r` resets the
   config (only when no instance is running).
-- No Flatpak manifest is shipped in this tree yet; the code keeps the Flatpak
-  code paths (`flatpak-spawn`, background portal, WebKit NVIDIA workaround).
+- A Flatpak manifest exists, but it still targets the pre-Iced GNOME/WebKitGTK build and has not been migrated or validated for the 2.0 workspace.
 
 ## Testing notes
 
-`cargo test` covers config parsing/migration (including per-field corruption),
+`cargo test --workspace` covers config parsing/migration (including per-field corruption),
 atomic saves and backup recovery, the player restart policy, yt-dlp and ffmpeg
 timeouts, per-monitor EWMH coverage, Eco Engine decisions, mpv IPC framing and
 the worker command order, process-tree metric parsing, session/desktop
@@ -444,8 +431,7 @@ safety, `.ferramari` validation/import/export, plugin manifest validation,
 Catalog API parsing/client validation and the catalogue parsers (cards,
 categories, search, signed download links, archive extraction, video probing
 and frame sheets).
-The GUI, video embedding, streaming, webpage, catalogue and library modes were
-smoke-tested on Ubuntu 26.04 / GNOME Wayland (XWayland). The full environment
+The former GTK GUI, video embedding, streaming, webpage, catalogue and library modes were smoke-tested on Ubuntu 26.04 / GNOME Wayland (XWayland) before the 2.0 migration. The Iced control surface and current X11 media surface require a fresh live-session smoke run; CI compilation alone does not prove correct wallpaper stacking, mpv embedding or tray activation. The full environment
 matrix and smoke checklist live in [`docs/TESTING.md`](docs/TESTING.md). To exercise the
 static-wallpaper code without touching your real background:
 

@@ -3,8 +3,7 @@
 //! [`Command`] into one channel. The owning thread drains it and mutates the
 //! application state, so state changes are serialised in one place.
 //!
-//! This module is deliberately toolkit-free: the GTK loop (today) and the Iced
-//! loop (after the UI migration) both drain the same channel.
+//! This module is deliberately toolkit-free: the Iced control surface and platform event sources both drain the same channel.
 
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender as StdSender};
@@ -12,8 +11,7 @@ use std::sync::mpsc::{self, Receiver, Sender as StdSender};
 use crate::config::Mode;
 use crate::package;
 use crate::signing;
-use crate::wake;
-use crate::x11::WindowState;
+use crate::window::WindowState;
 use crate::ytdlp;
 
 #[derive(Debug, Clone)]
@@ -145,6 +143,9 @@ pub struct Snapshot {
     pub autostart_enabled: bool,
     /// Monitor name → rotation collection id.
     pub rotations: std::collections::HashMap<String, String>,
+    /// Most recent long-running package operation result for UI clients.
+    pub operation_status: String,
+    pub operation_error: bool,
 }
 
 impl Default for Snapshot {
@@ -175,12 +176,14 @@ impl Default for Snapshot {
             is_show_systray: true,
             autostart_enabled: false,
             rotations: std::collections::HashMap::new(),
+            operation_status: String::new(),
+            operation_error: false,
         }
     }
 }
 
 /// Cloneable command handle shared with UI, D-Bus, tray and watcher threads.
-/// Sending also wakes the main loop, so it does not need to poll.
+/// The standard channel wakes the owning event loop when a command arrives.
 #[derive(Clone)]
 pub struct CommandSender(StdSender<Command>);
 
@@ -190,11 +193,7 @@ impl CommandSender {
     }
 
     pub fn send(&self, command: Command) -> Result<(), mpsc::SendError<Command>> {
-        let result = self.0.send(command);
-        if result.is_ok() {
-            wake::wake();
-        }
-        result
+        self.0.send(command)
     }
 }
 

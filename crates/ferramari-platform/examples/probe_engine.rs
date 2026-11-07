@@ -1,8 +1,8 @@
-//! End-to-end: the GTK-free playback Engine — native X11 surface + real mpv
+//! End-to-end: the GTK-free playback Engine — platform-owned X11 surface + real mpv
 //! in one object. Exercises play/pause/volume/mute/fps-cap against a live
 //! player and asserts mpv reparented its output into our window.
 //!
-//! Run: `DISPLAY=:0 cargo run -p ferramari-media --example probe_engine <video>`
+//! Run: `DISPLAY=:0 cargo run -p ferramari-platform --example probe_engine <video>`
 
 use std::time::Duration;
 
@@ -31,9 +31,16 @@ fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|| "/home/blanc/Videos/Ferramari/arcane-jinx.mp4".to_string());
     let monitor = root_monitor()?;
 
-    let mut engine =
-        ferramari_media::engine::Engine::video(&monitor, &video, 60, false, "balanced", "auto")?;
-    println!("engine up on {:#x}", engine.surface_xid());
+    let mut engine = ferramari_media::engine::Engine::video(
+        &ferramari_platform::surface::X11SurfaceProvider,
+        &monitor,
+        &video,
+        60,
+        false,
+        "balanced",
+        "auto",
+    )?;
+    println!("engine up on {:#x}", engine.surface_handle());
 
     // mpv must have reparented its output window into ours — the exact
     // contract the old GTK path relied on.
@@ -45,7 +52,7 @@ fn main() -> anyhow::Result<()> {
     // Inspect mpv's reparenting — windows are visible from *any* X
     // connection, so we open our own instead of borrowing the surface's.
     let (inspector, _) = x11rb::connect(None)?;
-    let cookie = inspector.query_tree(engine.surface_xid() as u32)?;
+    let cookie = inspector.query_tree(engine.surface_handle() as u32)?;
     let reply = cookie.reply()?;
     let tree = reply.children.len();
     drop(inspector);
@@ -103,7 +110,7 @@ fn main() -> anyhow::Result<()> {
         println!("load_video -> {second}: alive={}", engine.player_alive());
     }
 
-    let xid = engine.surface_xid() as u32;
+    let xid = engine.surface_handle() as u32;
     println!("dropping engine (kills mpv, unmaps window)");
     drop(engine);
     std::thread::sleep(Duration::from_millis(400));

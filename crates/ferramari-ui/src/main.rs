@@ -93,6 +93,7 @@ enum Message {
     Connected(Result<Server, String>),
     StateUpdated(ServerState),
     CommandFinished(Result<(), String>),
+    PackageRequestFinished(Result<(), String>),
 
     TogglePlay,
     ToggleMute,
@@ -118,8 +119,34 @@ enum Message {
     ToggleAutostart(bool),
 
     RefreshLibrary,
+    ToggleFavorite(String),
+    RemoveMedia(String),
+    CollectionNameChanged(String),
+    CreateCollection,
+    RenameCollection(String, String),
+    DeleteCollection(String),
+    AddToCollection(String, String),
+    RemoveFromCollection(String, String),
     Play(String),
+    PlayOnMonitor(String, String),
+    SetMonitorRotation(String, String),
     OpenFolder,
+    PickVideo,
+    VideoPicked(Option<PathBuf>),
+    VideoImported(Result<PathBuf, String>),
+    PickPackageSource,
+    PackageSourcePicked(Option<PathBuf>),
+    PickExportVideo,
+    ExportVideoPicked(Option<PathBuf>),
+    PickPackageParent,
+    PackageParentPicked(Option<PathBuf>),
+    PackageSourceChanged(String),
+    PackageParentChanged(String),
+    ImportPackage,
+    ExportPackage,
+    SignPackage,
+    VerifyPackage,
+    TrustPackageKey,
 
     OnlineSearchChanged(String),
     OnlineSearch,
@@ -154,6 +181,18 @@ struct StatusLine {
     error: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CollectionChoice {
+    id: String,
+    name: String,
+}
+
+impl std::fmt::Display for CollectionChoice {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.name)
+    }
+}
+
 struct App {
     page: Page,
     server: Option<Server>,
@@ -168,6 +207,10 @@ struct App {
     sample: Option<Sample>,
 
     library: Library,
+    collection_name: String,
+    collection_placeholder: String,
+    package_source: String,
+    package_parent: String,
     /// Slider position for the static wallpaper blur. Committed with the
     /// explicit Apply button, mirroring the GTK control: regenerating the
     /// blurred frame on every pixel of drag would be wasteful.
@@ -192,6 +235,10 @@ impl App {
                 metrics: Monitor::default(),
                 sample: None,
                 library,
+                collection_name: String::new(),
+                collection_placeholder: tr("New collection"),
+                package_source: String::new(),
+                package_parent: String::new(),
                 blur_draft: 5,
                 blur_dirty: false,
                 online: Online {
@@ -208,6 +255,47 @@ impl App {
         Semantics::resolve(&self.state.theme, self.system_dark)
     }
 
+    fn send_package_request<F, Fut>(&mut self, request: F, needs_parent: bool) -> Task<Message>
+    where
+        F: FnOnce(Server, String, String) -> Fut,
+        Fut: std::future::Future<Output = Result<(), String>> + Send + 'static,
+    {
+        let Some(server) = self.server.clone() else {
+            self.status = Some(StatusLine {
+                text: tr("Server is unavailable"),
+                error: true,
+            });
+            return Task::none();
+        };
+        let source = self.package_source.trim().to_string();
+        let parent = self.package_parent.trim().to_string();
+        if source.is_empty() || (needs_parent && parent.is_empty()) {
+            self.status = Some(StatusLine {
+                text: tr("Enter the required package paths"),
+                error: true,
+            });
+            return Task::none();
+        }
+        Task::perform(request(server, source, parent), Message::PackageRequestFinished)
+    }
+
+    fn persist_library(&mut self) -> Task<Message> {
+        if let Err(error) = self.library.save() {
+            self.status = Some(StatusLine {
+                text: error,
+                error: true,
+            });
+            return Task::none();
+        }
+        let Some(server) = self.server.clone() else {
+            return Task::none();
+        };
+        Task::perform(
+            async move { server.command("library_changed").await },
+            Message::CommandFinished,
+        )
+    }
+
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Navigate(page) => {
@@ -222,7 +310,7 @@ impl App {
                 self.ticks = self.ticks.wrapping_add(1);
                 let Some(server) = self.server.clone() else {
                     // Reconnect every few seconds while the server is down.
-                    if self.ticks % 5 == 0 {
+                    if self.ticks.is_multiple_of(5) {
                         return Task::perform(Server::connect(), Message::Connected);
                     }
                     return Task::none();
@@ -251,6 +339,12 @@ impl App {
                 let language_changed = state.language != self.state.language;
                 let reachable = state.reachable;
                 self.state = state;
+                if !self.state.operation_status.is_empty() {
+                    self.status = Some(StatusLine {
+                        text: self.state.operation_status.clone(),
+                        error: self.state.operation_error,
+                    });
+                }
                 if !reachable {
                     self.server = None;
                 }
@@ -261,6 +355,7 @@ impl App {
                     apply_language(&self.state.language);
                     self.applied_language = self.state.language.clone();
                     self.online.search_placeholder = tr("Search wallpapers…");
+                    self.collection_placeholder = tr("New collection");
                 }
                 Task::none()
             }
@@ -272,6 +367,19 @@ impl App {
                         error: true,
                     });
                 }
+                Task::none()
+            }
+            Message::PackageRequestFinished(result) => {
+                self.status = Some(match result {
+                    Ok(()) => StatusLine {
+                        text: tr("Package request queued; processing continues in the server"),
+                        error: false,
+                    },
+                    Err(error) => StatusLine {
+                        text: error,
+                        error: true,
+                    },
+                });
                 Task::none()
             }
 
@@ -328,6 +436,7 @@ impl App {
                 self.applied_language = language.clone();
                 self.state.language = language.clone();
                 self.online.search_placeholder = tr("Search wallpapers…");
+                self.collection_placeholder = tr("New collection");
                 set_string(self.server.as_ref(), "language", language)
             }
             Message::SetProfile(profile) => {
@@ -370,12 +479,168 @@ impl App {
                 self.library = Library::load();
                 Task::none()
             }
-            Message::Play(path) => play_video(self.server.as_ref(), path),
-            Message::OpenFolder => {
-                let dir = paths::video_wallpaper_dir();
-                let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
+            Message::ToggleFavorite(path) => {
+                self.library.toggle_favorite(&path);
+                self.persist_library()
+            }
+            Message::RemoveMedia(path) => {
+                if self.library.remove_media(&path) {
+                    self.persist_library()
+                } else {
+                    Task::none()
+                }
+            }
+            Message::CollectionNameChanged(name) => {
+                self.collection_name = name;
                 Task::none()
             }
+            Message::CreateCollection => {
+                if self.library.create_collection(&self.collection_name).is_some() {
+                    self.collection_name.clear();
+                    return self.persist_library();
+                }
+                Task::none()
+            }
+            Message::RenameCollection(id, name) => {
+                if self.library.rename_collection(&id, &name) {
+                    return self.persist_library();
+                }
+                Task::none()
+            }
+            Message::DeleteCollection(id) => {
+                if self.library.delete_collection(&id) {
+                    return self.persist_library();
+                }
+                Task::none()
+            }
+            Message::AddToCollection(id, path) => {
+                if self.library.add_to_collection(&id, &path) {
+                    return self.persist_library();
+                }
+                Task::none()
+            }
+            Message::RemoveFromCollection(id, path) => {
+                if self.library.remove_from_collection(&id, &path) {
+                    return self.persist_library();
+                }
+                Task::none()
+            }
+            Message::Play(path) => play_video(self.server.as_ref(), path),
+            Message::PlayOnMonitor(path, monitor) => {
+                play_video_on_monitor(self.server.as_ref(), path, monitor)
+            }
+            Message::SetMonitorRotation(monitor, collection) => {
+                let Some(server) = self.server.clone() else {
+                    return Task::none();
+                };
+                Task::perform(
+                    async move { server.set_monitor_rotation(monitor, collection).await },
+                    Message::CommandFinished,
+                )
+            }
+            Message::OpenFolder => {
+                open_folder(paths::video_wallpaper_dir());
+                Task::none()
+            }
+            Message::PickVideo => Task::perform(
+                async {
+                    rfd::AsyncFileDialog::new()
+                        .add_filter("Video", &["mp4", "mkv", "webm", "mov", "avi", "gif"])
+                        .pick_file()
+                        .await
+                        .map(|file| file.path().to_path_buf())
+                },
+                Message::VideoPicked,
+            ),
+            Message::VideoPicked(Some(source)) => Task::perform(
+                async move {
+                    tokio::task::spawn_blocking(move || Library::import_video(&source))
+                        .await
+                        .unwrap_or_else(|error| Err(error.to_string()))
+                },
+                Message::VideoImported,
+            ),
+            Message::VideoPicked(None) => Task::none(),
+            Message::VideoImported(Ok(path)) => {
+                self.status = Some(StatusLine {
+                    text: format!("{}: {}", tr("Added to library"), path.display()),
+                    error: false,
+                });
+                play_video(self.server.as_ref(), path.to_string_lossy().into_owned())
+            }
+            Message::VideoImported(Err(error)) => {
+                self.status = Some(StatusLine { text: error, error: true });
+                Task::none()
+            }
+            Message::PickPackageSource => Task::perform(
+                async {
+                    rfd::AsyncFileDialog::new()
+                        .set_title(tr("Choose package directory"))
+                        .pick_folder()
+                        .await
+                        .map(|folder| folder.path().to_path_buf())
+                },
+                Message::PackageSourcePicked,
+            ),
+            Message::PackageSourcePicked(Some(path)) => {
+                self.package_source = path.to_string_lossy().into_owned();
+                Task::none()
+            }
+            Message::PackageSourcePicked(None) => Task::none(),
+            Message::PickExportVideo => Task::perform(
+                async {
+                    rfd::AsyncFileDialog::new()
+                        .add_filter("Video", &["mp4", "mkv", "webm", "mov", "avi", "gif"])
+                        .set_title(tr("Choose video to export"))
+                        .pick_file()
+                        .await
+                        .map(|file| file.path().to_path_buf())
+                },
+                Message::ExportVideoPicked,
+            ),
+            Message::ExportVideoPicked(Some(path)) => {
+                self.package_source = path.to_string_lossy().into_owned();
+                Task::none()
+            }
+            Message::ExportVideoPicked(None) => Task::none(),
+            Message::PickPackageParent => Task::perform(
+                async {
+                    rfd::AsyncFileDialog::new()
+                        .set_title(tr("Choose export destination"))
+                        .pick_folder()
+                        .await
+                        .map(|folder| folder.path().to_path_buf())
+                },
+                Message::PackageParentPicked,
+            ),
+            Message::PackageParentPicked(Some(path)) => {
+                self.package_parent = path.to_string_lossy().into_owned();
+                Task::none()
+            }
+            Message::PackageParentPicked(None) => Task::none(),
+            Message::PackageSourceChanged(path) => {
+                self.package_source = path;
+                Task::none()
+            }
+            Message::PackageParentChanged(path) => {
+                self.package_parent = path;
+                Task::none()
+            }
+            Message::ImportPackage => self.send_package_request(|server, path, _| async move {
+                server.import_package(path).await
+            }, false),
+            Message::SignPackage => self.send_package_request(|server, path, _| async move {
+                server.sign_package(path).await
+            }, false),
+            Message::VerifyPackage => self.send_package_request(|server, path, _| async move {
+                server.verify_package(path).await
+            }, false),
+            Message::TrustPackageKey => self.send_package_request(|server, path, _| async move {
+                server.trust_key(path).await
+            }, false),
+            Message::ExportPackage => self.send_package_request(|server, video, parent| async move {
+                server.export_package(video, parent).await
+            }, true),
 
             // --- Online catalogue ------------------------------------------ //
             Message::OnlineSearchChanged(query) => {
@@ -700,6 +965,14 @@ impl App {
         );
 
         let mut monitors = Column::new().spacing(10);
+        let mut rotation_options = vec![CollectionChoice {
+            id: String::new(),
+            name: tr("No rotation"),
+        }];
+        rotation_options.extend(self.library.collections().iter().map(|collection| CollectionChoice {
+            id: collection.id.clone(),
+            name: collection.name.clone(),
+        }));
         let mut names: Vec<&String> = self.state.monitor_states.keys().collect();
         names.sort();
         if names.is_empty() {
@@ -723,6 +996,12 @@ impl App {
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| tr("No wallpaper set"));
+                let selected_rotation = self.state.rotations.get(name).cloned().unwrap_or_default();
+                let selected_choice = rotation_options
+                    .iter()
+                    .find(|choice| choice.id == selected_rotation)
+                    .cloned();
+                let monitor_name = name.clone();
                 monitors = monitors.push(
                     Row::new()
                         .spacing(12)
@@ -734,7 +1013,13 @@ impl App {
                                 .push(text(name.clone()).size(13).color(sem.text))
                                 .push(text(file).size(11).color(sem.text_muted)),
                         )
-                        .push(chip(state, sem)),
+                        .push(chip(state, sem))
+                        .push(text(tr("Rotation")).size(10).color(sem.text_muted))
+                        .push(pick_list(
+                            rotation_options.clone(),
+                            selected_choice,
+                            move |choice| Message::SetMonitorRotation(monitor_name.clone(), choice.id),
+                        )),
                 );
             }
         }
@@ -806,14 +1091,32 @@ impl App {
     }
 
     fn library(&self, sem: &'static Semantics) -> Element<'_, Message> {
+        let package_source_placeholder = tr("Package directory or video to export");
+        let package_parent_placeholder = tr("Export destination folder");
         let mut actions = Row::new().spacing(8);
         actions = actions
+            .push(secondary_button(tr("Add video"), Message::PickVideo, sem))
             .push(secondary_button(
                 tr("Refresh"),
                 Message::RefreshLibrary,
                 sem,
             ))
             .push(secondary_button(tr("Open folder"), Message::OpenFolder, sem));
+
+        let monitor_options: Vec<String> = {
+            let mut names: Vec<String> = self.state.monitor_states.keys().cloned().collect();
+            names.sort();
+            names
+        };
+        let collection_options: Vec<CollectionChoice> = self
+            .library
+            .collections()
+            .iter()
+            .map(|collection| CollectionChoice {
+                id: collection.id.clone(),
+                name: collection.name.clone(),
+            })
+            .collect();
 
         let mut body = Column::new().spacing(12);
         let history = self.library.history();
@@ -832,27 +1135,104 @@ impl App {
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| entry.path.clone());
-                body = body.push(
+                let mut row = Row::new()
+                    .spacing(12)
+                    .align_y(Alignment::Center)
+                    .push(
+                        Column::new()
+                            .spacing(2)
+                            .width(Length::Fill)
+                            .push(text(title).size(13).color(sem.text))
+                            .push(text(entry.path.clone()).size(10).color(sem.text_muted)),
+                    );
+                if !collection_options.is_empty() {
+                    let options = collection_options.clone();
+                    let path = entry.path.clone();
+                    row = row.push(pick_list(options, None::<CollectionChoice>, move |choice| {
+                        Message::AddToCollection(choice.id, path.clone())
+                    }));
+                }
+                if !monitor_options.is_empty() {
+                    let options = monitor_options.clone();
+                    let path = entry.path.clone();
+                    row = row.push(pick_list(options, None::<String>, move |monitor| {
+                        Message::PlayOnMonitor(path.clone(), monitor)
+                    }));
+                }
+                row = row
+                    .push(secondary_button(
+                        tr(if self.library.is_favorite(&entry.path) {
+                            "Remove favorite"
+                        } else {
+                            "Add to favorites"
+                        }),
+                        Message::ToggleFavorite(entry.path.clone()),
+                        sem,
+                    ))
+                    .push(secondary_button(
+                        tr("Play"),
+                        Message::Play(entry.path.clone()),
+                        sem,
+                    ))
+                    .push(secondary_button(
+                        tr("Remove from library"),
+                        Message::RemoveMedia(entry.path.clone()),
+                        sem,
+                    ));
+                body = body.push(row);
+            }
+        }
+
+        let mut favorites = Column::new().spacing(8);
+        if self.library.favorites().is_empty() {
+            favorites = favorites.push(
+                text(tr("No favorite videos"))
+                    .size(12)
+                    .color(sem.text_muted),
+            );
+        } else {
+            for path in self.library.favorites() {
+                let title = PathBuf::from(path)
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.clone());
+                favorites = favorites.push(
                     Row::new()
-                        .spacing(12)
+                        .spacing(10)
                         .align_y(Alignment::Center)
                         .push(
                             Column::new()
                                 .spacing(2)
                                 .width(Length::Fill)
                                 .push(text(title).size(13).color(sem.text))
-                                .push(text(entry.path.clone()).size(10).color(sem.text_muted)),
+                                .push(text(path.clone()).size(10).color(sem.text_muted)),
                         )
                         .push(secondary_button(
                             tr("Play"),
-                            Message::Play(entry.path.clone()),
+                            Message::Play(path.clone()),
+                            sem,
+                        ))
+                        .push(secondary_button(
+                            tr("Remove favorite"),
+                            Message::ToggleFavorite(path.clone()),
                             sem,
                         )),
                 );
             }
         }
 
-        let mut collections = Column::new().spacing(8);
+        let mut collections = Column::new().spacing(10);
+        collections = collections.push(
+            Row::new()
+                .spacing(8)
+                .align_y(Alignment::Center)
+                .push(
+                    text_input(self.collection_placeholder.as_str(), &self.collection_name)
+                        .on_input(Message::CollectionNameChanged)
+                        .width(Length::Fill),
+                )
+                .push(secondary_button(tr("Create"), Message::CreateCollection, sem)),
+        );
         if self.library.collections().is_empty() {
             collections = collections.push(
                 text(tr("No videos yet"))
@@ -861,21 +1241,66 @@ impl App {
             );
         } else {
             for collection in self.library.collections() {
-                collections = collections.push(
-                    Row::new()
-                        .spacing(10)
-                        .align_y(Alignment::Center)
-                        .push(
-                            Column::new()
-                                .spacing(2)
-                                .width(Length::Fill)
-                                .push(text(collection.name.clone()).size(13).color(sem.text))
+                let collection_id = collection.id.clone();
+                let rename_id = collection_id.clone();
+                let mut items = Column::new().spacing(6);
+                if collection.items.is_empty() {
+                    items = items.push(
+                        text(tr("No videos yet"))
+                            .size(11)
+                            .color(sem.text_muted),
+                    );
+                } else {
+                    for path in &collection.items {
+                        let item_id = collection_id.clone();
+                        items = items.push(
+                            Row::new()
+                                .spacing(8)
+                                .align_y(Alignment::Center)
                                 .push(
-                                    text(format!("{}", collection.items.len()))
-                                        .size(11)
-                                        .color(sem.text_muted),
-                                ),
-                        ),
+                                    text(
+                                        PathBuf::from(path)
+                                            .file_name()
+                                            .map(|name| name.to_string_lossy().into_owned())
+                                            .unwrap_or_else(|| path.clone()),
+                                    )
+                                    .size(12)
+                                    .width(Length::Fill),
+                                )
+                                .push(secondary_button(
+                                    tr("Play"),
+                                    Message::Play(path.clone()),
+                                    sem,
+                                ))
+                                .push(secondary_button(
+                                    tr("Remove from collection"),
+                                    Message::RemoveFromCollection(item_id, path.clone()),
+                                    sem,
+                                )),
+                        );
+                    }
+                }
+                collections = collections.push(
+                    Column::new()
+                        .spacing(8)
+                        .push(
+                            Row::new()
+                                .spacing(8)
+                                .align_y(Alignment::Center)
+                                .push(
+                                    text_input(self.collection_placeholder.as_str(), &collection.name)
+                                        .on_input(move |name| {
+                                            Message::RenameCollection(rename_id.clone(), name)
+                                        })
+                                        .width(Length::Fill),
+                                )
+                                .push(secondary_button(
+                                    tr("Delete collection"),
+                                    Message::DeleteCollection(collection_id),
+                                    sem,
+                                )),
+                        )
+                        .push(items),
                 );
             }
         }
@@ -908,8 +1333,42 @@ impl App {
             .push(card(
                 Column::new()
                     .spacing(10)
+                    .push(section_title(tr("Favorites"), sem))
+                    .push(favorites),
+                sem,
+            ))
+            .push(card(
+                Column::new()
+                    .spacing(10)
                     .push(section_title(tr("Collections"), sem))
                     .push(collections),
+                sem,
+            ))
+            .push(card(
+                Column::new()
+                    .spacing(10)
+                    .push(section_title(tr("Ferramari packages"), sem))
+                    .push(text(tr("Import, export, sign and verify .ferramari packages. Choose paths with native dialogs; operations run in the server.")).size(11).color(sem.text_muted))
+                    .push(Row::new().spacing(8).align_y(Alignment::Center)
+                        .push(text_input(package_source_placeholder.as_str(), &self.package_source)
+                            .on_input(Message::PackageSourceChanged)
+                            .padding(9)
+                            .width(Length::Fill))
+                        .push(secondary_button(tr("Package folder…"), Message::PickPackageSource, sem))
+                        .push(secondary_button(tr("Video…"), Message::PickExportVideo, sem)))
+                    .push(Row::new().spacing(8).align_y(Alignment::Center)
+                        .push(text_input(package_parent_placeholder.as_str(), &self.package_parent)
+                            .on_input(Message::PackageParentChanged)
+                            .padding(9)
+                            .width(Length::Fill))
+                        .push(secondary_button(tr("Destination…"), Message::PickPackageParent, sem)))
+                    .push(Row::new().spacing(8)
+                        .push(secondary_button(tr("Import package"), Message::ImportPackage, sem))
+                        .push(secondary_button(tr("Export video package"), Message::ExportPackage, sem))
+                        .push(secondary_button(tr("Sign package"), Message::SignPackage, sem)))
+                    .push(Row::new().spacing(8)
+                        .push(secondary_button(tr("Verify package"), Message::VerifyPackage, sem))
+                        .push(secondary_button(tr("Trust package key"), Message::TrustPackageKey, sem))),
                 sem,
             ))
             .into()
@@ -1033,21 +1492,38 @@ impl App {
             .into();
         };
 
+        let unavailable = tr("Unavailable");
+        let cpu = if sample.available {
+            format!("{:.1}%", sample.cpu_percent)
+        } else {
+            unavailable.clone()
+        };
+        let memory = if sample.available {
+            format!("{} MiB", sample.rss_bytes / 1_048_576)
+        } else {
+            unavailable.clone()
+        };
+        let threads = if sample.available {
+            sample.threads.to_string()
+        } else {
+            unavailable.clone()
+        };
+        let processes = if sample.available {
+            sample.processes.to_string()
+        } else {
+            unavailable.clone()
+        };
         let gpu = sample
             .gpu_percent
             .map(|value| format!("{value:.1}%"))
-            .unwrap_or_else(|| tr("Unavailable"));
+            .unwrap_or(unavailable);
 
         let stats = Row::new()
             .spacing(10)
-            .push(stat(tr("CPU"), format!("{:.1}%", sample.cpu_percent), sem))
-            .push(stat(
-                tr("Memory (RSS)"),
-                format!("{} MiB", sample.rss_bytes / 1_048_576),
-                sem,
-            ))
-            .push(stat(tr("Threads"), sample.threads.to_string(), sem))
-            .push(stat(tr("Processes"), sample.processes.to_string(), sem))
+            .push(stat(tr("CPU"), cpu, sem))
+            .push(stat(tr("Memory (RSS)"), memory, sem))
+            .push(stat(tr("Threads"), threads, sem))
+            .push(stat(tr("Processes"), processes, sem))
             .push(stat(tr("GPU"), gpu, sem));
 
         Column::new()
@@ -1257,17 +1733,19 @@ fn set_string(server: Option<&Server>, property: &'static str, value: String) ->
 }
 
 fn play_video(server: Option<&Server>, path: String) -> Task<Message> {
+    play_video_on_monitor(server, path, String::new())
+}
+
+fn play_video_on_monitor(
+    server: Option<&Server>,
+    path: String,
+    monitor: String,
+) -> Task<Message> {
     let Some(server) = server.cloned() else {
         return Task::none();
     };
     Task::perform(
-        async move {
-            // An empty monitor asks the server to use its normal target
-            // (the primary display in video mode).
-            server
-                .command_args("video", &(path, String::new()))
-                .await
-        },
+        async move { server.command_args("video", &(path, monitor)).await },
         Message::CommandFinished,
     )
 }
@@ -1570,6 +2048,16 @@ fn stat<M: 'static>(label: String, value: String, sem: &'static Semantics) -> El
 // i18n                                                                         //
 // ============================================================================ //
 
+fn open_folder(path: PathBuf) {
+    #[cfg(target_os = "linux")]
+    let mut command = std::process::Command::new("xdg-open");
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut command = std::process::Command::new("explorer");
+    let _ = command.arg(path).spawn();
+}
+
 fn init_i18n() {
     // SAFETY: called from the main thread before the event loop starts.
     unsafe {
@@ -1608,12 +2096,35 @@ fn locale_dir() -> PathBuf {
     PathBuf::from("/usr/share/locale")
 }
 
+const UI_INSTANCE_NAME: &str = "io.github.ferramari.Ferramari.ui";
+
+/// Keep a D-Bus name owned for the lifetime of the UI process. The server may
+/// ask to launch the UI more than once (tray activation, desktop entry, CLI),
+/// but only one control window should exist per session.
+fn acquire_ui_instance() -> Result<zbus::blocking::Connection, String> {
+    let connection = zbus::blocking::Connection::session().map_err(|error| error.to_string())?;
+    let flags = zbus::fdo::RequestNameFlags::DoNotQueue.into();
+    connection
+        .request_name_with_flags(UI_INSTANCE_NAME, flags)
+        .map_err(|error| format!("another Ferramari control window is already running: {error}"))?;
+    Ok(connection)
+}
+
 fn main() -> iced::Result {
-    paths::prepare_env();
     if let Some(language) = Config::language_override() {
         apply_language(&language);
     }
     init_i18n();
+
+    // Keep this connection in scope until Iced exits; dropping it releases
+    // the well-known name so the control surface can be opened again.
+    let _instance = match acquire_ui_instance() {
+        Ok(connection) => connection,
+        Err(error) => {
+            eprintln!("[GUI] {error}");
+            return Ok(());
+        }
+    };
 
     iced::application(App::boot, App::update, App::view)
         .title("Ferramari")

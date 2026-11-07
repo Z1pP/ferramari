@@ -12,6 +12,8 @@ use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Sample {
+    /// False when this platform has no supported process-tree sampler.
+    pub available: bool,
     /// CPU used by the whole process tree since the previous sample. The first
     /// sample reports 0 because there is no interval to divide by.
     pub cpu_percent: f64,
@@ -50,6 +52,7 @@ impl Monitor {
         };
         self.previous = Some((now, tree.ticks));
         Sample {
+            available: tree.processes > 0,
             cpu_percent,
             rss_bytes: tree.rss_bytes,
             threads: tree.threads,
@@ -243,6 +246,7 @@ mod tests {
     fn current_process_tree_contains_this_test() {
         let mut monitor = Monitor::default();
         let sample = monitor.sample();
+        assert!(sample.available);
         assert!(sample.processes >= 1);
         assert!(sample.threads >= 1);
         assert!(sample.rss_bytes > 0);

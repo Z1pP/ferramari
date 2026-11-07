@@ -714,3 +714,46 @@ msgstr "パッケージ…"
 msgid "Verify or sign this package"
 msgstr "パッケージを検証または署名"
 
+msgid "Remove favorite"
+msgstr "お気に入りから削除"
+
+msgid "Create"
+msgstr "作成"
+
+msgid "Collections"
+msgstr "コレクション"
+msgid "Ferramari packages"
+msgstr "Ferramari パッケージ"
+
+msgid "Import, export, sign and verify .ferramari packages. Enter absolute paths; operations run in the server."
+msgstr ".ferramari パッケージのインポート、エクスポート、署名、検証を行います。絶対パスを入力してください。処理はサーバーで実行されます。"
+
+msgid "Package file or directory"
+msgstr "パッケージファイルまたはディレクトリ"
+
+msgid "Export destination folder (for export)"
+msgstr "エクスポート先フォルダー"
+
+msgid "Import package"
+msgstr "パッケージをインポート"
+
+msgid "Export video package"
+msgstr "動画パッケージをエクスポート"
+
+msgid "Sign package"
+msgstr "パッケージに署名"
+
+msgid "Verify package"
+msgstr "パッケージを検証"
+
+msgid "Trust package key"
+msgstr "パッケージの鍵を信頼"
+
+msgid "Package request queued; processing continues in the server"
+msgstr "パッケージ処理をサーバーに送信しました"
+
+msgid "Enter the required package paths"
+msgstr "必要なパッケージパスを入力してください"
+
+msgid "Server is unavailable"
+msgstr "サーバーに接続できません"

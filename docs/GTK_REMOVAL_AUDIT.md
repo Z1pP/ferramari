@@ -1,4 +1,58 @@
-# Ferramari GTK/GDK Removal Audit — Phase 0
+# Ferramari GTK/GDK Removal Audit — current status
+
+> **Status update:** 2026-11-07, commit `037606c` and follow-up Iced migration work.
+> This status section supersedes the Phase 0 assumptions below where they
+> conflict. The original report is retained as historical migration input.
+
+## Current 2.0 workspace findings
+
+- The workspace contains `ferramari-core`, `ferramari-platform`,
+  `ferramari-media` and `ferramari-ui`.
+- `ferramari-ui` uses Iced 0.14 and communicates with the wallpaper server
+  through the session D-Bus. It is a separate executable.
+- GTK/GDK and WebKitGTK have now been removed from the workspace manifests and
+  lockfile. The dead `web-wallpaper` feature and its optional `webkit2gtk`
+  dependency were deleted; 42 packages used only by that dependency chain
+  were pruned from `Cargo.lock`. CI checks the all-features workspace graph
+  for GTK/GDK-family dependencies.
+- The old GTK WebKit renderer is gone. Web-page wallpapers are not currently
+  supported; do not advertise this capability until a replacement renderer exists.
+- The wallpaper surface implementation in `ferramari-media` is currently
+  X11-only (`x11rb`, mpv `--wid`). This is not a cross-platform surface API.
+- `ferramari-platform` contains Linux-specific modules (RandR, D-Bus,
+  StatusNotifierItem, GNOME background and session handlers). It does not yet
+  expose a complete backend trait/capability contract for Windows or macOS.
+- The old Flatpak manifest and its GNOME/WebKitGTK runtime have not been
+  migrated to the split server + Iced UI workspace.
+- The CI/Makefile/release packaging must build and ship both
+  `ferramari` and `ferramari-ui`; a root-package-only build is insufficient.
+
+## Required completion checks
+
+1. **Completed:** remove the unused `webkit2gtk` optional
+   dependency and feature, regenerate `Cargo.lock`, and prune the 42 packages
+   used only by the legacy GTK/WebKitGTK chain.
+2. Confirm the default and all-feature dependency trees contain no GTK/GDK/
+   WebKitGTK crates; the CI all-features dependency guard now enforces this.
+3. Run `cargo build --workspace --release --locked`,
+   `cargo test --workspace --locked`, and
+   `cargo clippy --workspace --all-targets --locked -- -D warnings`.
+4. Install both executables side by side and verify that the server can launch
+   exactly one Iced control surface over D-Bus.
+5. Run live X11/XWayland checks for mpv `--wid` embedding, desktop stacking,
+   monitor hotplug, lock/unlock, tray activation and clean shutdown.
+6. Restore remaining UI feature parity (package import/export/sign/verify,
+   file pickers, monitor assignment and any settings still missing from the
+   Iced surface). Favourites and collection CRUD/assignment are now present in
+   the Iced library page; they still need live-session persistence testing.
+7. Decide on a replacement web renderer before claiming web wallpaper support.
+8. Migrate Flatpak packaging or explicitly mark it unsupported for 2.0.
+9. Define the shared platform/surface contract before integrating macOS or
+   Windows backends.
+
+---
+
+# Historical Phase 0 audit
 
 > **Date:** 2026-11-05  
 > **Repository:** `hidamari-rust` (ferramari v1.9.4)  

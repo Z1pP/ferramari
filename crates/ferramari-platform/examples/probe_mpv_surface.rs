@@ -1,7 +1,7 @@
 //! End-to-end: a native X11 surface driven by mpv, with no GTK in the
 //! process. Proves the video wallpaper pipeline works on the platform layer.
 //!
-//! Run: `DISPLAY=:0 cargo run -p ferramari-platform --example probe_mpv_surface <video>`
+//! Run: `DISPLAY=:0 cargo run -p ferramari-platform --example probe_mpv_surface -- <video>`
 //!
 //! Exits after a few seconds; the mpv child is terminated via its Drop impl,
 //! which kills only the process this example spawned.
@@ -11,17 +11,27 @@ use std::time::Duration;
 use x11rb::connection::Connection as _;
 use x11rb::protocol::xproto::ConnectionExt as _;
 
+fn root_monitor() -> anyhow::Result<ferramari_core::MonitorInfo> {
+    let (connection, screen) = x11rb::connect(None)?;
+    let info = &connection.setup().roots[screen];
+    Ok(ferramari_core::MonitorInfo {
+        index: 0,
+        name: "probe".to_string(),
+        x: 0,
+        y: 0,
+        width: info.width_in_pixels as i32,
+        height: info.height_in_pixels as i32,
+        scale_factor: 1,
+        is_primary: true,
+    })
+}
+
 fn main() -> anyhow::Result<()> {
     let video = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "/home/blanc/Videos/Ferramari/arcane-jinx.mp4".to_string());
 
-    let monitors = ferramari_platform::monitors::list();
-    let monitor = monitors
-        .first()
-        .cloned()
-        .ok_or_else(|| anyhow::anyhow!("no monitors"))?;
-
+    let monitor = root_monitor()?;
     let surface = ferramari_platform::surface::create(&monitor)?;
     println!("surface {:#x} on {}", surface.xid, monitor.name);
 

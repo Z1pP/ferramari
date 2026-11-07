@@ -1,5 +1,11 @@
 # Ferramari audit — 2026-11-01
 
+> **Historical baseline:** This report describes the 1.9.x GTK architecture as of
+> 2026-11-01. It is not a description of the 2.0.0 workspace. The current
+> GTK-removal and Iced migration status is tracked in
+> [GTK_REMOVAL_AUDIT.md](GTK_REMOVAL_AUDIT.md); current live-session validation
+> is tracked in [TESTING.md](TESTING.md).
+
 This is the Phase 0 report from the Ferramari platform brief. It records what
 the repository actually does today, what is missing relative to the target
 platform, and which findings were addressed in the first stabilisation step.

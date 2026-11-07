@@ -16,24 +16,28 @@ LOCALEDIR  = $(DATADIR)/locale
 
 all: build
 
-build:
-	$(CARGO) build --release
+# Ferramari is a two-process application: the wallpaper server and the Iced
+# control surface must always be built and shipped together.
+build: release
+
+release:
+	$(CARGO) build --workspace --release --locked
 
 test:
-	$(CARGO) test
+	$(CARGO) test --workspace --locked
 
 fmt:
-	$(CARGO) fmt
+	$(CARGO) fmt --all
 
 lint:
-	$(CARGO) fmt --check
-	$(CARGO) clippy --all-targets -- -D warnings
+	$(CARGO) fmt --all
+	git diff --check
+	$(CARGO) clippy --workspace --all-targets --locked -- -D warnings
 
 run:
-	$(CARGO) run -- -d
+	$(CARGO) run -p ferramari -- -d
 
 # Usage: make bench VIDEO=/path/to/video.mp4 [PROFILE=balanced] [SECONDS=10]
-#        make bench MODE=web WEB=/path/to/page.html [SECONDS=10]
 VIDEO ?=
 WEB ?=
 MODE ?= video
@@ -56,17 +60,16 @@ translations:
 
 install: build
 	install -Dm755 "$(TARGET_DIR)/release/ferramari" "$(BINDIR)/ferramari"
+	install -Dm755 "$(TARGET_DIR)/release/ferramari-ui" "$(BINDIR)/ferramari-ui"
 	install -Dm644 "data/$(APP_ID).desktop" "$(APPDIR)/$(APP_ID).desktop"
 	sed -i 's|^Exec=.*|Exec=$(APP_EXEC)|' "$(APPDIR)/$(APP_ID).desktop"
 	install -Dm644 "data/$(APP_ID).metainfo.xml" "$(METAINFODIR)/$(APP_ID).metainfo.xml"
 	install -Dm644 "data/icons/hicolor/scalable/apps/$(APP_ID).svg" "$(ICONDIR)/$(APP_ID).svg"
 	@if command -v msgfmt >/dev/null 2>&1; then $(MAKE) translations; \
 	else echo "msgfmt not found: install gettext to build the translations"; fi
-	@if command -v gtk-update-icon-cache >/dev/null 2>&1; then \
-		gtk-update-icon-cache -qtf "$(DATADIR)/icons/hicolor" 2>/dev/null || true; fi
 
 uninstall:
-	rm -f "$(BINDIR)/ferramari"
+	rm -f "$(BINDIR)/ferramari" "$(BINDIR)/ferramari-ui"
 	rm -f "$(APPDIR)/$(APP_ID).desktop"
 	rm -f "$(METAINFODIR)/$(APP_ID).metainfo.xml"
 	rm -f "$(ICONDIR)/$(APP_ID).svg"

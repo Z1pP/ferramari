@@ -27,18 +27,16 @@ use crate::autostart;
 use crate::config::{Config, Mode};
 use crate::eco;
 use crate::error::{ErrorKind, UserError};
-use crate::handlers;
 use crate::library::Library;
-use crate::monitors::{self, MonitorInfo};
+use crate::monitors::MonitorInfo;
 use crate::package;
 use crate::paths;
-use crate::power;
 use crate::signing;
 use crate::supervisor::{RestartPolicy, Retry, MAX_RETRIES};
 use crate::tray;
 use crate::util;
 use crate::wallpaper::GnomeBackground;
-use crate::x11::{self, WindowState};
+use crate::window::{MonitorVisibility as WindowVisibility, WindowState};
 use crate::ytdlp;
 
 use ferramari_media::engine::{ContentKind, Engine, WindowKey};
@@ -68,6 +66,11 @@ pub struct App {
     pub windows: Vec<Engine>,
     pub snapshot: Arc<Mutex<Snapshot>>,
     tx: CommandSender,
+    surface_provider: Box<dyn ferramari_core::platform::WallpaperSurfaceProvider>,
+    display_provider: Box<dyn ferramari_core::platform::DisplayProvider>,
+    power_provider: Box<dyn ferramari_core::platform::PowerProvider>,
+    platform_event_source: Box<dyn ferramari_core::platform::PlatformEventSource>,
+    platform_watchers: Option<Box<dyn ferramari_core::platform::PlatformWatchers>>,
     weak_self: Weak<RefCell<App>>,
     background: bool,
     paused_by_user: bool,
@@ -101,14 +104,12 @@ pub struct App {
     /// Pending debounced config save; volume and blur sliders change fast.
     config_dirty_at: Option<Instant>,
     policies: HashMap<WindowKey, RestartPolicy>,
-    /// Kept alive so the EWMH watcher stops with the app.
-    window_watcher: Option<x11::Watcher>,
-    /// Kept alive so the RandR hotplug watcher stops with the app.
-    monitor_watcher: Option<monitors::Watcher>,
     /// When a debounced hotplug should be applied, from `Command::MonitorsChanged`.
     monitor_due: Option<Instant>,
     quit_requested: bool,
     gui_shown: bool,
+    operation_status: String,
+    operation_error: bool,
 }
 
 impl App {
@@ -116,6 +117,10 @@ impl App {
         args: &crate::cli::Args,
         tx: CommandSender,
         snapshot: Arc<Mutex<Snapshot>>,
+        surface_provider: Box<dyn ferramari_core::platform::WallpaperSurfaceProvider>,
+        display_provider: Box<dyn ferramari_core::platform::DisplayProvider>,
+        power_provider: Box<dyn ferramari_core::platform::PowerProvider>,
+        platform_event_source: Box<dyn ferramari_core::platform::PlatformEventSource>,
     ) -> Rc<RefCell<Self>> {
         paths::ensure_dirs();
         thread::Builder::new()
@@ -126,7 +131,7 @@ impl App {
                 util::cleanup_partial_files(&paths::static_cache_dir(), age);
             })
             .ok();
-        let monitors = monitors::list();
+        let monitors = display_provider.displays();
         let names: Vec<String> = monitors
             .iter()
             .map(|monitor| monitor.name.clone())
@@ -135,7 +140,7 @@ impl App {
         let background_wallpaper = GnomeBackground::capture();
         // Read the power supply once: two separate `status()` calls can
         // observe different states while a charger is being plugged in.
-        let power_status = power::status();
+        let power_status = power_provider.status();
         let idle_threshold = Arc::new(AtomicU64::new(
             config.idle_timeout_sec.clamp(30, 86_400) as u64,
         ));
@@ -146,6 +151,11 @@ impl App {
             windows: Vec::new(),
             snapshot,
             tx: tx.clone(),
+            surface_provider,
+            display_provider,
+            power_provider,
+            platform_event_source,
+            platform_watchers: None,
             weak_self: Weak::new(),
             background: args.background,
             paused_by_user: false,
@@ -169,11 +179,11 @@ impl App {
             pending_icon_refresh: false,
             config_dirty_at: None,
             policies: HashMap::new(),
-            window_watcher: None,
-            monitor_watcher: None,
             monitor_due: None,
             quit_requested: false,
             gui_shown: false,
+            operation_status: String::new(),
+            operation_error: false,
         };
         app.sync_snapshot();
 
@@ -194,7 +204,7 @@ impl App {
         let mut next_player = Instant::now();
         let mut next_rotation = Instant::now() + ROTATION_WATCH_EVERY;
         let mut next_power = Instant::now() + POWER_WATCH_EVERY;
-        let mut previous_power = power::status();
+        let mut previous_power = app.borrow().power_provider.status();
 
         while !app.borrow().quit_requested {
             // Sleep only until the earliest deadline, so an idle process still
@@ -235,7 +245,7 @@ impl App {
             }
             if now >= next_power {
                 next_power = now + POWER_WATCH_EVERY;
-                let status = power::status();
+                let status = app.borrow().power_provider.status();
                 if status != previous_power {
                     previous_power = status;
                     app.borrow_mut().handle(Command::PowerStatus {
@@ -257,22 +267,10 @@ impl App {
     }
 
     fn start_external_watchers(&mut self) {
-        let tx = self.tx.clone();
-        let idle_threshold = Arc::clone(&self.idle_threshold);
-
-        handlers::start_screen_lock_watcher(tx.clone());
-        handlers::start_end_session_watcher(tx.clone());
-        handlers::start_sleep_watcher(tx.clone());
-        handlers::start_logind_lock_watcher(tx.clone());
-        handlers::start_idle_watcher(tx.clone(), idle_threshold);
-        // The app always runs as an X11/XWayland client, so the EWMH watcher is
-        // useful on a Wayland session too: X11 fullscreen windows are listed
-        // in _NET_CLIENT_LIST even there. `x11::start` returns `None` when no
-        // X server answers at all, which is the only real failure mode.
-        self.window_watcher = x11::start(tx.clone());
-        // RandR replaces the GDK monitor signals: the watcher thread only ever
-        // touches the command channel.
-        self.monitor_watcher = monitors::start(tx);
+        self.platform_watchers = Some(self.platform_event_source.start(
+            self.tx.clone(),
+            Arc::clone(&self.idle_threshold),
+        ));
     }
 
     pub fn activate(&mut self) {
@@ -286,8 +284,7 @@ impl App {
         self.flush_config();
         self.close_windows();
         self.background_wallpaper.restore();
-        self.window_watcher = None;
-        self.monitor_watcher = None;
+        self.platform_watchers = None;
     }
 
     fn handle(&mut self, command: Command) {
@@ -488,8 +485,12 @@ impl App {
                     self.apply_playback_states();
                 }
             }
-            Command::LibraryChanged => {}
+            Command::LibraryChanged => {
+                *self.library.borrow_mut() = Library::load();
+                self.last_rotation.clear();
+            }
             Command::ImportPackage(source) => {
+                self.set_operation_status("Importing package…", false);
                 let tx = self.tx.clone();
                 let destination = paths::packages_dir();
                 thread::Builder::new()
@@ -502,6 +503,7 @@ impl App {
             }
             Command::PackageImported(result) => match result {
                 Ok(imported) => {
+                    self.set_operation_status(format!("Imported {}", imported.name), false);
                     log::info!(
                         "[Package] Imported {} ({}, {} bytes, preview={}, checksums={}, {})",
                         imported.name,
@@ -532,12 +534,16 @@ impl App {
                         }
                     }
                 }
-                Err(err) => self.notify_user_error(UserError::new(
-                    ErrorKind::FileSystem,
-                    format!("Could not import the package: {err}"),
-                )),
+                Err(err) => {
+                    self.set_operation_status(format!("Package import failed: {err}"), true);
+                    self.notify_user_error(UserError::new(
+                        ErrorKind::FileSystem,
+                        format!("Could not import the package: {err}"),
+                    ));
+                }
             },
             Command::ExportPackage { video, parent } => {
+                self.set_operation_status("Exporting video package…", false);
                 let tx = self.tx.clone();
                 thread::Builder::new()
                     .name("ferramari-package-export".to_string())
@@ -548,13 +554,20 @@ impl App {
                     .ok();
             }
             Command::PackageExported(result) => match result {
-                Ok(path) => log::info!("[Package] Exported {}", path.display()),
-                Err(err) => self.notify_user_error(UserError::new(
-                    ErrorKind::FileSystem,
-                    format!("Could not export the package: {err}"),
-                )),
+                Ok(path) => {
+                    self.set_operation_status(format!("Exported {}", path.display()), false);
+                    log::info!("[Package] Exported {}", path.display());
+                }
+                Err(err) => {
+                    self.set_operation_status(format!("Package export failed: {err}"), true);
+                    self.notify_user_error(UserError::new(
+                        ErrorKind::FileSystem,
+                        format!("Could not export the package: {err}"),
+                    ));
+                }
             },
             Command::SignPackage(dir) => {
+                self.set_operation_status("Signing package…", false);
                 let tx = self.tx.clone();
                 thread::Builder::new()
                     .name("ferramari-package-sign".to_string())
@@ -570,13 +583,20 @@ impl App {
                     .ok();
             }
             Command::PackageSigned(result) => match result {
-                Ok(dir) => log::info!("[Package] Signed {}", dir.display()),
-                Err(err) => self.notify_user_error(UserError::new(
-                    ErrorKind::FileSystem,
-                    format!("Could not sign the package: {err}"),
-                )),
+                Ok(dir) => {
+                    self.set_operation_status(format!("Signed {}", dir.display()), false);
+                    log::info!("[Package] Signed {}", dir.display());
+                }
+                Err(err) => {
+                    self.set_operation_status(format!("Package signing failed: {err}"), true);
+                    self.notify_user_error(UserError::new(
+                        ErrorKind::FileSystem,
+                        format!("Could not sign the package: {err}"),
+                    ));
+                }
             },
             Command::VerifyPackage(dir) => {
+                self.set_operation_status("Verifying package…", false);
                 let tx = self.tx.clone();
                 thread::Builder::new()
                     .name("ferramari-package-verify".to_string())
@@ -609,6 +629,19 @@ impl App {
                     .ok();
             }
             Command::PackageVerified(report) => {
+                let invalid = matches!(
+                    &report.signature,
+                    signing::SignatureStatus::Invalid { .. }
+                );
+                self.set_operation_status(
+                    format!(
+                        "Verified {}: checksums={}, {}",
+                        report.dir.display(),
+                        report.checksummed,
+                        report.signature.label()
+                    ),
+                    invalid,
+                );
                 log::info!(
                     "[Package] {} checksums={} {}",
                     report.dir.display(),
@@ -616,17 +649,29 @@ impl App {
                     report.signature.label()
                 );
             }
-            Command::TrustKey(path) => match signing::trust_source(&path) {
-                Ok(Some(key_id)) => log::info!("[Package] Trusted key {key_id}"),
-                Ok(None) => self.notify_user_error(UserError::new(
-                    ErrorKind::FileSystem,
-                    format!("{} carries no key to trust", path.display()),
-                )),
-                Err(err) => self.notify_user_error(UserError::new(
-                    ErrorKind::FileSystem,
-                    format!("Could not trust the key: {err}"),
-                )),
-            },
+            Command::TrustKey(path) => {
+                self.set_operation_status("Trusting package key…", false);
+                match signing::trust_source(&path) {
+                Ok(Some(key_id)) => {
+                    self.set_operation_status(format!("Trusted key {key_id}"), false);
+                    log::info!("[Package] Trusted key {key_id}");
+                }
+                Ok(None) => {
+                    self.set_operation_status("Package contains no signing key", true);
+                    self.notify_user_error(UserError::new(
+                        ErrorKind::FileSystem,
+                        format!("{} carries no key to trust", path.display()),
+                    ));
+                }
+                Err(err) => {
+                    self.set_operation_status(format!("Trust operation failed: {err}"), true);
+                    self.notify_user_error(UserError::new(
+                        ErrorKind::FileSystem,
+                        format!("Could not trust the key: {err}"),
+                    ));
+                }
+                }
+            }
             Command::SetMonitorRotation {
                 monitor,
                 collection,
@@ -706,7 +751,7 @@ impl App {
                 // `Config::load` re-reads the file, which does not contain it
                 // yet. Flush first, then merge the new monitor names.
                 self.flush_config();
-                self.monitors = monitors::list();
+                self.monitors = self.display_provider.displays();
                 let names: Vec<String> = self
                     .monitors
                     .iter()
@@ -1016,13 +1061,13 @@ impl App {
         let profile = self.config.playback_profile.as_str();
         let hwdec = self.config.hwdec.as_str();
         match key.kind {
-            ContentKind::Video => Engine::video(monitor, &key.source, volume, muted, profile, hwdec),
+            ContentKind::Video => Engine::video(self.surface_provider.as_ref(), monitor, &key.source, volume, muted, profile, hwdec),
             ContentKind::Stream => {
                 let stream = self
                     .stream
                     .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("stream is not resolved yet"))?;
-                Engine::stream(monitor, stream, volume, muted, profile, hwdec)
+                Engine::stream(self.surface_provider.as_ref(), monitor, stream, volume, muted, profile, hwdec)
             }
             ContentKind::Web => Engine::web(monitor, &key.source),
         }
@@ -1060,7 +1105,7 @@ impl App {
         // blink several times a minute; a reused player needs nothing.
         if self.pending_icon_refresh && !self.windows.is_empty() {
             self.pending_icon_refresh = false;
-            util::gnome_desktop_icon_workaround();
+            crate::gnome_extensions::gnome_desktop_icon_workaround();
         }
         self.sync_snapshot();
     }
@@ -1245,7 +1290,7 @@ impl App {
         }
     }
 
-    fn monitor_visibility(&self, monitor: &str) -> x11::MonitorVisibility {
+    fn monitor_visibility(&self, monitor: &str) -> WindowVisibility {
         self.monitors
             .iter()
             .find(|info| info.name == monitor)
@@ -1592,6 +1637,11 @@ impl App {
         }
     }
 
+    fn set_operation_status(&mut self, status: impl Into<String>, error: bool) {
+        self.operation_status = status.into();
+        self.operation_error = error;
+    }
+
     fn sync_snapshot(&self) {
         let snapshot = Snapshot {
             mode: self.config.mode,
@@ -1623,6 +1673,8 @@ impl App {
             is_show_systray: self.config.is_show_systray,
             autostart_enabled: autostart::is_enabled(),
             rotations: self.config.rotations.clone(),
+            operation_status: self.operation_status.clone(),
+            operation_error: self.operation_error,
         };
         if let Ok(mut shared) = self.snapshot.lock() {
             *shared = snapshot;
@@ -1649,13 +1701,17 @@ fn launch_control_surface() -> anyhow::Result<()> {
     };
     // A second `show_gui` while one window is open must not stack windows;
     // `ferramari-ui` exits immediately when another instance owns its name.
-    thread::Builder::new()
-        .name("ferramari-gui".to_string())
-        .spawn(move || {
-            let _ = std::process::Command::new(program).spawn();
+    // Spawning a process is quick and returning the error here lets
+    // show_gui() report a missing or non-executable UI binary to the log.
+    std::process::Command::new(&program)
+        .spawn()
+        .map(|_| ())
+        .map_err(|err| {
+            anyhow::anyhow!(
+                "could not launch control surface {}: {err}",
+                program.display()
+            )
         })
-        .ok();
-    Ok(())
 }
 
 /// Pure planning step: which wallpaper window should exist for every monitor
@@ -1746,6 +1802,7 @@ fn assign_video(
             return false;
         }
     }
+    let previous_mode = config.mode;
     config.mode = Mode::Video;
     match monitor {
         Some("all") | None => {
@@ -1756,9 +1813,16 @@ fn assign_video(
         }
         Some(name) => {
             config.data_source.insert(name.to_string(), path.clone());
-            let default = config.default_source().to_string();
-            if !Path::new(&default).is_file() {
-                config.data_source.insert("Default".to_string(), path);
+            if previous_mode != Mode::Video {
+                // A stream or webpage URL is not a local-video fallback for
+                // the other monitors. Remove it so only the selected monitor
+                // receives the newly assigned video.
+                config.data_source.remove("Default");
+            } else {
+                let default = config.default_source().to_string();
+                if !Path::new(&default).is_file() {
+                    config.data_source.insert("Default".to_string(), path);
+                }
             }
         }
     }

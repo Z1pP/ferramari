@@ -278,9 +278,11 @@ mod tests {
     fn accent_tokens_are_opaque_and_overlay_tokens_are_translucent() {
         // Surface tokens must stay translucent: that is what makes the glass
         // material read as glass rather than a flat panel.
-        assert!(Semantics::DARK.surface.a < 1.0);
-        assert!(Semantics::DARK.border.a < 1.0);
-        assert!(Semantics::DARK.accent.a == 1.0);
-        assert!(Semantics::DARK.text.a == 1.0);
+        const {
+            assert!(Semantics::DARK.surface.a < 1.0);
+            assert!(Semantics::DARK.border.a < 1.0);
+            assert!(Semantics::DARK.accent.a == 1.0);
+            assert!(Semantics::DARK.text.a == 1.0);
+        }
     }
 }

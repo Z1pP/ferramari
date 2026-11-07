@@ -46,6 +46,7 @@ pub struct ServerState {
     pub data_source: HashMap<String, String>,
     /// Monitor name → Eco state (`active`, `idle`, `occluded`, `suspended`).
     pub monitor_states: HashMap<String, String>,
+    pub rotations: HashMap<String, String>,
     /// PID of the server process, for metrics of the real workload.
     pub server_pid: Option<u32>,
 
@@ -63,6 +64,8 @@ pub struct ServerState {
     pub hwdec: String,
     pub web_allow_network: bool,
     pub autostart_enabled: bool,
+    pub operation_status: String,
+    pub operation_error: bool,
 }
 
 /// Cloneable handle to the session bus, addressed at the Ferramari server.
@@ -129,6 +132,51 @@ impl Server {
             .map_err(|e| e.to_string())
     }
 
+    pub async fn player_command_args<B>(&self, method: &str, body: &B) -> Result<(), String>
+    where
+        B: serde::Serialize + zvariant::DynamicType + Sync,
+    {
+        self.connection
+            .call_method(
+                Some(SERVER_NAME),
+                PLAYER_PATH,
+                Some(PLAYER_INTERFACE),
+                method,
+                body,
+            )
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn import_package(&self, source: String) -> Result<(), String> {
+        self.command_args("import_package", &(source,)).await
+    }
+
+    pub async fn export_package(&self, video: String, parent: String) -> Result<(), String> {
+        self.command_args("export_package", &(video, parent)).await
+    }
+
+    pub async fn sign_package(&self, directory: String) -> Result<(), String> {
+        self.command_args("sign_package", &(directory,)).await
+    }
+
+    pub async fn verify_package(&self, directory: String) -> Result<(), String> {
+        self.command_args("verify_package", &(directory,)).await
+    }
+
+    pub async fn trust_key(&self, source: String) -> Result<(), String> {
+        self.command_args("trust_key", &(source,)).await
+    }
+
+    pub async fn set_monitor_rotation(
+        &self,
+        monitor: String,
+        collection: String,
+    ) -> Result<(), String> {
+        self.player_command_args("set_monitor_rotation", &(monitor, collection)).await
+    }
+
     /// Write one server property through the standard Properties interface.
     pub async fn set_property(&self, property: &str, value: Value<'_>) -> Result<(), String> {
         let owned = OwnedValue::try_from(value).map_err(|e| e.to_string())?;
@@ -191,10 +239,13 @@ impl Server {
             state.hwdec = string_of(&values, "hwdec");
             state.web_allow_network = bool_of(&values, "web_allow_network");
             state.autostart_enabled = bool_of(&values, "autostart_enabled");
+            state.operation_status = string_of(&values, "operation_status");
+            state.operation_error = bool_of(&values, "operation_error");
         }
         if let Some(values) = self.get_all(PLAYER_PATH, PLAYER_INTERFACE).await {
             state.data_source = string_map_of(&values, "data_source");
             state.monitor_states = string_map_of(&values, "monitor_states");
+            state.rotations = string_map_of(&values, "rotations");
         }
         state
     }

@@ -9,12 +9,12 @@
 // keeps referring to `crate::paths`, `crate::util`, … unchanged.
 pub use ferramari_core::{
     bus, catalog_api, catalogue, cli, config, eco, error, library, metrics, package, paths,
-    plugin, power, signing, supervisor, thumbnails, util, wake, x11, ytdlp,
+    plugin, signing, supervisor, thumbnails, util, window, ytdlp,
 };
 pub use ferramari_core::MonitorInfo;
 pub use ferramari_core::bus::{Command, CommandReceiver, CommandSender, PackageReport, Snapshot};
 pub use ferramari_media::mpv;
-pub use ferramari_platform::{autostart, dbus, desktop, gnome_bg, handlers, monitors, tray};
+pub use ferramari_platform::{autostart, dbus, desktop, event_source, gnome_bg, gnome_extensions, handlers, monitors, power, surface, tray, x11};
 // The static-background module kept its historic name in the binary.
 pub use ferramari_platform::gnome_bg as wallpaper;
 
@@ -29,7 +29,6 @@ use app::App;
 use cli::PackageCommand;
 
 fn main() {
-    paths::prepare_env();
     let args = cli::Args::parse();
     init_logging(args.debug);
     // GNU gettext gives `LANGUAGE` priority over the system locale. The
@@ -107,9 +106,17 @@ fn main() {
     install_signal_handlers(&tx);
 
     log::info!("[Server] Started");
-    let app = App::new(&args, tx.clone(), Arc::clone(&snapshot));
+    let app = App::new(
+        &args,
+        tx.clone(),
+        Arc::clone(&snapshot),
+        Box::new(surface::X11SurfaceProvider),
+        Box::new(monitors::X11DisplayProvider),
+        Box::new(power::LinuxPowerProvider),
+        Box::new(event_source::LinuxPlatformEventSource),
+    );
     // Start the players (and the control surface unless `--background`)
-    // before waiting for commands, exactly as the GTK activate handler did.
+    // before waiting for commands, matching the server's startup contract.
     app.borrow_mut().activate();
     App::run(&app, rx);
     log::info!("[Server] Stopped");
@@ -124,6 +131,7 @@ fn main() {
 /// it the default action would kill the process mid-fade, and a handler
 /// could not send on the command channel without risking an async-signal-
 /// unsafe call. `sigwait` returns only for the signals we asked for.
+#[cfg(unix)]
 fn install_signal_handlers(tx: &CommandSender) {
     let tx = tx.clone();
     std::thread::Builder::new()
@@ -297,4 +305,11 @@ fn author_name(requested: &str) -> String {
         return requested.trim().to_string();
     }
     signing::default_author_name()
+}
+
+
+#[cfg(not(unix))]
+fn install_signal_handlers(_tx: &CommandSender) {
+    // Native console-control handling belongs to the Windows platform
+    // backend. Until that backend is enabled, retain the OS default behavior.
 }

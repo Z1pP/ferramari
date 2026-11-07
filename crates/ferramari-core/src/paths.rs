@@ -1,5 +1,4 @@
-//! File-system locations, environment detection and process-wide environment
-//! preparation.
+//! Cross-platform user-data locations and helper executable discovery.
 //!
 //! All knowledge about *where things live* is kept here so the rest of the
 //! program never builds paths by hand.
@@ -7,96 +6,82 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "linux")]
 use std::process::Command;
+#[cfg(target_os = "linux")]
 use std::time::Duration;
 
 pub const APP_ID: &str = "io.github.ferramari.Ferramari";
 pub const SERVER_NAME: &str = "io.github.ferramari.Ferramari.server";
 pub const TRANSLATION_DOMAIN: &str = "ferramari";
 
-/// Force the X11 backend (through XWayland on Wayland sessions).
-///
-/// Toplevel placement, the DESKTOP window type and `--wid` embedding of mpv
-/// all require X11. This must run before GTK is initialised.
-pub fn prepare_env() {
-    // Always force X11 (XWayland on Wayland): desktop-type windows, toplevel
-    // placement and mpv's `--wid` embedding are X11-only.
-    env::set_var("GDK_BACKEND", "x11");
-    prepare_webkit_env();
-}
-
-/// WebKitGTK's DMA-BUF renderer cannot allocate GBM buffers on the NVIDIA
-/// driver. If an NVIDIA GPU is present, steer WebKit to another render node,
-/// or fall back to shared-memory buffers on NVIDIA-only systems.
-fn prepare_webkit_env() {
-    const OVERRIDES: [&str; 3] = [
-        "WEBKIT_WEB_RENDER_DEVICE_FILE",
-        "WEBKIT_DMABUF_RENDERER_FORCE_SHM",
-        "WEBKIT_DISABLE_DMABUF_RENDERER",
-    ];
-    if OVERRIDES.iter().any(|var| env::var_os(var).is_some()) {
-        return;
-    }
-    let mut nodes = Vec::new();
-    let Ok(entries) = fs::read_dir("/dev/dri") else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if !name.starts_with("renderD") {
-            continue;
-        }
-        let driver = fs::canonicalize(format!("/sys/class/drm/{name}/device/driver"))
-            .ok()
-            .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
-            .unwrap_or_default();
-        nodes.push((entry.path(), driver));
-    }
-    if !nodes.iter().any(|(_, driver)| driver == "nvidia") {
-        return;
-    }
-    nodes.sort_by(|a, b| a.0.cmp(&b.0));
-    for (node, driver) in &nodes {
-        if driver != "nvidia" {
-            log::info!(
-                "[WebPlayer] Using render device {} ({driver})",
-                node.display()
-            );
-            env::set_var("WEBKIT_WEB_RENDER_DEVICE_FILE", node);
-            return;
-        }
-    }
-    log::info!("[WebPlayer] NVIDIA-only system, using SHM buffers for WebKit");
-    env::set_var("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1");
-}
-
+/// User home directory, independent of the host platform.
 pub fn home() -> PathBuf {
     env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
-fn xdg_config_home() -> PathBuf {
+#[cfg(target_os = "windows")]
+fn config_base() -> PathBuf {
+    env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join("AppData/Roaming"))
+}
+
+#[cfg(target_os = "macos")]
+fn config_base() -> PathBuf {
+    home().join("Library/Application Support")
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn config_base() -> PathBuf {
     env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| home().join(".config"))
 }
 
-fn xdg_cache_home() -> PathBuf {
+#[cfg(target_os = "windows")]
+fn cache_base() -> PathBuf {
+    env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join("AppData/Local"))
+}
+
+#[cfg(target_os = "macos")]
+fn cache_base() -> PathBuf {
+    home().join("Library/Caches")
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn cache_base() -> PathBuf {
     env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| home().join(".cache"))
 }
 
-fn xdg_data_home() -> PathBuf {
+#[cfg(target_os = "windows")]
+fn data_base() -> PathBuf {
+    env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join("AppData/Local"))
+}
+
+#[cfg(target_os = "macos")]
+fn data_base() -> PathBuf {
+    home().join("Library/Application Support")
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn data_base() -> PathBuf {
     env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| home().join(".local/share"))
 }
 
 pub fn config_dir() -> PathBuf {
-    xdg_config_home().join("ferramari")
+    config_base().join("ferramari")
 }
 
 pub fn config_path() -> PathBuf {
@@ -109,7 +94,7 @@ pub fn library_path() -> PathBuf {
 }
 
 pub fn autostart_dir() -> PathBuf {
-    xdg_config_home().join("autostart")
+    config_base().join("autostart")
 }
 
 pub fn autostart_path() -> PathBuf {
@@ -117,46 +102,42 @@ pub fn autostart_path() -> PathBuf {
 }
 
 pub fn thumbnail_cache_dir() -> PathBuf {
-    xdg_cache_home().join("ferramari").join("thumbnails")
+    cache_base().join("ferramari").join("thumbnails")
 }
 
 /// Cached blurred frames used for the GNOME static wallpaper.
 pub fn static_cache_dir() -> PathBuf {
-    xdg_cache_home().join("ferramari").join("static")
+    cache_base().join("ferramari").join("static")
 }
 
 /// Installed `.ferramari` packages.
 pub fn packages_dir() -> PathBuf {
-    xdg_data_home().join("ferramari").join("packages")
+    data_base().join("ferramari").join("packages")
 }
 
 /// Declarative plugin manifests.
 pub fn plugins_dir() -> PathBuf {
-    xdg_data_home().join("ferramari").join("plugins")
+    data_base().join("ferramari").join("plugins")
 }
 
 /// Cache for the online wallpaper catalogue (pages, previews, downloads).
 pub fn catalogue_cache_dir() -> PathBuf {
-    xdg_cache_home().join("ferramari").join("catalogue")
+    cache_base().join("ferramari").join("catalogue")
 }
 
 /// mpv IPC sockets. Kept in the cache rather than `/tmp` so a host mpv
 /// started through `flatpak-spawn` can reach the same path.
 pub fn mpv_socket_dir() -> PathBuf {
-    xdg_cache_home().join("ferramari").join("mpv")
+    cache_base().join("ferramari").join("mpv")
 }
 
-/// `$XDG_VIDEOS_DIR/Ferramari`, falling back to `$HOME/Ferramari` when
-/// `xdg-user-dir` is unavailable.
-///
-/// The lookup starts a helper process, and the Home page asks for the folder
-/// on every refresh (including volume-slider ticks). XDG user directories do
-/// not change during a session, so resolve it once.
+/// User folder for local wallpaper videos.
 pub fn video_wallpaper_dir() -> PathBuf {
     static VIDEO_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
     VIDEO_DIR.get_or_init(resolve_video_wallpaper_dir).clone()
 }
 
+#[cfg(target_os = "linux")]
 fn resolve_video_wallpaper_dir() -> PathBuf {
     let mut command = Command::new("xdg-user-dir");
     command.arg("VIDEOS");
@@ -166,26 +147,57 @@ fn resolve_video_wallpaper_dir() -> PathBuf {
         .filter(|dir| !dir.is_empty());
     match xdg {
         Some(dir) => Path::new(&dir).join("Ferramari"),
-        None => home().join("Ferramari"),
+        None => home().join("Videos").join("Ferramari"),
     }
 }
 
+#[cfg(target_os = "macos")]
+fn resolve_video_wallpaper_dir() -> PathBuf {
+    home().join("Movies").join("Ferramari")
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_video_wallpaper_dir() -> PathBuf {
+    home().join("Videos").join("Ferramari")
+}
+
 pub fn is_flatpak() -> bool {
-    Path::new("/.flatpak-info").is_file()
+    #[cfg(target_os = "linux")]
+    {
+        Path::new("/.flatpak-info").is_file()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
 }
 
 pub fn is_wayland() -> bool {
-    env::var("XDG_SESSION_TYPE")
-        .map(|v| v == "wayland")
-        .unwrap_or(false)
+    #[cfg(target_os = "linux")]
+    {
+        env::var("XDG_SESSION_TYPE")
+            .map(|v| v.eq_ignore_ascii_case("wayland"))
+            .unwrap_or(false)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
 }
 
 /// GNOME and Ubuntu report different values (`GNOME`, `ubuntu:GNOME`), so the
 /// check is a case-insensitive substring match.
 pub fn is_gnome() -> bool {
-    env::var("XDG_CURRENT_DESKTOP")
-        .map(|v| v.to_lowercase().contains("gnome"))
-        .unwrap_or(false)
+    #[cfg(target_os = "linux")]
+    {
+        env::var("XDG_CURRENT_DESKTOP")
+            .map(|v| v.to_lowercase().contains("gnome"))
+            .unwrap_or(false)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
 }
 
 /// Locate a helper program (mpv, yt-dlp). A copy next to the `ferramari`
@@ -202,6 +214,9 @@ pub fn tool(name: &str) -> std::path::PathBuf {
 }
 
 fn tool_in(dir: &Path, name: &str) -> std::path::PathBuf {
+    #[cfg(target_os = "windows")]
+    let candidate = dir.join(format!("{name}.exe"));
+    #[cfg(not(target_os = "windows"))]
     let candidate = dir.join(name);
     if candidate.is_file() {
         candidate
@@ -244,8 +259,12 @@ mod tests {
     fn tool_prefers_a_sibling_binary() {
         let dir = std::env::temp_dir().join(format!("ferramari-tool-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("mpv"), b"#!/bin/sh\n").unwrap();
-        assert_eq!(tool_in(&dir, "mpv"), dir.join("mpv"));
+        #[cfg(target_os = "windows")]
+        let sibling = dir.join("mpv.exe");
+        #[cfg(not(target_os = "windows"))]
+        let sibling = dir.join("mpv");
+        std::fs::write(&sibling, b"tool").unwrap();
+        assert_eq!(tool_in(&dir, "mpv"), sibling);
         assert_eq!(tool_in(&dir, "yt-dlp"), std::path::PathBuf::from("yt-dlp"));
         let _ = std::fs::remove_dir_all(dir);
     }

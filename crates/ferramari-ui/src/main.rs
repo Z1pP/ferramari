@@ -127,6 +127,7 @@ enum Message {
     AddToCollection(String, String),
     RemoveFromCollection(String, String),
     Play(String),
+    PlayOnMonitor(String, String),
     OpenFolder,
     PackageSourceChanged(String),
     PackageParentChanged(String),
@@ -507,6 +508,9 @@ impl App {
                 Task::none()
             }
             Message::Play(path) => play_video(self.server.as_ref(), path),
+            Message::PlayOnMonitor(path, monitor) => {
+                play_video_on_monitor(self.server.as_ref(), path, monitor)
+            }
             Message::OpenFolder => {
                 let dir = paths::video_wallpaper_dir();
                 let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
@@ -974,6 +978,11 @@ impl App {
             ))
             .push(secondary_button(tr("Open folder"), Message::OpenFolder, sem));
 
+        let monitor_options: Vec<String> = {
+            let mut names: Vec<String> = self.state.monitor_states.keys().cloned().collect();
+            names.sort();
+            names
+        };
         let collection_options: Vec<CollectionChoice> = self
             .library
             .collections()
@@ -1016,6 +1025,13 @@ impl App {
                     let path = entry.path.clone();
                     row = row.push(pick_list(options, None::<CollectionChoice>, move |choice| {
                         Message::AddToCollection(choice.id, path.clone())
+                    }));
+                }
+                if !monitor_options.is_empty() {
+                    let options = monitor_options.clone();
+                    let path = entry.path.clone();
+                    row = row.push(pick_list(options, None::<String>, move |monitor| {
+                        Message::PlayOnMonitor(path.clone(), monitor)
                     }));
                 }
                 row = row
@@ -1565,17 +1581,19 @@ fn set_string(server: Option<&Server>, property: &'static str, value: String) ->
 }
 
 fn play_video(server: Option<&Server>, path: String) -> Task<Message> {
+    play_video_on_monitor(server, path, String::new())
+}
+
+fn play_video_on_monitor(
+    server: Option<&Server>,
+    path: String,
+    monitor: String,
+) -> Task<Message> {
     let Some(server) = server.cloned() else {
         return Task::none();
     };
     Task::perform(
-        async move {
-            // An empty monitor asks the server to use its normal target
-            // (the primary display in video mode).
-            server
-                .command_args("video", &(path, String::new()))
-                .await
-        },
+        async move { server.command_args("video", &(path, monitor)).await },
         Message::CommandFinished,
     )
 }

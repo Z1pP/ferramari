@@ -52,7 +52,7 @@ fn main() -> anyhow::Result<()> {
     // Inspect mpv's reparenting — windows are visible from *any* X
     // connection, so we open our own instead of borrowing the surface's.
     let (inspector, _) = x11rb::connect(None)?;
-    let cookie = inspector.query_tree(engine.surface_xid() as u32)?;
+    let cookie = inspector.query_tree(engine.surface_handle() as u32)?;
     let reply = cookie.reply()?;
     let tree = reply.children.len();
     drop(inspector);
@@ -110,7 +110,7 @@ fn main() -> anyhow::Result<()> {
         println!("load_video -> {second}: alive={}", engine.player_alive());
     }
 
-    let xid = engine.surface_xid() as u32;
+    let xid = engine.surface_handle() as u32;
     println!("dropping engine (kills mpv, unmaps window)");
     drop(engine);
     std::thread::sleep(Duration::from_millis(400));

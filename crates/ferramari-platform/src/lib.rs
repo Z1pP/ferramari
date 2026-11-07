@@ -13,6 +13,7 @@ pub mod gnome_bg;
 pub mod gnome_extensions;
 pub mod handlers;
 pub mod monitors;
+pub mod power;
 pub mod tray;
 pub mod surface;
 pub mod x11;

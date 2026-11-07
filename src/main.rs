@@ -112,6 +112,7 @@ fn main() {
         tx.clone(),
         Arc::clone(&snapshot),
         Box::new(surface::X11SurfaceProvider),
+        Box::new(monitors::X11DisplayProvider),
     );
     // Start the players (and the control surface unless `--background`)
     // before waiting for commands, exactly as the GTK activate handler did.

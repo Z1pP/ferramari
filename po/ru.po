@@ -1071,3 +1071,38 @@ msgstr "Создать"
 
 msgid "Collections"
 msgstr "Коллекции"
+msgid "Ferramari packages"
+msgstr "Пакеты Ferramari"
+
+msgid "Import, export, sign and verify .ferramari packages. Enter absolute paths; operations run in the server."
+msgstr "Импортируйте, экспортируйте, подписывайте и проверяйте пакеты .ferramari. Укажите абсолютные пути; операции выполняются сервером."
+
+msgid "Package file or directory"
+msgstr "Файл пакета или каталог"
+
+msgid "Export destination folder (for export)"
+msgstr "Папка назначения (для экспорта)"
+
+msgid "Import package"
+msgstr "Импортировать пакет"
+
+msgid "Export video package"
+msgstr "Экспортировать видеопакет"
+
+msgid "Sign package"
+msgstr "Подписать пакет"
+
+msgid "Verify package"
+msgstr "Проверить пакет"
+
+msgid "Trust package key"
+msgstr "Доверять ключу пакета"
+
+msgid "Package request queued; processing continues in the server"
+msgstr "Запрос на обработку пакета отправлен серверу"
+
+msgid "Enter the required package paths"
+msgstr "Укажите необходимые пути к пакету"
+
+msgid "Server is unavailable"
+msgstr "Сервер недоступен"

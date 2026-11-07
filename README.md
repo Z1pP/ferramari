@@ -157,9 +157,10 @@ ferramari package --help    # checksum, sign and verify .ferramari packages
 A second `ferramari` invocation does not start another wallpaper server: it asks the running server to launch the separate `ferramari-ui` control-surface binary and exits. Both binaries must be installed side by side.
 
 Local videos are read from `$XDG_VIDEOS_DIR/Ferramari` (usually
-`~/Videos/Ferramari`). The current Iced library view covers recent videos,
-favourites and collections. Native file pickers and the remaining per-monitor
-library controls are still being restored.
+`~/Videos/Ferramari`). The Iced library view covers recent videos, favourites
+and collections, supports applying a recent video to a chosen monitor, and lets
+you assign a rotation collection per monitor. Native file pickers and thumbnail
+management are still being restored.
 
 ### Packages
 

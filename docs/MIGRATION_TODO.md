@@ -31,7 +31,7 @@ validation are complete. A successful compile alone is not a runtime pass.
 - [ ] Add native file/folder dialogs using portal-backed Linux dialogs and native macOS/Windows dialogs.
 - [x] Expose package import and export through the server D-Bus API and Iced UI (absolute-path entry fields for now).
 - [x] Expose package signing, signature verification and explicit trust-key actions in Iced.
-- [ ] Add progress, success and actionable error states for long-running operations.
+- [x] Add progress, success and actionable error states for package operations over D-Bus.
 - [ ] Restore all playback, hardware decoding, rotation, power and session settings.
 - [ ] Restore autostart and tray controls with clear capability reporting.
 - [ ] Audit catalogue browsing, download, preview and pagination against the old UI.
@@ -41,7 +41,8 @@ validation are complete. A successful compile alone is not a runtime pass.
 ## 3. Define and enforce the platform boundary
 
 - [ ] Define stable platform-neutral contracts for displays, wallpaper surfaces,
-      window tracking, session state, idle state and power events.
+      window tracking, session state, idle state and power events (display, surface and
+      event-source lifecycle contracts exist; remaining signals still need typed models).
 - [ ] Add explicit capability states: Supported, Partial and Unsupported.
 - [ ] Keep native handles and native API types inside platform/media adapters.
 - [ ] Ensure core models and policies do not import X11, Win32, Cocoa, D-Bus or
@@ -59,7 +60,8 @@ Current boundary progress:
 - GNOME Shell D-Bus integration and zbus dependency have been moved out of ferramari-core.
 - The obsolete GTK wakeup pipe was removed; std::sync::mpsc already wakes the command loop.
 - Monitor enumeration and wallpaper surface creation are still backed only by Linux/X11.
-- The main application still directly orchestrates Linux session, window and power services.
+- Linux session/window watcher startup and teardown now sit behind an injected PlatformEventSource.
+- Power-supply polling and desktop background handling still live in the application/Linux-specific modules.
 
 ## 4. Finish Linux backend
 

@@ -275,4 +275,193 @@ mod tests {
         assert_eq!(Profile::Quality.config_value(), "performance");
         assert_eq!(Profile::Eco.config_value(), "power");
     }
+
+    // -------------------------------------------------------------------------
+    // Extended coverage: every flag combination per profile
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn quality_play_always_unless_suspended_or_hidden() {
+        let empty = Signals::default();
+
+        // Idle alone never stops Quality profile.
+        let p_idle = plan(
+            Profile::Quality,
+            true,
+            Signals {
+                idle: true,
+                ..empty
+            },
+        );
+        assert!(p_idle.play);
+        assert_ne!(p_idle.state, State::Occluded);
+        assert_eq!(p_idle.state, State::Active);
+
+        // Idle+covered: occlusion still beats idle for Quality.
+        let p_idle_covered = plan(
+            Profile::Quality,
+            true,
+            Signals {
+                idle: true,
+                covered: true,
+                ..empty
+            },
+        );
+        assert!(!p_idle_covered.play);
+        assert_eq!(p_idle_covered.state, State::Occluded);
+
+        // Explicit occlusion only applies when smart_pause is on.
+        let covered = Signals {
+            covered: true,
+            ..empty
+        };
+        let p_smart = plan(Profile::Quality, true, covered);
+        assert_eq!(p_smart.state, State::Occluded);
+        assert!(!p_smart.play);
+        let p_no_smart = plan(Profile::Quality, false, covered);
+        assert!(p_no_smart.play);
+
+        // Fullscreen also counts as occlusion with smart_pause on.
+        let fullscreen = Signals {
+            fullscreen: true,
+            ..empty
+        };
+        assert_eq!(
+            plan(Profile::Quality, true, fullscreen).state,
+            State::Occluded
+        );
+        assert!(!plan(Profile::Quality, true, fullscreen).play);
+    }
+
+    #[test]
+    fn balanced_idle_triggers_framerate_cap_but_still_plays() {
+        let idle = Signals {
+            idle: true,
+            ..Signals::default()
+        };
+        let p = plan(Profile::Balanced, true, idle);
+        assert_eq!(p.state, State::Idle);
+        assert!(p.play);
+        assert_eq!(p.fps, Some(30));
+    }
+
+    #[test]
+    fn eco_idle_does_not_play_at_all() {
+        let idle = Signals {
+            idle: true,
+            ..Signals::default()
+        };
+        let p = plan(Profile::Eco, true, idle);
+        assert_eq!(p.state, State::Idle);
+        assert!(!p.play);
+        assert!(p.fps.is_none());
+    }
+
+    #[test]
+    fn battery_pause_wins_over_idle_activity() {
+        let idle_battery = Signals {
+            idle: true,
+            battery_paused: true,
+            ..Signals::default()
+        };
+        for profile in [Profile::Quality, Profile::Balanced, Profile::Eco] {
+            let p = plan(profile, true, idle_battery);
+            assert_eq!(p.state, State::Suspended);
+            assert!(!p.play);
+        }
+    }
+
+    #[test]
+    fn smart_pause_false_disables_occlusion_handling() {
+        let covered = Signals {
+            covered: true,
+            ..Signals::default()
+        };
+        for profile in [Profile::Quality, Profile::Balanced, Profile::Eco] {
+            assert!(plan(profile, false, covered).play);
+        }
+    }
+
+    #[test]
+    fn all_state_transitions_are_mutable_via_signals() {
+        let base = Signals::default();
+        // Active: no signals set
+        for prof in [Profile::Quality, Profile::Balanced] {
+            let p = plan(prof, true, base);
+            assert_eq!(p.state, State::Active);
+            assert!(p.play);
+        }
+        let eco_active = plan(Profile::Eco, true, base);
+        assert_eq!(eco_active.state, State::Active);
+        assert!(eco_active.play);
+
+        // Idle: active + idle signal
+        let idle_sig = Signals { idle: true, ..base };
+        assert_eq!(plan(Profile::Quality, true, idle_sig).state, State::Active);
+        assert_eq!(plan(Profile::Balanced, true, idle_sig).state, State::Idle);
+        assert_eq!(plan(Profile::Eco, true, idle_sig).state, State::Idle);
+
+        // Occluded: covered/fullscreen
+        let occluded = Signals {
+            covered: true,
+            ..base
+        };
+        for prof in [Profile::Quality, Profile::Balanced, Profile::Eco] {
+            assert_eq!(plan(prof, true, occluded).state, State::Occluded);
+        }
+
+        // Suspended: any high-priority signal
+        for field in [
+            "user_paused",
+            "screen_locked",
+            "suspended",
+            "battery_paused",
+        ] {
+            // Construct via bit flags equivalent
+            let suspended = match field {
+                "user_paused" => Signals {
+                    user_paused: true,
+                    ..base
+                },
+                "screen_locked" => Signals {
+                    screen_locked: true,
+                    ..base
+                },
+                "suspended" => Signals {
+                    suspended: true,
+                    ..base
+                },
+                _ => Signals {
+                    battery_paused: true,
+                    ..base
+                },
+            };
+            for prof in [Profile::Quality, Profile::Balanced, Profile::Eco] {
+                assert_eq!(plan(prof, true, suspended).state, State::Suspended);
+            }
+        }
+    }
+
+    #[test]
+    fn fps_caps_are_profile_specific_not_signal_dependent() {
+        let idle = Signals {
+            idle: true,
+            ..Signals::default()
+        };
+        let quality = plan(Profile::Quality, true, idle);
+        let balanced = plan(Profile::Balanced, true, idle);
+        let eco = plan(Profile::Eco, true, idle);
+        // Only Balanced applies a cap while playing; others are None.
+        assert!(quality.fps.is_none());
+        assert_eq!(balanced.fps, Some(30));
+        assert!(eco.fps.is_none());
+    }
+
+    #[test]
+    fn as_str_values_match_expected_strings() {
+        assert_eq!(State::Active.as_str(), "active");
+        assert_eq!(State::Idle.as_str(), "idle");
+        assert_eq!(State::Occluded.as_str(), "occluded");
+        assert_eq!(State::Suspended.as_str(), "suspended");
+    }
 }

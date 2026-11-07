@@ -111,6 +111,8 @@ pub struct App {
     monitor_due: Option<Instant>,
     quit_requested: bool,
     gui_shown: bool,
+    operation_status: String,
+    operation_error: bool,
 }
 
 impl App {
@@ -180,6 +182,8 @@ impl App {
             monitor_due: None,
             quit_requested: false,
             gui_shown: false,
+            operation_status: String::new(),
+            operation_error: false,
         };
         app.sync_snapshot();
 
@@ -1598,6 +1602,11 @@ impl App {
         }
     }
 
+    fn set_operation_status(&mut self, status: impl Into<String>, error: bool) {
+        self.operation_status = status.into();
+        self.operation_error = error;
+    }
+
     fn sync_snapshot(&self) {
         let snapshot = Snapshot {
             mode: self.config.mode,
@@ -1629,6 +1638,8 @@ impl App {
             is_show_systray: self.config.is_show_systray,
             autostart_enabled: autostart::is_enabled(),
             rotations: self.config.rotations.clone(),
+            operation_status: self.operation_status.clone(),
+            operation_error: self.operation_error,
         };
         if let Ok(mut shared) = self.snapshot.lock() {
             *shared = snapshot;

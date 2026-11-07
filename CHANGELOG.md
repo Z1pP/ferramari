@@ -1,5 +1,52 @@
 # Changelog
 
+## Unreleased
+
+Work on the migration tracker since 2.0.0. **259 tests** pass (178 core + 34
+platform + 20 media + 13 UI + 14 binary).
+
+- **A wallpaper now follows the physical monitor.** A config key was only as
+  durable as the enumeration that produced it, so a replugged screen that came
+  back labelled differently, or two identical panels reported in the opposite
+  order, silently swapped their wallpapers. Each display carries the connector,
+  EDID when the server exposes it, physical size and any backend-native id;
+  their digest is remembered in `~/.config/ferramari/display-ids.json` as the
+  key it owns. A screen seen for the first time keeps the name the backend
+  reported, so configs from 1.9.x are not rewritten, and a known screen reclaims
+  its key across replugs, reboots and reordered layouts. Two cloned monitors
+  over one output no longer share a key.
+- **Hardware decoding is measured, not assumed.** mpv accepts
+  `--hwdec=vaapi` on hardware without a VA-API path and decodes on the CPU
+  without a word about it. The decoder actually running is now read from the
+  player over IPC (mpv 0.41 reports it as `hwdec-current`), published as the
+  `hwdec_running` D-Bus property, compared against the setting, shown under it
+  when they disagree, and included in `--doctor`. Measured on the test machine:
+  the real wallpaper at `hwdec=auto` decodes as `vaapi`, which nothing reported
+  before.
+- **Resource metrics name their reason.** One `available` flag could not tell a
+  platform with no process sampler apart from a driver without
+  `gpu_busy_percent`, a server process that is gone, or the first sample of a
+  rate — all four showed as zeroes or as one generic "Unavailable". Each
+  reading is now `Value`, `Unsupported`, `Unavailable` or `Pending`, so an
+  unmeasurable thing no longer looks idle. A dead process tree also clears the
+  CPU interval instead of reporting a spike across the gap.
+- **Capability reporting decides per feature.** One X11 level was applied to
+  the surface, enumeration, hotplug and window tracking together, which
+  downgraded the two capabilities that genuinely work under XWayland. Each
+  level is now derived from its own evidence and carries the reason, printed as
+  an indented note by `--doctor`.
+- **CI audit job fixed.** `rustsec/audit-check` publishes its findings as a
+  check run; with only `contents: read` the Checks API call was rejected and
+  the job failed even though no critical advisory existed. The action swallows
+  that failure when `GITHUB_HEAD_REF` is set, which is why pull-request runs
+  stayed green while every push to `main` was red.
+- **The backend contract is written down.** `docs/BACKEND_CONTRACT.md` states
+  what a platform backend must provide, the threading and ownership model, the
+  event-ordering guarantees core relies on, the shutdown order and the display
+  identity rule, and records two gaps honestly: the D-Bus watchers cannot be
+  stopped before process exit, and under XWayland display identity is
+  connector-based because the compositor hides EDID.
+
 ## 2.0.0 — 2026-11-07
 
 **Major release: GTK removal complete, Iced UI, native event loop.**
@@ -45,8 +92,6 @@
 ### Migration guide
 
 See `docs/GTK_REMOVAL_AUDIT.md` for the full audit and migration plan.
-
-# Changelog
 
 ## 1.9.4 — 2026-11-04
 

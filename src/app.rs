@@ -1895,6 +1895,7 @@ fn kind_label(kind: ContentKind) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ferramari_core::DisplayIdentity;
 
     fn monitor(name: &str, x: i32) -> MonitorInfo {
         MonitorInfo {
@@ -1906,6 +1907,7 @@ mod tests {
             height: 1080,
             scale_factor: 1,
             is_primary: name == "eDP-1",
+            identity: DisplayIdentity::default(),
         }
     }
 
@@ -2076,6 +2078,7 @@ mod tests {
                     height: 1080,
                     scale_factor: 1,
                     is_primary: true,
+                    identity: DisplayIdentity::default(),
                 },
                 MonitorInfo {
                     index: 1,
@@ -2086,6 +2089,7 @@ mod tests {
                     height: 1080,
                     scale_factor: 1,
                     is_primary: false,
+                    identity: DisplayIdentity::default(),
                 },
             ];
             Self {

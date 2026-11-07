@@ -235,6 +235,7 @@ pub fn random_other_video(videos: &[PathBuf], current: &str) -> Option<PathBuf> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::monitor::DisplayIdentity;
 
     #[test]
     fn uri_to_path_decodes_escapes_and_refuses_remote_hosts() {
@@ -281,6 +282,7 @@ mod tests {
                 height: 1080,
                 scale_factor: 1,
                 is_primary: true,
+                identity: DisplayIdentity::default(),
             },
             MonitorInfo {
                 index: 1,
@@ -291,6 +293,7 @@ mod tests {
                 height: 1080,
                 scale_factor: 1,
                 is_primary: false,
+                identity: DisplayIdentity::default(),
             },
         ];
         assert_eq!(primary_source(&config, &monitors), "/a.mp4");

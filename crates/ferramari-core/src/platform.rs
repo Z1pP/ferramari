@@ -75,6 +75,7 @@ pub trait WallpaperSurfaceProvider {
 mod tests {
     use super::*;
     use crate::bus::{Command, CommandSender};
+    use crate::monitor::DisplayIdentity;
     use crate::power::PowerStatus;
     use std::sync::atomic::Ordering;
     use std::sync::mpsc;
@@ -114,6 +115,7 @@ mod tests {
             height: 1080,
             scale_factor: 1,
             is_primary: true,
+            identity: DisplayIdentity::default(),
         }
     }
 

@@ -430,6 +430,7 @@ fn needs_unpark(parked: bool, allowed: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ferramari_core::DisplayIdentity;
 
     fn key(kind: ContentKind, monitor: &str, source: &str) -> WindowKey {
         WindowKey {
@@ -488,6 +489,7 @@ mod tests {
             height: 1080,
             scale_factor: 1,
             is_primary: true,
+            identity: DisplayIdentity::default(),
         };
         let error = Engine::web(&monitor, "file:///tmp/a.html")
             .err()

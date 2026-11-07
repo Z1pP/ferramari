@@ -21,9 +21,17 @@
 //!
 //! Primary: RandR's `primary` flag, falling back to LVDS and then to the
 //! first monitor — the same cascade GDK uses.
+//!
+//! Identity: on top of the name, each display carries the connector, its
+//! physical size and the EDID property when the server exposes one. Core uses
+//! those to keep config keys attached to the same physical screen; see
+//! `ferramari_core::display_ids`. Under XWayland the compositor does not
+//! forward EDID, so the connector and size are all there is — the code reads
+//! the property and reports what it finds rather than assuming either case.
 
 use std::collections::HashSet;
 
+use ferramari_core::monitor::DisplayIdentity;
 pub use ferramari_core::MonitorInfo;
 
 /// The window scale GDK applies (`GDK_SCALE`), minimum 1.
@@ -44,6 +52,72 @@ struct RawMonitor {
     /// The RandR monitor atom name — the value GDK uses as the model.
     atom_name: String,
     is_primary: bool,
+    identity: DisplayIdentity,
+}
+
+fn output_edid(
+    connection: &impl x11rb::connection::Connection,
+    output: x11rb::protocol::randr::Output,
+) -> Option<Vec<u8>> {
+    use x11rb::protocol::randr::ConnectionExt as _;
+    use x11rb::protocol::xproto::ConnectionExt as _;
+    for name in [b"EDID".as_slice(), b"EDID_DATA".as_slice()] {
+        // `only_if_exists`: a zero atom means this server has no such
+        // property, which is the XWayland case rather than an error.
+        let Some(atom) = connection
+            .intern_atom(true, name)
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .map(|reply| reply.atom)
+            .filter(|atom| *atom != 0)
+        else {
+            continue;
+        };
+        let Some(reply) = connection
+            .randr_get_output_property(
+                output,
+                atom,
+                x11rb::protocol::xproto::AtomEnum::ANY,
+                0,
+                1024,
+                false,
+                false,
+            )
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+        else {
+            continue;
+        };
+        // Servers store EDID either as 8-bit bytes or as 32-bit words that
+        // each carry one byte, so both formats are accepted.
+        let bytes: Vec<u8> = match reply.format {
+            8 => reply.data.clone(),
+            // Word format: one EDID byte in the low byte of each item.
+            32 => reply.data.iter().copied().step_by(4).collect(),
+            _ => Vec::new(),
+        };
+        if !bytes.is_empty() {
+            return Some(bytes);
+        }
+    }
+    None
+}
+
+/// The connector name of an output, which is the stable part of a RandR
+/// monitor's identity (`eDP-1`, `HDMI-1`, …).
+fn output_name(
+    connection: &impl x11rb::connection::Connection,
+    output: x11rb::protocol::randr::Output,
+    timestamp: u32,
+) -> Option<String> {
+    use x11rb::protocol::randr::ConnectionExt as _;
+    let info = connection
+        .randr_get_output_info(output, timestamp)
+        .ok()?
+        .reply()
+        .ok()?;
+    let name = String::from_utf8_lossy(&info.name).into_owned();
+    (!name.is_empty()).then_some(name)
 }
 
 fn randr_monitors() -> (Vec<RawMonitor>, Option<i32>) {
@@ -63,6 +137,18 @@ fn randr_monitors() -> (Vec<RawMonitor>, Option<i32>) {
         return (Vec::new(), None);
     };
     let scale = window_scale();
+    // Connector names and EDID live on the outputs, so one resources query
+    // feeds every monitor. `GetScreenResourcesCurrent` is the cheap variant:
+    // it returns the cached layout instead of re-probing.
+    let resources = connection
+        .randr_get_screen_resources_current(root)
+        .ok()
+        .and_then(|cookie| cookie.reply().ok());
+    let config_timestamp = resources
+        .as_ref()
+        .map(|resources| resources.config_timestamp)
+        .unwrap_or(0);
+
     let monitors: Vec<RawMonitor> = reply
         .monitors
         .into_iter()
@@ -81,6 +167,22 @@ fn randr_monitors() -> (Vec<RawMonitor>, Option<i32>) {
             } else {
                 format!("Monitor {}", index + 1)
             };
+            let identity = DisplayIdentity {
+                // The monitor's own outputs, in the order the server reports
+                // them. A clone shares one output between two monitors, which
+                // is why identity is only trusted per attached output.
+                connector: monitor
+                    .outputs
+                    .first()
+                    .and_then(|output| output_name(&connection, *output, config_timestamp)),
+                edid: monitor
+                    .outputs
+                    .first()
+                    .and_then(|output| output_edid(&connection, *output)),
+                width_mm: monitor.width_in_millimeters,
+                height_mm: monitor.height_in_millimeters,
+                native_id: None,
+            };
             RawMonitor {
                 x: i32::from(monitor.x) / scale,
                 y: i32::from(monitor.y) / scale,
@@ -88,6 +190,7 @@ fn randr_monitors() -> (Vec<RawMonitor>, Option<i32>) {
                 height: i32::from(monitor.height) / scale,
                 atom_name,
                 is_primary: monitor.primary,
+                identity,
             }
         })
         .collect();
@@ -133,6 +236,7 @@ pub fn list() -> Vec<MonitorInfo> {
             height: raw.height,
             scale_factor: scale,
             is_primary: Some(index as i32) == primary_index,
+            identity: raw.identity.clone(),
         });
     }
     if monitors.is_empty() {

@@ -29,4 +29,4 @@ pub mod ytdlp;
 
 // Convenience aliases so call sites read the way the modules are known.
 pub use bus::{Command, CommandReceiver, CommandSender, PackageReport, Snapshot};
-pub use monitor::{display_name, geometry_matches, MonitorInfo};
+pub use monitor::{display_name, geometry_matches, DisplayIdentity, MonitorInfo};

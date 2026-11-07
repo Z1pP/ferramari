@@ -719,3 +719,6 @@ msgstr "お気に入りから削除"
 
 msgid "Create"
 msgstr "作成"
+
+msgid "Collections"
+msgstr "コレクション"

@@ -714,3 +714,5 @@ msgstr "パッケージ…"
 msgid "Verify or sign this package"
 msgstr "パッケージを検証または署名"
 
+msgid "Remove favorite"
+msgstr "お気に入りから削除"

@@ -29,7 +29,6 @@ use app::App;
 use cli::PackageCommand;
 
 fn main() {
-    paths::prepare_env();
     let args = cli::Args::parse();
     init_logging(args.debug);
     // GNU gettext gives `LANGUAGE` priority over the system locale. The

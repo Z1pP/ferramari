@@ -267,13 +267,21 @@ impl App {
         Task::perform(request(server, source, parent), Message::PackageRequestFinished)
     }
 
-    fn persist_library(&mut self) {
+    fn persist_library(&mut self) -> Task<Message> {
         if let Err(error) = self.library.save() {
             self.status = Some(StatusLine {
                 text: error,
                 error: true,
             });
+            return Task::none();
         }
+        let Some(server) = self.server.clone() else {
+            return Task::none();
+        };
+        Task::perform(
+            async move { server.command("library_changed").await },
+            Message::CommandFinished,
+        )
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -461,8 +469,7 @@ impl App {
             }
             Message::ToggleFavorite(path) => {
                 self.library.toggle_favorite(&path);
-                self.persist_library();
-                Task::none()
+                self.persist_library()
             }
             Message::CollectionNameChanged(name) => {
                 self.collection_name = name;
@@ -471,31 +478,31 @@ impl App {
             Message::CreateCollection => {
                 if self.library.create_collection(&self.collection_name).is_some() {
                     self.collection_name.clear();
-                    self.persist_library();
+                    return self.persist_library();
                 }
                 Task::none()
             }
             Message::RenameCollection(id, name) => {
                 if self.library.rename_collection(&id, &name) {
-                    self.persist_library();
+                    return self.persist_library();
                 }
                 Task::none()
             }
             Message::DeleteCollection(id) => {
                 if self.library.delete_collection(&id) {
-                    self.persist_library();
+                    return self.persist_library();
                 }
                 Task::none()
             }
             Message::AddToCollection(id, path) => {
                 if self.library.add_to_collection(&id, &path) {
-                    self.persist_library();
+                    return self.persist_library();
                 }
                 Task::none()
             }
             Message::RemoveFromCollection(id, path) => {
                 if self.library.remove_from_collection(&id, &path) {
-                    self.persist_library();
+                    return self.persist_library();
                 }
                 Task::none()
             }

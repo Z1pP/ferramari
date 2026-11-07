@@ -14,7 +14,7 @@ pub use ferramari_core::{
 pub use ferramari_core::MonitorInfo;
 pub use ferramari_core::bus::{Command, CommandReceiver, CommandSender, PackageReport, Snapshot};
 pub use ferramari_media::mpv;
-pub use ferramari_platform::{autostart, dbus, desktop, gnome_bg, handlers, monitors, surface, tray, x11};
+pub use ferramari_platform::{autostart, dbus, desktop, gnome_bg, gnome_extensions, handlers, monitors, surface, tray, x11};
 // The static-background module kept its historic name in the binary.
 pub use ferramari_platform::gnome_bg as wallpaper;
 

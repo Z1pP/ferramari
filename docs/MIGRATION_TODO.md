@@ -59,8 +59,10 @@ Current boundary progress:
 
 ## 4. Finish Linux backend
 
-- [ ] Move X11 wallpaper surface creation behind the platform surface contract.
-- [ ] Keep mpv/media playback independent from X11 connection ownership.
+- [x] Define a platform-neutral wallpaper surface contract in core.
+- [x] Move X11 wallpaper surface creation and native connection ownership into the platform crate.
+- [x] Inject a platform surface provider into the media engine; remove x11rb from media.
+- [ ] Add non-X11 surface providers for macOS and Windows.
 - [ ] Implement backend capability reporting for X11 and XWayland.
 - [ ] Test wallpaper stacking below desktop icons and above the root background.
 - [ ] Test mpv embedding, surface destruction and recovery after player crashes.

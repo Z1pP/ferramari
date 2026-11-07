@@ -130,6 +130,14 @@ enum Message {
     PlayOnMonitor(String, String),
     SetMonitorRotation(String, String),
     OpenFolder,
+    PickVideo,
+    VideoPicked(Option<PathBuf>),
+    PickPackageSource,
+    PackageSourcePicked(Option<PathBuf>),
+    PickExportVideo,
+    ExportVideoPicked(Option<PathBuf>),
+    PickPackageParent,
+    PackageParentPicked(Option<PathBuf>),
     PackageSourceChanged(String),
     PackageParentChanged(String),
     ImportPackage,
@@ -248,7 +256,7 @@ impl App {
     fn send_package_request<F, Fut>(&mut self, request: F, needs_parent: bool) -> Task<Message>
     where
         F: FnOnce(Server, String, String) -> Fut,
-        Fut: std::future::Future<Output = Result<(), String>> + 'static,
+        Fut: std::future::Future<Output = Result<(), String>> + Send + 'static,
     {
         let Some(server) = self.server.clone() else {
             self.status = Some(StatusLine {
@@ -522,10 +530,69 @@ impl App {
                 )
             }
             Message::OpenFolder => {
-                let dir = paths::video_wallpaper_dir();
-                let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
+                open_folder(paths::video_wallpaper_dir());
                 Task::none()
             }
+            Message::PickVideo => Task::perform(
+                async {
+                    rfd::AsyncFileDialog::new()
+                        .add_filter("Video", &["mp4", "mkv", "webm", "mov", "avi", "gif"])
+                        .pick_file()
+                        .await
+                        .map(|file| file.path().to_path_buf())
+                },
+                Message::VideoPicked,
+            ),
+            Message::VideoPicked(Some(path)) => {
+                play_video(self.server.as_ref(), path.to_string_lossy().into_owned())
+            }
+            Message::VideoPicked(None) => Task::none(),
+            Message::PickPackageSource => Task::perform(
+                async {
+                    rfd::AsyncFileDialog::new()
+                        .set_title(tr("Choose package directory"))
+                        .pick_folder()
+                        .await
+                        .map(|folder| folder.path().to_path_buf())
+                },
+                Message::PackageSourcePicked,
+            ),
+            Message::PackageSourcePicked(Some(path)) => {
+                self.package_source = path.to_string_lossy().into_owned();
+                Task::none()
+            }
+            Message::PackageSourcePicked(None) => Task::none(),
+            Message::PickExportVideo => Task::perform(
+                async {
+                    rfd::AsyncFileDialog::new()
+                        .add_filter("Video", &["mp4", "mkv", "webm", "mov", "avi", "gif"])
+                        .set_title(tr("Choose video to export"))
+                        .pick_file()
+                        .await
+                        .map(|file| file.path().to_path_buf())
+                },
+                Message::ExportVideoPicked,
+            ),
+            Message::ExportVideoPicked(Some(path)) => {
+                self.package_source = path.to_string_lossy().into_owned();
+                Task::none()
+            }
+            Message::ExportVideoPicked(None) => Task::none(),
+            Message::PickPackageParent => Task::perform(
+                async {
+                    rfd::AsyncFileDialog::new()
+                        .set_title(tr("Choose export destination"))
+                        .pick_folder()
+                        .await
+                        .map(|folder| folder.path().to_path_buf())
+                },
+                Message::PackageParentPicked,
+            ),
+            Message::PackageParentPicked(Some(path)) => {
+                self.package_parent = path.to_string_lossy().into_owned();
+                Task::none()
+            }
+            Message::PackageParentPicked(None) => Task::none(),
             Message::PackageSourceChanged(path) => {
                 self.package_source = path;
                 Task::none()
@@ -999,8 +1066,11 @@ impl App {
     }
 
     fn library(&self, sem: &'static Semantics) -> Element<'_, Message> {
+        let package_source_placeholder = tr("Package directory or video to export");
+        let package_parent_placeholder = tr("Export destination folder");
         let mut actions = Row::new().spacing(8);
         actions = actions
+            .push(secondary_button(tr("Choose video"), Message::PickVideo, sem))
             .push(secondary_button(
                 tr("Refresh"),
                 Message::RefreshLibrary,
@@ -1248,15 +1318,20 @@ impl App {
                 Column::new()
                     .spacing(10)
                     .push(section_title(tr("Ferramari packages"), sem))
-                    .push(text(tr("Import, export, sign and verify .ferramari packages. Enter absolute paths; operations run in the server." )).size(11).color(sem.text_muted))
-                    .push(text_input(tr("Package file or directory"), &self.package_source)
-                        .on_input(Message::PackageSourceChanged)
-                        .padding(9)
-                        .width(Length::Fill))
-                    .push(text_input(tr("Export destination folder (for export)"), &self.package_parent)
-                        .on_input(Message::PackageParentChanged)
-                        .padding(9)
-                        .width(Length::Fill))
+                    .push(text(tr("Import, export, sign and verify .ferramari packages. Choose paths with native dialogs; operations run in the server.")).size(11).color(sem.text_muted))
+                    .push(Row::new().spacing(8).align_y(Alignment::Center)
+                        .push(text_input(package_source_placeholder.as_str(), &self.package_source)
+                            .on_input(Message::PackageSourceChanged)
+                            .padding(9)
+                            .width(Length::Fill))
+                        .push(secondary_button(tr("Package folder…"), Message::PickPackageSource, sem))
+                        .push(secondary_button(tr("Video…"), Message::PickExportVideo, sem)))
+                    .push(Row::new().spacing(8).align_y(Alignment::Center)
+                        .push(text_input(package_parent_placeholder.as_str(), &self.package_parent)
+                            .on_input(Message::PackageParentChanged)
+                            .padding(9)
+                            .width(Length::Fill))
+                        .push(secondary_button(tr("Destination…"), Message::PickPackageParent, sem)))
                     .push(Row::new().spacing(8)
                         .push(secondary_button(tr("Import package"), Message::ImportPackage, sem))
                         .push(secondary_button(tr("Export video package"), Message::ExportPackage, sem))
@@ -1943,6 +2018,16 @@ fn stat<M: 'static>(label: String, value: String, sem: &'static Semantics) -> El
 // i18n                                                                         //
 // ============================================================================ //
 
+fn open_folder(path: PathBuf) {
+    #[cfg(target_os = "linux")]
+    let mut command = std::process::Command::new("xdg-open");
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut command = std::process::Command::new("explorer");
+    let _ = command.arg(path).spawn();
+}
+
 fn init_i18n() {
     // SAFETY: called from the main thread before the event loop starts.
     unsafe {
@@ -1996,7 +2081,6 @@ fn acquire_ui_instance() -> Result<zbus::blocking::Connection, String> {
 }
 
 fn main() -> iced::Result {
-    paths::prepare_env();
     if let Some(language) = Config::language_override() {
         apply_language(&language);
     }

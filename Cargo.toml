@@ -19,20 +19,10 @@ readme = "README.md"
 keywords = ["wallpaper", "video", "linux"]
 categories = ["multimedia::video", "graphics"]
 
-[features]
-default = []
-# Webpage wallpapers need a browser engine. WebKitGTK 2.x is only published
-# with GTK 3 bindings, so enabling this feature pulls the whole GTK line back
-# in. The default build has no toolkit at all; see docs/GTK_REMOVAL_AUDIT.md
-# §4 for the engine candidates that would let this feature go away.
-web-wallpaper = ["dep:webkit2gtk"]
-
 [dependencies]
 ferramari-core = { path = "crates/ferramari-core" }
 ferramari-platform = { path = "crates/ferramari-platform" }
 ferramari-media = { path = "crates/ferramari-media" }
-
-webkit2gtk = { version = "2.0", features = ["v2_40"], optional = true }
 
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }

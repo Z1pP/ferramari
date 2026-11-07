@@ -58,9 +58,15 @@ validation are complete. A successful compile alone is not a runtime pass.
       hand one key to two surfaces. `--doctor` reports the identity per display.
       Under XWayland EDID is hidden by the compositor, so identity is connector-
       based there and the report says so instead of claiming more.
-- [ ] Specify event ordering, thread affinity, cancellation and backend shutdown.
+- [x] Specify event ordering, thread affinity, cancellation and backend shutdown
+      — `docs/BACKEND_CONTRACT.md` §3-§5: one command-loop owner, watchers only send
+      commands, periodic jobs are deadlines, hotplug is debounced, config is flushed
+      before it is re-read, session signals aggregate, `Drop` of the watcher token is
+      the teardown signal. The D-Bus watchers cannot be stopped before process exit and
+      the document records that as a known gap instead of claiming it works.
 - [x] Add contract tests with fake display/window/session providers (see `crates/ferramari-core/src/platform.rs` tests).
-- [ ] Document the backend contract before accepting a second OS implementation.
+- [x] Document the backend contract before accepting a second OS implementation —
+      `docs/BACKEND_CONTRACT.md`, including the §8 checklist a second backend must pass.
 
 Current boundary progress:
 - Core config, cache, data and video-library roots now resolve to native per-user locations on Linux, macOS and Windows; Linux keeps its XDG/`xdg-user-dir` behavior.

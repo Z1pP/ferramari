@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Work on the migration tracker since 2.0.0. **259 tests** pass (178 core + 34
+Work on the migration tracker since 2.0.0. **305 tests** pass (219 core + 39
 platform + 20 media + 13 UI + 14 binary).
 
 - **A wallpaper now follows the physical monitor.** A config key was only as
@@ -46,6 +46,27 @@ platform + 20 media + 13 UI + 14 binary).
   identity rule, and records two gaps honestly: the D-Bus watchers cannot be
   stopped before process exit, and under XWayland display identity is
   connector-based because the compositor hides EDID.
+- **Session signals are typed models, not booleans.** Lock state used to be
+  three booleans whose aggregation rule lived twice. `session::LockState` now
+  keeps one bit per source (screensaver service, session manager) and states
+  the rule once, so a logind unlock cannot cancel a lock the screensaver still
+  holds. Idle gained a third state: `IdleState::Unknown` says the idle facility
+  did not answer, which is not the same as the user being active. `pauses_playback`
+  resolves it conservatively, so a screensaver service that vanished during a
+  shell restart cannot leave the wallpaper paused forever. Idle polling logic
+  moved out of the thread closure into a testable `IdlePoller`.
+- **`ferramari package lint` for creators.** `package::load` answers "may this
+  be applied"; a creator preparing a release needs "what will a recipient see".
+  Import happily accepts a package with no description, no preview and no
+  resolution, and it renders as a blank card. lint splits findings into errors
+  (do not publish: import refuses, or the signature does not verify — import
+  itself would still copy a tampered package) and warnings (publishable but
+  degraded). Findings carry stable codes so CI can filter (`--json`,
+  `--ignore preview-missing`); a typo in the ignore list fails with exit 3
+  rather than silently filtering nothing. Warnings exit 0 by default —
+  `--strict` gates on them. Missing ffmpeg and a non-decodable video are
+  reported as different things, so a machine without the tool does not blame
+  the creator for it.
 
 ## 2.0.0 — 2026-11-07
 

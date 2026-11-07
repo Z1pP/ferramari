@@ -20,6 +20,7 @@ keywords = ["wallpaper", "video", "linux"]
 categories = ["multimedia::video", "graphics"]
 
 [dependencies]
+serde_json = "1"
 ferramari-core = { path = "crates/ferramari-core" }
 ferramari-platform = { path = "crates/ferramari-platform" }
 ferramari-media = { path = "crates/ferramari-media" }

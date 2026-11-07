@@ -204,7 +204,11 @@ pub fn write_checksums(root: &Path) -> Result<(), String> {
 
 /// Compare `checksums.json` with the files on disk. `Ok(false)` means the
 /// package carries no checksums; a mismatch or a missing file is an error.
-fn verify_checksums(root: &Path) -> Result<bool, String> {
+/// Whether `checksums.json` exists and covers every file with matching
+/// digests. `Err` means the integrity data itself is unusable (unreadable,
+/// oversized, or covering a different file set), which callers that cannot
+/// report a distinction treat as "not checksummed".
+pub(crate) fn verify_checksums(root: &Path) -> Result<bool, String> {
     let path = root.join(CHECKSUMS_FILE);
     if !path.is_file() {
         return Ok(false);
@@ -402,7 +406,7 @@ fn allowed_extensions(kind: PackageType) -> &'static [&'static str] {
     }
 }
 
-fn default_entry(kind: PackageType) -> String {
+pub(crate) fn default_entry(kind: PackageType) -> String {
     match kind {
         PackageType::Video => "wallpaper.mp4".to_string(),
         PackageType::Web => "index.html".to_string(),
@@ -479,7 +483,11 @@ pub fn installed_videos() -> Vec<PathBuf> {
     videos
 }
 
-fn read_manifest(root: &Path) -> Option<Manifest> {
+/// Read `manifest.json` without any of the structural validation `load`
+/// performs. Used by `lint`, which reports import's verdict verbatim and
+/// still wants the declared fields to list its own warnings when import
+/// already refused the package.
+pub(crate) fn read_manifest(root: &Path) -> Option<Manifest> {
     let path = root.join("manifest.json");
     let metadata = fs::metadata(&path).ok()?;
     if metadata.len() > MAX_MANIFEST_BYTES {

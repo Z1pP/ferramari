@@ -59,10 +59,23 @@ language to `po/LINGUAS` only after the catalog is complete enough to be useful.
 
 ## Flatpak
 
-The existing Flatpak manifest targets the pre-Iced GNOME/WebKitGTK build and
-has not been migrated or validated for the 2.0 workspace. Treat Flatpak
-packaging as unavailable until its manifest builds and launches both binaries
-without reintroducing GTK. See `flatpak/README.md` for the historical setup.
+The manifest in `flatpak/io.github.ferramari.Ferramari.yml` builds the 2.0
+workspace and installs both binaries. `cargo build --workspace` is required,
+not stylistic: the default members are the root package only, so a plain
+`cargo build` produces the server and silently skips the UI binary — which
+would only surface as a failed `show_gui` at runtime. The manifest therefore
+checks for `/app/bin/ferramari-ui` and fails the build. Media tools come from
+the host through `flatpak-spawn`, which is why `org.freedesktop.Flatpak` is
+granted; a Flathub submission should bundle them instead and drop that
+permission.
+
+The manifest is not yet exercised end to end inside a sandbox. `flatpak/README.md`
+lists the checks (both binaries present, GTK-free `ldd`, `--doctor`, control
+surface reaching the server) that must be recorded before the Flatpak row in
+`docs/TESTING.md` can say *tested*. Two known build-environment traps are
+documented there: the SDK pins its extension versions (`org.gnome.Sdk//50`
+accepts rust-stable `25.08`, not the newest), and `flatpak run org.flatpak.Builder`
+sees its own `/tmp`, so state and build paths must live in the home directory.
 
 ## Performance
 

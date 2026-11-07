@@ -138,10 +138,13 @@ Uninstall with `sudo make uninstall` (same `PREFIX`).
 
 ### Flatpak
 
-A self-hosted manifest is present in `flatpak/`, but it targets the pre-Iced
-GTK/WebKitGTK build. It has not been migrated to the 2.0 split server/UI
-workspace and should not be used for 2.0 packaging yet. See
-[`flatpak/README.md`](flatpak/README.md) for the historical setup notes.
+A self-hosted manifest is present in `flatpak/` and has been migrated to the
+2.0 workspace: it builds both binaries (`cargo build --workspace`) and
+installs the server next to the Iced control surface, with no GTK or WebKitGTK
+in the dependency graph. Media tools (`mpv`, `ffmpeg`, `yt-dlp`) run from the
+host through `flatpak-spawn`. The sandbox has not yet been exercised end to
+end; see [`flatpak/README.md`](flatpak/README.md) for the checks to run before
+calling a bundle tested. Flathub packaging is not ready.
 
 ## Usage
 
@@ -382,8 +385,10 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
   Wayland sessions (through XWayland). Wayland-native windows are not exposed
   through EWMH at all, so a native fullscreen app cannot be detected there;
   an X11 fullscreen window can, and is.
-- The Flatpak bundle is self-hosted and uses host media tools. Tray and portal
-  autostart inside the sandbox are not verified.
+- A Flatpak manifest builds the 2.0 workspace and installs both binaries;
+  neither links GTK or WebKitGTK. The sandbox itself has not been exercised
+  end to end — see [`flatpak/README.md`](flatpak/README.md) for the checks to
+  run before calling a bundle tested. Flathub packaging is not ready.
 - Two- and three-monitor performance scenarios are not measured on the current
   single-display test machine.
 - Streaming currently uses one shared source for all monitors; local video
@@ -424,7 +429,9 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 - Window state detection uses EWMH atoms over X11.
 - `-b` starts only the wallpaper, `-p` adds a startup delay, and `-r` resets the
   config (only when no instance is running).
-- A Flatpak manifest exists, but it still targets the pre-Iced GNOME/WebKitGTK build and has not been migrated or validated for the 2.0 workspace.
+- A Flatpak manifest builds both binaries from the 2.0 workspace, with host
+  `mpv`/`ffmpeg`/`yt-dlp` through `flatpak-spawn`; the sandbox has not been
+  exercised end to end and Flathub packaging is not ready.
 
 ## Testing notes
 

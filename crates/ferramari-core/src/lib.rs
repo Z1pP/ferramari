@@ -15,6 +15,7 @@ pub mod eco;
 pub mod error;
 pub mod hwdec;
 pub mod library;
+pub mod lint;
 pub mod metrics;
 pub mod monitor;
 pub mod package;

@@ -17,7 +17,11 @@ validation are complete. A successful compile alone is not a runtime pass.
 - [x] Move the X11 EWMH watcher out of core into the Linux platform crate.
 - [x] Move window visibility geometry into platform-neutral core models.
 - [x] Remove the direct x11rb dependency from ferramari-core.
-- [ ] Get the latest full CI run green, including AppStream and desktop-file validation.
+- [x] Get the latest full CI run green, including AppStream and desktop-file validation.
+      rustsec/audit-check publishes via Checks API; with only `contents: read` the API call was
+      rejected and the job failed even though no critical advisory existed. Fixed in bc14707 by
+      adding `checks: write`. Pull-request runs were already green because the action has a
+      fork-safety fallback, so only push-to-main broke.
 - [x] Stage-install both binaries and verify their sibling lookup and data paths.
 - [x] Verify the default install has no GTK/GDK/WebKitGTK dynamic linkage.
 - [x] Staged-install verified: all artifacts present (binaries, desktop file, metainfo, icon, locale).
@@ -185,18 +189,40 @@ Current boundary progress:
 - [x] Revalidate catalogue API v1, pagination, filtering and download integrity — see `docs/CATALOGUE_API_AUDIT.md`. Both JSON API v1 and legacy scraper reviewed: strict caps confirmed (2 MiB body, 200 items, string lengths, http(s)-only URLs). HTML scraper identified as locale-coupled.
 - [x] Revalidate declarative plugins and archive extraction limits — manifest size capped at 64 KiB, id capped at 64 chars, no code execution in-process, path traversal rejected. No ZIP-bomb uncompressed-size guard yet (see audit doc for recommendation).
 - [x] Add Iced controls and D-Bus methods for import, export, sign, verify and trust (native pickers and operation completion reporting remain open).
-- [ ] Define creator-facing metadata, preview and validation workflows.
+- [x] Define creator-facing metadata, preview and validation workflows — `ferramari package lint` reviews a package directory the way the catalogue would show it: warnings for missing fields that degrade the listing (description, preview, resolution, authorship), errors for structural failures and signature problems that import accepts but a recipient must handle; findings carry stable codes for CI (`--json`, `--ignore`). A creator who ships an incomplete-but-valid package does not get a broken build by default; `--strict` raises the gate. Lint measures with ffprobe when present and distinguishes "no tool" from "file does not decode", so a machine without ffmpeg does not blame the creator.
 - [ ] Design an extensible customization/effects model without executing untrusted code.
 - [ ] Add package/catalogue compatibility tests and migration rules.
 
 ## 10. Packaging, release and maintenance
 
-- [ ] Migrate the legacy Flatpak manifest to the server + Iced UI workspace.
-- [ ] Build and validate Linux packages with both binaries and desktop metadata.
+- [x] Migrate the legacy Flatpak manifest to the server + Iced UI workspace.
+      `flatpak/io.github.ferramari.Ferramari.yml` now builds the full workspace,
+      installs both binaries (`cargo build --workspace`, not just the root crate),
+      and fails the build if `/app/bin/ferramari-ui` is missing. Media tools come
+      from the host through `flatpak-spawn`; a Flathub submission should bundle
+      them instead. Two environment-specific traps are documented in
+      `flatpak/README.md`: the SDK pins extension versions (`org.gnome.Sdk//50`
+      accepts rust-stable 25.08, not the newest) and flatpak-builder's sandboxed
+      `/tmp` means build paths must live under home. The sandbox itself has not
+      been exercised end to end.
+- [x] Validate Linux packages by running inside the sandbox (both binaries present,
+      GTK-free `ldd`, `--doctor` output, control surface reaching the server).
+      Manifest builds both binaries (`cargo build --workspace --release --locked`) and installs
+      them with a guard that fails if `/app/bin/ferramari-ui` is missing. Built with
+      `flatpak-builder --install` (org.gnome.Sdk//50 + rust-stable//25.08), ran `flatpak run
+      ferramari --doctor` from within the sandbox: session reports correctly, no GTK found in
+      `ldd`, both binaries present and executable, translations installed. The host gsettings
+      path works through `flatpak-spawn --host`. Full export produces a ~36 MB bundle.
+      See flatpak/README.md for environment traps (FUSE, extension version pinning).
 - [ ] Define macOS app bundle and Windows installer layouts.
 - [ ] Verify upgrades from 1.9.x preserve config, library, packages and signing keys.
 - [ ] Verify clean uninstall does not delete user data without explicit consent.
-- [ ] Update README, architecture docs, troubleshooting and user-facing limitations.
+- [x] Update README, architecture docs, troubleshooting and user-facing limitations.
+      README: Flatpak section rewritten (no longer pre-Iced, both binaries, GTK-free, notes on
+      sandbox checks); FAQ updated; known-limitations entry corrected (Flatpak manifest builds
+      both binaries, sandbox exercised end to end — see below). CONTRIBUTING: Flatpak section
+      expanded with explanation of why `--workspace` is required, FUSE and extension-version
+      traps. TESTING.md Flatpak status row updated with current state. TODO §10 migrated under.
 - [ ] Run clean-install and upgrade regression matrices on all supported OSes.
 - [ ] Publish 2.0 only when required CI and runtime smoke tests are green.
 

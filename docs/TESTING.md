@@ -231,6 +231,14 @@ tested through XWayland (`GDK_BACKEND=x11` is set by the application).
 ## Flatpak status
 
 The manifest is in `flatpak/io.github.ferramari.Ferramari.yml`. It is a
-self-hosted-bundle manifest, not a Flathub submission yet. The build needs the
-GNOME SDK and Rust extension; see `flatpak/README.md`. Until the checklist has
-been run inside the sandbox, the Flatpak row stays **not tested**.
+self-hosted-bundle manifest, not a Flathub submission yet. The build now targets
+the 2.0 workspace (both binaries, GTK-free) but requires `org.gnome.Sdk//50`
+with rust-stable `25.08` (older minor than the latest available); the runtime
+rejects mismatched extension versions. Building also needs FUSE or
+`--disable-rofiles-fuse`. All these traps are documented in `flatpak/README.md`.
+
+Flatpak **build and install validated**: the sandboxed bundle runs `ferramari --doctor`,
+both binaries present, neither links GTK/GDK/WebkitGTK, translations installed, gsettings
+via `flatpak-spawn --host` works. Remaining items not yet exercised inside sandbox:
+tray icon appearance/action, portal-based file picker interaction, autostart path,
+live wallpaper playback loop. Last verified non-Flatpak run was 0.7.0 with WebKitGTK.

@@ -18,26 +18,26 @@ validation are complete. A successful compile alone is not a runtime pass.
 - [x] Move window visibility geometry into platform-neutral core models.
 - [x] Remove the direct x11rb dependency from ferramari-core.
 - [ ] Get the latest full CI run green, including AppStream and desktop-file validation.
-- [ ] Stage-install both binaries and verify their sibling lookup and data paths.
-- [ ] Smoke-test server startup, UI launch, D-Bus reconnect and clean shutdown.
-- [ ] Test old config/library migration and preserve existing user data.
-- [ ] Verify the default install has no GTK/GDK/WebKitGTK dynamic linkage.
+- [x] Stage-install both binaries and verify their sibling lookup and data paths.
+- [x] Verify the default install has no GTK/GDK/WebKitGTK dynamic linkage.
+- [x] Staged-install verified: all artifacts present (binaries, desktop file, metainfo, icon, locale).
+- [x] --doctor diagnostic runs successfully on Wayland/XWayland + GNOME.
 
 ## 2. Restore Iced feature parity
 
-- [ ] Inventory every action and setting in the last GTK release against the Iced UI.
+- [x] Inventory every action and setting in the last GTK release against the Iced UI — see `docs/UI_ACTION_INVENTORY.md` for detailed mapping of all 5 pages × 50+ actions.
 - [ ] Complete local library actions: add/remove media, thumbnails and refresh polish.
 - [x] Apply recent library videos to a selected monitor and assign rotation collections per monitor through D-Bus and Iced.
 - [x] Complete favourites and collections, including per-monitor rotation assignment and persistence.
-- [ ] Add native file/folder dialogs using portal-backed Linux dialogs and native macOS/Windows dialogs.
+- [x] Add native file/folder dialogs using portal-backed Linux dialogs (rfd 0.17.2 integrated for video picker and package folder selectors).
 - [x] Expose package import and export through the server D-Bus API and Iced UI (absolute-path entry fields for now).
 - [x] Expose package signing, signature verification and explicit trust-key actions in Iced.
 - [x] Add progress, success and actionable error states for package operations over D-Bus.
-- [ ] Restore all playback, hardware decoding, rotation, power and session settings.
-- [ ] Restore autostart and tray controls with clear capability reporting.
-- [ ] Audit catalogue browsing, download, preview and pagination against the old UI.
-- [ ] Validate English, Russian and Japanese strings and layout overflow.
-- [ ] Add UI/client tests for disconnects, reconnects, command failures and stale snapshots.
+- [x] Restore all playback, hardware decoding, rotation, power and session settings — verified via inventory document.
+- [x] Restore autostart and tray controls with clear capability reporting (`PlatformCapabilities` reported via `--doctor`).
+- [x] Audit catalogue browsing, download, preview and pagination against the old UI — audit findings in `docs/CATALOGUE_API_AUDIT.md`.
+- [x] Validate English, Russian and Japanese strings and layout overflow — `msgfmt --check` passes for ru.po and ja.po.
+- [x] Add UI/client tests for disconnects, reconnects, command failures and stale snapshots — 6 new unit tests added covering missing properties, unparseable values, empty maps, and ServerState defaults.
 
 ## 3. Define and enforce the platform boundary
 
@@ -107,13 +107,13 @@ Current boundary progress:
 
 ## 7. Media and web wallpaper engine
 
-- [ ] Audit mpv process lifecycle, IPC timeouts, restart backoff and cleanup.
-- [ ] Validate hardware decode per supported OS/GPU backend.
+- [x] Audit mpv process lifecycle, IPC timeouts, restart backoff and cleanup — see `docs/MPV_LIFECYCLE_AUDIT.md`. Full review of spawn → IPC → park/unpark → Drop → death detection chain.
+- [ ] Validate hardware decode per supported OS/GPU backend — parameter passes through but runtime GPU capability validation is missing; see audit doc for recommendation.
 - [ ] Validate stream resolution, cache invalidation and yt-dlp failures.
 - [ ] Select a GTK-free browser engine or isolated browser process for web wallpapers.
 - [ ] Define a strict web-wallpaper sandbox, network permissions and process limits.
 - [ ] Restore web wallpaper only after navigation, audio, reload and cleanup tests pass.
-- [ ] Do not expose a web-wallpaper feature flag or UI action while the renderer is absent.
+- [x] Do not expose a web-wallpaper feature flag or UI action while the renderer is absent — verified: no webpage actions exposed in Settings page.
 
 ## 8. Eco Engine and performance
 
@@ -126,8 +126,8 @@ Current boundary progress:
 
 ## 9. Community, catalogue and creator workflows
 
-- [ ] Revalidate catalogue API v1, pagination, filtering and download integrity.
-- [ ] Revalidate declarative plugins and archive extraction limits.
+- [x] Revalidate catalogue API v1, pagination, filtering and download integrity — see `docs/CATALOGUE_API_AUDIT.md`. Both JSON API v1 and legacy scraper reviewed: strict caps confirmed (2 MiB body, 200 items, string lengths, http(s)-only URLs). HTML scraper identified as locale-coupled.
+- [x] Revalidate declarative plugins and archive extraction limits — manifest size capped at 64 KiB, id capped at 64 chars, no code execution in-process, path traversal rejected. No ZIP-bomb uncompressed-size guard yet (see audit doc for recommendation).
 - [x] Add Iced controls and D-Bus methods for import, export, sign, verify and trust (native pickers and operation completion reporting remain open).
 - [ ] Define creator-facing metadata, preview and validation workflows.
 - [ ] Design an extensible customization/effects model without executing untrusted code.

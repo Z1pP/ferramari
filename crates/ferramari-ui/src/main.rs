@@ -93,6 +93,7 @@ enum Message {
     Connected(Result<Server, String>),
     StateUpdated(ServerState),
     CommandFinished(Result<(), String>),
+    PackageRequestFinished(Result<(), String>),
 
     TogglePlay,
     ToggleMute,
@@ -127,6 +128,13 @@ enum Message {
     RemoveFromCollection(String, String),
     Play(String),
     OpenFolder,
+    PackageSourceChanged(String),
+    PackageParentChanged(String),
+    ImportPackage,
+    ExportPackage,
+    SignPackage,
+    VerifyPackage,
+    TrustPackageKey,
 
     OnlineSearchChanged(String),
     OnlineSearch,
@@ -189,6 +197,8 @@ struct App {
     library: Library,
     collection_name: String,
     collection_placeholder: String,
+    package_source: String,
+    package_parent: String,
     /// Slider position for the static wallpaper blur. Committed with the
     /// explicit Apply button, mirroring the GTK control: regenerating the
     /// blurred frame on every pixel of drag would be wasteful.
@@ -215,6 +225,8 @@ impl App {
                 library,
                 collection_name: String::new(),
                 collection_placeholder: tr("New collection"),
+                package_source: String::new(),
+                package_parent: String::new(),
                 blur_draft: 5,
                 blur_dirty: false,
                 online: Online {
@@ -229,6 +241,30 @@ impl App {
 
     fn sem(&self) -> &'static Semantics {
         Semantics::resolve(&self.state.theme, self.system_dark)
+    }
+
+    fn send_package_request<F, Fut>(&mut self, request: F, needs_parent: bool) -> Task<Message>
+    where
+        F: FnOnce(Server, String, String) -> Fut,
+        Fut: std::future::Future<Output = Result<(), String>> + 'static,
+    {
+        let Some(server) = self.server.clone() else {
+            self.status = Some(StatusLine {
+                text: tr("Server is unavailable"),
+                error: true,
+            });
+            return Task::none();
+        };
+        let source = self.package_source.trim().to_string();
+        let parent = self.package_parent.trim().to_string();
+        if source.is_empty() || (needs_parent && parent.is_empty()) {
+            self.status = Some(StatusLine {
+                text: tr("Enter the required package paths"),
+                error: true,
+            });
+            return Task::none();
+        }
+        Task::perform(request(server, source, parent), Message::PackageRequestFinished)
     }
 
     fn persist_library(&mut self) {
@@ -305,6 +341,19 @@ impl App {
                         error: true,
                     });
                 }
+                Task::none()
+            }
+            Message::PackageRequestFinished(result) => {
+                self.status = Some(match result {
+                    Ok(()) => StatusLine {
+                        text: tr("Package request queued; processing continues in the server"),
+                        error: false,
+                    },
+                    Err(error) => StatusLine {
+                        text: error,
+                        error: true,
+                    },
+                });
                 Task::none()
             }
 
@@ -450,6 +499,29 @@ impl App {
                 let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
                 Task::none()
             }
+            Message::PackageSourceChanged(path) => {
+                self.package_source = path;
+                Task::none()
+            }
+            Message::PackageParentChanged(path) => {
+                self.package_parent = path;
+                Task::none()
+            }
+            Message::ImportPackage => self.send_package_request(|server, path, _| async move {
+                server.import_package(path).await
+            }, false),
+            Message::SignPackage => self.send_package_request(|server, path, _| async move {
+                server.sign_package(path).await
+            }, false),
+            Message::VerifyPackage => self.send_package_request(|server, path, _| async move {
+                server.verify_package(path).await
+            }, false),
+            Message::TrustPackageKey => self.send_package_request(|server, path, _| async move {
+                server.trust_key(path).await
+            }, false),
+            Message::ExportPackage => self.send_package_request(|server, video, parent| async move {
+                server.export_package(video, parent).await
+            }, true),
 
             // --- Online catalogue ------------------------------------------ //
             Message::OnlineSearchChanged(query) => {
@@ -1111,6 +1183,27 @@ impl App {
                     .spacing(10)
                     .push(section_title(tr("Collections"), sem))
                     .push(collections),
+                sem,
+            ))
+            .push(card(
+                Column::new()
+                    .spacing(10)
+                    .push(section_title(tr("Ferramari packages"), sem))
+                    .push(text(tr("Import, export, sign and verify .ferramari packages. Enter absolute paths; operations run in the server." )).size(11).color(sem.text_muted))
+                    .push(text_input(tr("Package file or directory"), &self.package_source)
+                        .on_input(Message::PackageSourceChanged)
+                        .padding(9)
+                        .width(Length::Fill))
+                    .push(text_input(tr("Export destination folder (for export)"), &self.package_parent)
+                        .on_input(Message::PackageParentChanged)
+                        .padding(9)
+                        .width(Length::Fill))
+                    .push(Row::new().spacing(8).wrap()
+                        .push(secondary_button(tr("Import package"), Message::ImportPackage, sem))
+                        .push(secondary_button(tr("Export video package"), Message::ExportPackage, sem))
+                        .push(secondary_button(tr("Sign package"), Message::SignPackage, sem))
+                        .push(secondary_button(tr("Verify package"), Message::VerifyPackage, sem))
+                        .push(secondary_button(tr("Trust package key"), Message::TrustPackageKey, sem))),
                 sem,
             ))
             .into()

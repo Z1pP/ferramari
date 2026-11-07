@@ -91,7 +91,7 @@ enum Message {
     Tick,
 
     Connected(Result<Server, String>),
-    StateUpdated(ServerState),
+    StateUpdated(Box<ServerState>),
     CommandFinished(Result<(), String>),
     PackageRequestFinished(Result<(), String>),
 
@@ -322,19 +322,17 @@ impl App {
                     let pid = self.state.server_pid.unwrap_or_else(std::process::id);
                     self.sample = Some(self.metrics.sample_of(pid));
                 }
-                Task::perform(
-                    async move { server.snapshot().await },
-                    Message::StateUpdated,
-                )
+                Task::perform(async move { server.snapshot().await }, |s| {
+                    Message::StateUpdated(s.into())
+                })
             }
 
             Message::Connected(Ok(server)) => {
                 self.server = Some(server.clone());
                 self.status = None;
-                Task::perform(
-                    async move { server.snapshot().await },
-                    Message::StateUpdated,
-                )
+                Task::perform(async move { server.snapshot().await }, |s| {
+                    Message::StateUpdated(s.into())
+                })
             }
             Message::Connected(Err(error)) => {
                 self.status = Some(StatusLine {
@@ -345,9 +343,11 @@ impl App {
             }
 
             Message::StateUpdated(state) => {
-                let language_changed = state.language != self.state.language;
-                let reachable = state.reachable;
-                self.state = state;
+                let state_ref = state.as_ref();
+                let language_changed = state_ref.language != self.state.language;
+                let reachable = state_ref.reachable;
+                // Unwrap the Box into a clone to avoid keeping a dangling reference.
+                self.state = (*state).clone();
                 if !self.state.operation_status.is_empty() {
                     self.status = Some(StatusLine {
                         text: self.state.operation_status.clone(),

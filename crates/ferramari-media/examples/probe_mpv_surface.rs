@@ -9,7 +9,6 @@
 use std::time::Duration;
 
 use x11rb::connection::Connection as _;
-use x11rb::connection::Connection as _;
 use x11rb::protocol::xproto::ConnectionExt as _;
 
 fn root_monitor() -> anyhow::Result<ferramari_core::MonitorInfo> {

@@ -1387,21 +1387,38 @@ impl App {
             .into();
         };
 
+        let unavailable = tr("Unavailable");
+        let cpu = if sample.available {
+            format!("{:.1}%", sample.cpu_percent)
+        } else {
+            unavailable.clone()
+        };
+        let memory = if sample.available {
+            format!("{} MiB", sample.rss_bytes / 1_048_576)
+        } else {
+            unavailable.clone()
+        };
+        let threads = if sample.available {
+            sample.threads.to_string()
+        } else {
+            unavailable.clone()
+        };
+        let processes = if sample.available {
+            sample.processes.to_string()
+        } else {
+            unavailable.clone()
+        };
         let gpu = sample
             .gpu_percent
             .map(|value| format!("{value:.1}%"))
-            .unwrap_or_else(|| tr("Unavailable"));
+            .unwrap_or(unavailable);
 
         let stats = Row::new()
             .spacing(10)
-            .push(stat(tr("CPU"), format!("{:.1}%", sample.cpu_percent), sem))
-            .push(stat(
-                tr("Memory (RSS)"),
-                format!("{} MiB", sample.rss_bytes / 1_048_576),
-                sem,
-            ))
-            .push(stat(tr("Threads"), sample.threads.to_string(), sem))
-            .push(stat(tr("Processes"), sample.processes.to_string(), sem))
+            .push(stat(tr("CPU"), cpu, sem))
+            .push(stat(tr("Memory (RSS)"), memory, sem))
+            .push(stat(tr("Threads"), threads, sem))
+            .push(stat(tr("Processes"), processes, sem))
             .push(stat(tr("GPU"), gpu, sem));
 
         Column::new()

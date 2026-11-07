@@ -26,8 +26,9 @@ validation are complete. A successful compile alone is not a runtime pass.
 ## 2. Restore Iced feature parity
 
 - [ ] Inventory every action and setting in the last GTK release against the Iced UI.
-- [ ] Complete local library actions: add, remove, refresh, thumbnails and monitor assignment.
-- [ ] Complete favourites and collections, including rotation assignment and persistence.
+- [ ] Complete local library actions: add/remove media, thumbnails and refresh polish.
+- [x] Apply recent library videos to a selected monitor and assign rotation collections per monitor through D-Bus and Iced.
+- [x] Complete favourites and collections, including per-monitor rotation assignment and persistence.
 - [ ] Add native file/folder dialogs using portal-backed Linux dialogs and native macOS/Windows dialogs.
 - [x] Expose package import and export through the server D-Bus API and Iced UI (absolute-path entry fields for now).
 - [x] Expose package signing, signature verification and explicit trust-key actions in Iced.

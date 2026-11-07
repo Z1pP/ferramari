@@ -319,6 +319,12 @@ impl App {
                 let language_changed = state.language != self.state.language;
                 let reachable = state.reachable;
                 self.state = state;
+                if !self.state.operation_status.is_empty() {
+                    self.status = Some(StatusLine {
+                        text: self.state.operation_status.clone(),
+                        error: self.state.operation_error,
+                    });
+                }
                 if !reachable {
                     self.server = None;
                 }

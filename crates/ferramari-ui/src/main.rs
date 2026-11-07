@@ -929,7 +929,7 @@ impl App {
                 if !collection_options.is_empty() {
                     let options = collection_options.clone();
                     let path = entry.path.clone();
-                    row = row.push(pick_list(options, None, move |choice| {
+                    row = row.push(pick_list(options, None::<CollectionChoice>, move |choice| {
                         Message::AddToCollection(choice.id, path.clone())
                     }));
                 }

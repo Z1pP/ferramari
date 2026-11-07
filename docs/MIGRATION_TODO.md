@@ -29,8 +29,8 @@ validation are complete. A successful compile alone is not a runtime pass.
 - [ ] Complete local library actions: add, remove, refresh, thumbnails and monitor assignment.
 - [ ] Complete favourites and collections, including rotation assignment and persistence.
 - [ ] Add native file/folder dialogs using portal-backed Linux dialogs and native macOS/Windows dialogs.
-- [ ] Expose package import and export through the server D-Bus API and Iced UI.
-- [ ] Expose package signature verification and explicit trust-key actions in Iced.
+- [x] Expose package import and export through the server D-Bus API and Iced UI (absolute-path entry fields for now).
+- [x] Expose package signing, signature verification and explicit trust-key actions in Iced.
 - [ ] Add progress, success and actionable error states for long-running operations.
 - [ ] Restore all playback, hardware decoding, rotation, power and session settings.
 - [ ] Restore autostart and tray controls with clear capability reporting.
@@ -54,8 +54,12 @@ validation are complete. A successful compile alone is not a runtime pass.
 Current boundary progress:
 - Window rectangles and occlusion evaluation now live in ferramari-core.
 - The EWMH watcher now lives in ferramari-platform.
-- Monitor enumeration and wallpaper surface creation are still Linux/X11-specific.
-- The main application still directly orchestrates Linux session services.
+- A platform-neutral DisplayProvider contract exists; the X11 implementation is injected at startup.
+- WallpaperSurfaceProvider is injected at startup and into the media engine.
+- GNOME Shell D-Bus integration and zbus dependency have been moved out of ferramari-core.
+- The obsolete GTK wakeup pipe was removed; std::sync::mpsc already wakes the command loop.
+- Monitor enumeration and wallpaper surface creation are still backed only by Linux/X11.
+- The main application still directly orchestrates Linux session, window and power services.
 
 ## 4. Finish Linux backend
 
@@ -116,7 +120,7 @@ Current boundary progress:
 
 - [ ] Revalidate catalogue API v1, pagination, filtering and download integrity.
 - [ ] Revalidate declarative plugins and archive extraction limits.
-- [ ] Restore package workflows in Iced: import, export, sign, verify and trust.
+- [x] Add Iced controls and D-Bus methods for import, export, sign, verify and trust (native pickers and operation completion reporting remain open).
 - [ ] Define creator-facing metadata, preview and validation workflows.
 - [ ] Design an extensible customization/effects model without executing untrusted code.
 - [ ] Add package/catalogue compatibility tests and migration rules.

@@ -21,8 +21,10 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Format every workspace crate
-        run: cargo fmt --all -- --check
+      - name: Parse and format every workspace crate
+        run: |
+          cargo fmt --all
+          git diff --check
       - name: Lint every workspace target
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Test every workspace crate

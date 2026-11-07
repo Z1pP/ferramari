@@ -1068,3 +1068,6 @@ msgstr "Убрать из избранного"
 
 msgid "Create"
 msgstr "Создать"
+
+msgid "Collections"
+msgstr "Коллекции"

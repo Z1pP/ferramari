@@ -98,6 +98,11 @@ impl Library {
             .map_err(|err| format!("could not write {}: {err}", path.display()))
     }
 
+    /// All favourite video paths, in the order they were added.
+    pub fn favorites(&self) -> &[String] {
+        &self.favorites
+    }
+
     pub fn is_favorite(&self, path: &str) -> bool {
         self.favorites.iter().any(|favorite| favorite == path)
     }

@@ -13,7 +13,7 @@ use crate::config::Mode;
 use crate::package;
 use crate::signing;
 use crate::wake;
-use crate::x11::WindowState;
+use crate::window::WindowState;
 use crate::ytdlp;
 
 #[derive(Debug, Clone)]

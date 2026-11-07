@@ -117,9 +117,9 @@ Current boundary progress:
 
 ## 8. Eco Engine and performance
 
-- [ ] Feed platform-neutral window/session/power events into the existing Eco policy.
-- [ ] Verify Active, Idle, Occluded and Suspended transitions per monitor.
-- [ ] Verify Quality, Balanced and Eco profiles, battery pause and decoder parking.
+- [x] Feed platform-neutral window/session/power events into the existing Eco policy — `App::eco_plan_for()` builds `eco::Signals` from `self.screen_locked`, `self.suspended`, `self.on_battery`, `self.idle`, plus per-monitor occlusion/fullscreen state from `window_state.visibility_at()`.
+- [x] Verify Active, Idle, Occluded and Suspended transitions per monitor — 7 integration tests in `src/app.rs` covering session signal override, battery pause per-profile, fullscreen/maximized occlusion, per-monitor independence (eDP-1 covered vs HDMI-1 idle).
+- [x] Verify Quality, Balanced and Eco profiles, battery pause and decoder parking — all three profiles verified against every signal combinator; parking guard tested in `eco.rs`.
 - [ ] Unify CPU/RAM/process/GPU metrics with explicit unsupported values.
 - [ ] Benchmark one, two and multiple monitors on representative hardware.
 - [ ] Record idle CPU, active CPU, memory, decoder count and wakeups.

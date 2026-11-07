@@ -377,8 +377,9 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
   autostart inside the sandbox are not verified.
 - Two- and three-monitor performance scenarios are not measured on the current
   single-display test machine.
-- Streaming and web wallpapers use one shared source for all monitors; only
-  local video sources are assigned independently.
+- Streaming currently uses one shared source for all monitors; local video
+  sources are assigned independently. Web-page wallpapers are temporarily
+  unavailable in 2.0.0.
 - The Performance page reports GPU usage only where the driver exposes
   `gpu_busy_percent` (currently AMDGPU). NVIDIA/Intel utilisation is shown as
   unavailable.
@@ -413,12 +414,11 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 - Window state detection uses EWMH atoms over X11.
 - `-b` starts only the wallpaper, `-p` adds a startup delay, and `-r` resets the
   config (only when no instance is running).
-- No Flatpak manifest is shipped in this tree yet; the code keeps the Flatpak
-  code paths (`flatpak-spawn`, background portal, WebKit NVIDIA workaround).
+- A Flatpak manifest exists, but it still targets the pre-Iced GNOME/WebKitGTK build and has not been migrated or validated for the 2.0 workspace.
 
 ## Testing notes
 
-`cargo test` covers config parsing/migration (including per-field corruption),
+`cargo test --workspace` covers config parsing/migration (including per-field corruption),
 atomic saves and backup recovery, the player restart policy, yt-dlp and ffmpeg
 timeouts, per-monitor EWMH coverage, Eco Engine decisions, mpv IPC framing and
 the worker command order, process-tree metric parsing, session/desktop
@@ -427,8 +427,7 @@ safety, `.ferramari` validation/import/export, plugin manifest validation,
 Catalog API parsing/client validation and the catalogue parsers (cards,
 categories, search, signed download links, archive extraction, video probing
 and frame sheets).
-The GUI, video embedding, streaming, webpage, catalogue and library modes were
-smoke-tested on Ubuntu 26.04 / GNOME Wayland (XWayland). The full environment
+The former GTK GUI, video embedding, streaming, webpage, catalogue and library modes were smoke-tested on Ubuntu 26.04 / GNOME Wayland (XWayland) before the 2.0 migration. The Iced control surface and current X11 media surface require a fresh live-session smoke run; CI compilation alone does not prove correct wallpaper stacking, mpv embedding or tray activation. The full environment
 matrix and smoke checklist live in [`docs/TESTING.md`](docs/TESTING.md). To exercise the
 static-wallpaper code without touching your real background:
 

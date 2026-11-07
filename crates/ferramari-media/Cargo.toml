@@ -11,4 +11,3 @@ ferramari-core = { path = "../ferramari-core" }
 anyhow = "1"
 log = "0.4"
 serde_json = "1"
-x11rb = { version = "0.14", features = ["randr"] }

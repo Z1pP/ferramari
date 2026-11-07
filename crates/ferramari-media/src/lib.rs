@@ -7,4 +7,3 @@
 pub mod engine;
 pub mod fade;
 pub mod mpv;
-pub mod surface;

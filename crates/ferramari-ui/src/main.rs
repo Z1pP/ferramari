@@ -220,6 +220,11 @@ struct App {
 
     online: Online,
     ticks: u64,
+
+    /// Tracks the last user-initiated play/pause action. Used to ignore stale
+    /// snapshots that contradict the user's intent (e.g. user clicked Resume
+    /// but server hasn't started playback yet, so snapshot still says paused).
+    pending_play: Option<bool>,
 }
 
 impl App {
@@ -247,6 +252,7 @@ impl App {
                     ..Online::default()
                 },
                 ticks: 0,
+                pending_play: None,
             },
             Task::perform(Server::connect(), Message::Connected),
         )
@@ -345,28 +351,47 @@ impl App {
 
             Message::StateUpdated(state) => {
                 let state_ref = state.as_ref();
-                let language_changed = state_ref.language != self.state.language;
                 let reachable = state_ref.reachable;
                 // Unwrap the Box into a clone to avoid keeping a dangling reference.
-                self.state = (*state).clone();
-                if !self.state.operation_status.is_empty() {
+                let mut new_state = (*state).clone();
+                if !new_state.operation_status.is_empty() {
                     self.status = Some(StatusLine {
-                        text: self.state.operation_status.clone(),
-                        error: self.state.operation_error,
+                        text: new_state.operation_status.clone(),
+                        error: new_state.operation_error,
                     });
                 }
                 if !reachable {
                     self.server = None;
+                    self.applied_language.clear();
+                    self.pending_play = None;
                 }
                 if !self.blur_dirty {
-                    self.blur_draft = self.state.blur_radius;
+                    self.blur_draft = new_state.blur_radius;
                 }
-                if language_changed && self.state.language != self.applied_language {
-                    apply_language(&self.state.language);
-                    self.applied_language = self.state.language.clone();
+                // Apply language from server only if it differs from what we
+                // already applied. This prevents the undo-loop when the user
+                // changes the language locally: the server persists async and
+                // on the first tick returns the old file value ("en"), which
+                // would trigger apply again and overwrite the user's choice.
+                if new_state.language != self.applied_language && !self.applied_language.is_empty() {
+                    apply_language(&new_state.language);
+                    self.applied_language = new_state.language.clone();
                     self.online.search_placeholder = tr("Search wallpapers…");
                     self.collection_placeholder = tr("New collection");
                 }
+                // Ignore stale snapshots that contradict the user's pending
+                // play/pause action. When the user clicks "Resume", we set
+                // pending_play = Some(true). If the server responds with
+                // is_playing = false (because mpv hasn't started yet), we
+                // keep our optimistic true value.
+                if let Some(pending) = self.pending_play.take() {
+                    if new_state.is_playing != pending {
+                        // Server's snapshot contradicts user's action — keep
+                        // our optimistic value.
+                        new_state.is_playing = pending;
+                    }
+                }
+                self.state = new_state;
                 Task::none()
             }
 
@@ -400,6 +425,13 @@ impl App {
                 } else {
                     "start_playback"
                 };
+                // Optimistic update: flip the state immediately so the UI
+                // reflects the change right away, before the server confirms.
+                self.state.is_playing = !self.state.is_playing;
+                // Track the pending action to ignore stale snapshots that
+                // contradict the user's intent (e.g. user clicked Resume but
+                // server hasn't started playback yet).
+                self.pending_play = Some(self.state.is_playing);
                 call(self.server.as_ref(), method)
             }
             Message::ToggleMute => {
@@ -1831,59 +1863,94 @@ enum ButtonKind {
     Ghost,
     Nav,
     NavActive,
+    Icon,          // circular icon-only button (play, refresh, etc.)
 }
 
+// --------------------------------------------------------------------------- //
+// Container styles                                                            //
+// --------------------------------------------------------------------------- //
+
+/// Root background — deep solid fill matching the backdrop tone.
 fn root_style(sem: &'static Semantics) -> iced::widget::container::Style {
-    let gradient = Linear::new(1.15)
-        .add_stop(0.0, sem.header_top)
-        .add_stop(0.5, sem.bg_bottom)
-        .add_stop(1.0, sem.bg_bottom);
     iced::widget::container::Style {
-        background: Some(Background::Gradient(gradient.into())),
+        background: Some(Background::Color(sem.bg_bottom)),
         text_color: Some(sem.text),
         ..Default::default()
     }
 }
 
-fn glass_style(sem: &'static Semantics, strong: bool) -> iced::widget::container::Style {
-    iced::widget::container::Style {
-        background: Some(Background::Color(if strong {
-            sem.surface_strong
-        } else {
-            sem.surface
-        })),
+/// Floating glass card — default (no hover) variant.
+fn floating_card_style(sem: &'static Semantics) -> iced::widget::container::Style {
+    container::Style {
+        background: Some(Background::Color(sem.surface)),
         border: Border {
-            color: sem.shine,
+            color: white_a(0.11),
+            width: 1.5,
+            radius: 20.0.into(),
+        },
+        shadow: Shadow {
+            color: black_a(0.24),
+            offset: Vector::new(0.0, 10.0),
+            blur_radius: 32.0,
+        },
+        text_color: Some(sem.text),
+        ..Default::default()
+    }
+}
+
+/// Sidebar panel — stronger surface, brand accent tint, directional shadow.
+fn sidebar_style(sem: &'static Semantics) -> iced::widget::container::Style {
+    container::Style {
+        background: Some(Background::Color(sem.surface_strong)),
+        border: Border {
+            color: sem.border,
             width: 1.0,
-            radius: 18.0.into(),
+            radius: 20.0.into(),
+        },
+        shadow: Shadow {
+            color: sem.card_shadow,
+            offset: Vector::new(-4.0, 0.0),
+            blur_radius: 28.0,
+        },
+        text_color: Some(sem.text),
+        ..Default::default()
+    }
+}
+
+/// Status line pill — error or success tone.
+fn status_style(sem: &'static Semantics, error: bool) -> iced::widget::container::Style {
+    let (bg, border_c, text_c) = if error {
+        (sem.danger_soft, sem.danger, sem.danger)
+    } else {
+        (sem.accent_soft, sem.accent_border, sem.text_secondary)
+    };
+    container::Style {
+        background: Some(Background::Color(bg)),
+        border: Border {
+            color: border_c,
+            width: 1.0,
+            radius: 12.0.into(),
+        },
+        text_color: Some(text_c),
+        ..Default::default()
+    }
+}
+
+/// Stat tile on the Performance page.
+fn stat_tile_style(sem: &'static Semantics, value_color: Color) -> iced::widget::container::Style {
+    container::Style {
+        background: Some(Background::Color(sem.tile_bg)),
+        border: Border {
+            color: sem.border,
+            width: 1.0,
+            radius: 14.0.into(),
         },
         shadow: Shadow {
             color: sem.shadow_soft,
-            offset: Vector::new(0.0, 10.0),
-            blur_radius: 30.0,
+            offset: Vector::new(0.0, 6.0),
+            blur_radius: 18.0,
         },
-        text_color: Some(sem.text),
-        ..Default::default()
-    }
-}
-
-fn status_style(sem: &'static Semantics, error: bool) -> iced::widget::container::Style {
-    iced::widget::container::Style {
-        background: Some(Background::Color(if error {
-            sem.danger_soft
-        } else {
-            sem.accent_soft
-        })),
-        border: Border {
-            color: if error { sem.danger } else { sem.accent_border },
-            width: 1.0,
-            radius: 9.0.into(),
-        },
-        text_color: Some(if error {
-            sem.danger
-        } else {
-            sem.text_secondary
-        }),
+        text_color: Some(value_color),
         ..Default::default()
     }
 }
@@ -1894,29 +1961,91 @@ fn button_style(
 ) -> impl Fn(&Theme, button::Status) -> button::Style + 'static {
     move |_theme, status| {
         let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-        let (background, text_color, border_color) = match (kind, hovered) {
-            (ButtonKind::Primary, false) => (sem.accent_bg, sem.accent_ink, Color::TRANSPARENT),
-            (ButtonKind::Primary, true) => {
-                (sem.accent_bg_hover, sem.accent_ink, Color::TRANSPARENT)
-            }
-            (ButtonKind::Secondary, false) => (sem.surface, sem.text, sem.border),
-            (ButtonKind::Secondary, true) => (sem.surface_hover, sem.text, sem.border_strong),
-            (ButtonKind::Ghost, false) => (Color::TRANSPARENT, sem.text_secondary, sem.border),
-            (ButtonKind::Ghost, true) => (sem.surface_hover, sem.text, sem.border_strong),
-            (ButtonKind::Nav, false) => {
-                (Color::TRANSPARENT, sem.text_secondary, Color::TRANSPARENT)
-            }
-            (ButtonKind::Nav, true) => (sem.surface_hover, sem.text, Color::TRANSPARENT),
-            (ButtonKind::NavActive, false) => (sem.accent_soft, sem.accent_text, sem.accent_border),
-            (ButtonKind::NavActive, true) => (sem.accent_soft, sem.accent_text, sem.accent_border),
+        let (background, text_color, border_color, radius) = match (kind, hovered) {
+            (ButtonKind::Primary, false) => (
+                sem.accent_bg,
+                sem.accent_ink,
+                Color::TRANSPARENT,
+                14.0,
+            ),
+            (ButtonKind::Primary, true) => (
+                sem.accent_bg_hover,
+                sem.accent_ink,
+                Color::TRANSPARENT,
+                14.0,
+            ),
+            (ButtonKind::Secondary, false) => (
+                sem.surface,
+                sem.text,
+                sem.border,
+                12.0,
+            ),
+            (ButtonKind::Secondary, true) => (
+                sem.surface_hover,
+                sem.text,
+                sem.border_strong,
+                12.0,
+            ),
+            (ButtonKind::Ghost, false) => (
+                Color::TRANSPARENT,
+                sem.text_secondary,
+                Color::TRANSPARENT,
+                10.0,
+            ),
+            (ButtonKind::Ghost, true) => (
+                sem.surface_hover,
+                sem.text,
+                sem.border_strong,
+                10.0,
+            ),
+            (ButtonKind::Nav, false) => (
+                Color::TRANSPARENT,
+                sem.text_secondary,
+                Color::TRANSPARENT,
+                10.0,
+            ),
+            (ButtonKind::Nav, true) => (
+                sem.icon_hover,
+                sem.text,
+                Color::TRANSPARENT,
+                10.0,
+            ),
+            (ButtonKind::NavActive, false) => (
+                sem.glow_accent,
+                sem.accent_text,
+                sem.accent_border,
+                12.0,
+            ),
+            (ButtonKind::NavActive, true) => (
+                sem.glow_accent,
+                sem.accent_text,
+                sem.accent_border,
+                12.0,
+            ),
+            (ButtonKind::Icon, false) => (
+                Color::TRANSPARENT,
+                sem.text_secondary,
+                Color::TRANSPARENT,
+                18.0,
+            ),
+            (ButtonKind::Icon, true) => (
+                sem.icon_hover,
+                sem.text,
+                sem.border,
+                18.0,
+            ),
         };
         button::Style {
             background: Some(Background::Color(background)),
             text_color,
             border: Border {
                 color: border_color,
-                width: 1.0,
-                radius: 10.0.into(),
+                width: if border_color == Color::TRANSPARENT && kind != ButtonKind::Icon {
+                    0.0
+                } else {
+                    1.0
+                },
+                radius: radius.into(),
             },
             ..Default::default()
         }

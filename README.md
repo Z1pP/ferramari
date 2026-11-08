@@ -325,14 +325,15 @@ The application is split into a wallpaper server and a separate Iced control sur
 | `crates/ferramari-platform/src/monitors.rs` | XRandR monitor discovery and hotplug watcher |
 | `crates/ferramari-platform/src/tray.rs` | StatusNotifierItem tray (`ksni`) |
 | `crates/ferramari-media/src/engine.rs` | per-monitor wallpaper playback engine |
-| `crates/ferramari-media/src/surface.rs` | native X11 wallpaper windows and mpv embed IDs |
+| `crates/ferramari-platform/src/surface.rs` | Native X11 wallpaper windows via x11rb |
 
 Threading rule: the Iced UI owns its widget tree on its event-loop thread. The wallpaper server owns media engines on its command-loop thread. The processes exchange commands and snapshots over the session D-Bus; background work returns plain data through channels or Iced tasks.
 
 The Iced control window's Liquid Glass design system (tokens, material layers,
 typography, motion and accessibility rules) is documented in
-[`docs/DESIGN.md`](docs/DESIGN.md). The stylesheet lives in
-`data/ui/ferramari.css` and is compiled into the binary.
+[`docs/DESIGN.md`](docs/DESIGN.md). The palette is defined in
+`crates/ferramari-ui/src/theme.rs`; `data/ui/ferramari.css` is the GTK-era
+token sheet kept only as a visual reference and is not loaded at runtime.
 
 ## FAQ
 

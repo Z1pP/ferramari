@@ -12,6 +12,7 @@
 //!
 //! Run: `cargo run -p ferramari-ui` (the server must be running).
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
@@ -21,9 +22,10 @@ use iced::widget::{
     Column, Container, Row, Space,
 };
 use iced::{
-    Alignment, Background, Border, Color, Element, Length, Padding, Shadow, Size, Subscription,
-    Task, Theme, Vector,
+    Alignment, Background, Border, Color, ContentFit, Element, Length, Padding, Shadow, Size,
+    Subscription, Task, Theme, Vector,
 };
+use iced::border::Radius as BorderRadius;
 
 use ferramari_core::catalogue::{self, Category, Listing, Wallpaper};
 use ferramari_core::config::Config;
@@ -70,15 +72,19 @@ impl Page {
         }
     }
 
-    /// Sidebar glyph. Material Symbols Private Use Area codepoints, rendered
-    /// by the bundled icon font — no external asset to ship.
+    /// Sidebar glyph. Plain Unicode symbols from the Miscellaneous Technical
+    /// and Geometric Shapes blocks: every Linux system ships a font covering
+    /// them (DejaVu Sans), and cosmic-text reaches it through font fallback.
+    /// The previous codepoints lived in the Private Use Area and assumed a
+    /// Material Symbols font that was never actually bundled — the icons
+    /// rendered as tofu boxes.
     fn icon(self) -> char {
         match self {
-            Page::Home => '\u{F3EC}',        // house-outline
-            Page::Library => '\u{F1BF}',     // filmstrip
-            Page::Online => '\u{F063}',      // globe
-            Page::Performance => '\u{F0AC}', // chart-lines
-            Page::Settings => '\u{F087}',    // cog
+            Page::Home => '\u{2302}',        // ⌂ house
+            Page::Library => '\u{25A6}',     // ▦ filmstrip grid
+            Page::Online => '\u{25CD}',      // ◍ globe
+            Page::Performance => '\u{25A4}', // ▤ bar chart
+            Page::Settings => '\u{2699}',    // ⚙ gear
         }
     }
 
@@ -168,6 +174,7 @@ enum Message {
     CatalogueLoaded(Result<Listing, String>, bool),
     Download(Wallpaper),
     Downloaded(String, Result<PathBuf, String>),
+    PreviewLoaded(String, Option<PathBuf>),
 }
 
 // ============================================================================ //
@@ -186,6 +193,10 @@ struct Online {
     /// Localized placeholder, owned so `text_input` can borrow it from `self`.
     search_placeholder: String,
     downloading: Option<String>,
+    /// Wallpaper id → local preview file. `None` means the download failed or
+    /// the entry has no thumbnail; the card keeps its placeholder in that case
+    /// and the loader will not retry it during this session.
+    previews: HashMap<String, Option<PathBuf>>,
 }
 
 struct StatusLine {
@@ -783,16 +794,16 @@ impl App {
                             self.online.categories = listing.categories;
                         }
                         if append {
-                            self.online.items.extend(listing.items);
+                            self.online.items.extend(listing.items.clone());
                         } else {
-                            self.online.items = listing.items;
+                            self.online.items = listing.items.clone();
                         }
                         self.online.next = listing.next;
                         self.online.error = None;
                     }
                     Err(error) => self.online.error = Some(error),
                 }
-                Task::none()
+                self.load_previews()
             }
             Message::Download(wallpaper) => {
                 self.online.downloading = Some(wallpaper.id.clone());
@@ -828,7 +839,42 @@ impl App {
                     }
                 }
             }
+            Message::PreviewLoaded(id, path) => {
+                self.online.previews.insert(id, path);
+                Task::none()
+            }
         }
+    }
+
+    /// Fetch the card thumbnails that are not cached yet. One task per item:
+    /// `ensure_preview` is a blocking HTTP call, so it runs on the blocking
+    /// pool and reports back through `PreviewLoaded`. An entry already present
+    /// in `previews` is skipped, cached or not, so a refresh does not re-request
+    /// images the page already shows.
+    fn load_previews(&mut self) -> Task<Message> {
+        let mut tasks = Vec::new();
+        for wallpaper in &self.online.items {
+            if self.online.previews.contains_key(&wallpaper.id) {
+                continue;
+            }
+            if wallpaper.thumb_url.is_empty() {
+                self.online.previews.insert(wallpaper.id.clone(), None);
+                continue;
+            }
+            let id = wallpaper.id.clone();
+            let url = wallpaper.thumb_url.clone();
+            tasks.push(Task::perform(
+                async move {
+                    tokio::task::spawn_blocking(move || {
+                        catalogue::ensure_preview(&url).ok()
+                    })
+                    .await
+                    .unwrap_or(None)
+                },
+                move |path| Message::PreviewLoaded(id.clone(), path),
+            ));
+        }
+        Task::batch(tasks)
     }
 
     fn load_catalogue(&mut self, url: Option<String>, append: bool) -> Task<Message> {
@@ -1666,6 +1712,22 @@ impl App {
                         .into()
                 };
 
+                // Build the preview image if we have a cached file.
+                let preview_el: Option<Element<'_, Message>> = self
+                    .online
+                    .previews
+                    .get(&wallpaper.id)
+                    .and_then(|path| path.as_ref())
+                    .map(|path| image::Handle::from_path(path))
+                    .map(|handle| {
+                        image::Image::new(handle)
+                            .width(Length::Fixed(120.0))
+                            .height(Length::Fixed(80.0))
+                            .content_fit(ContentFit::Cover)
+                            .border_radius(BorderRadius::from(8.0_f32))
+                            .into()
+                    });
+
                 let item_row = Row::new()
                     .spacing(14)
                     .align_y(Alignment::Center)
@@ -1680,6 +1742,8 @@ impl App {
                                     .push(chip(wallpaper.category.clone(), sem)),
                             ),
                     )
+                    .push(Space::new().width(Length::Fill))
+                    .push(preview_el.unwrap_or_else(|| Space::new().width(Length::Fixed(120.0)).into()))
                     .push(download_btn);
 
                 items.push(
@@ -1918,93 +1982,80 @@ impl App {
             ),
         ];
 
-        // Two-column layout
-        Row::new()
+        // A two-by-two grid of section cards. Four columns in a single row
+        // gave every card about 215 px — less than a three-segment control
+        // needs — so the segments spilled over the card edge and the rows
+        // ended at different heights, which read as a diagonal "curve".
+        // Two per row doubles the width and lets each card size itself to
+        // its content, so the bottoms line up.
+        let appearance = settings_card(
+            tr("Appearance"),
+            vec![
+                segmented_row(
+                    tr("Theme"),
+                    tr("Window and control appearance"),
+                    vec![
+                        (
+                            tr("System"),
+                            self.state.theme == "system",
+                            Message::SetTheme("system".into()),
+                        ),
+                        (
+                            tr("Light"),
+                            self.state.theme == "light",
+                            Message::SetTheme("light".into()),
+                        ),
+                        (
+                            tr("Dark"),
+                            self.state.theme == "dark",
+                            Message::SetTheme("dark".into()),
+                        ),
+                    ],
+                    sem,
+                ),
+                segmented_row(
+                    tr("Language"),
+                    tr("Interface language"),
+                    vec![
+                        (
+                            tr("System"),
+                            self.state.language.is_empty(),
+                            Message::SetLanguage(String::new()),
+                        ),
+                        ("English".into(), self.state.language == "en", Message::SetLanguage("en".into())),
+                        ("Русский".into(), self.state.language == "ru", Message::SetLanguage("ru".into())),
+                        ("日本語".into(), self.state.language == "ja", Message::SetLanguage("ja".into())),
+                    ],
+                    sem,
+                ),
+            ],
+            sem,
+        );
+        let playback = settings_card(
+            tr("Playback"),
+            playback_rows,
+            sem,
+        );
+        let rotation = settings_card(tr("Rotation"), rotation_rows, sem);
+        let desktop = settings_card(tr("Desktop integration"), desktop_rows, sem);
+
+        Column::new()
             .spacing(18)
-            .width(Length::Fill)
             .push(
-                container(
-                    Column::new()
-                        .spacing(16)
-                        .push(section_title(tr("Appearance"), sem))
-                        .push(segmented_row(
-                            tr("Theme"),
-                            tr("Window and control appearance"),
-                            vec![
-                                (
-                                    tr("System"),
-                                    self.state.theme == "system",
-                                    Message::SetTheme("system".into()),
-                                ),
-                                (
-                                    tr("Light"),
-                                    self.state.theme == "light",
-                                    Message::SetTheme("light".into()),
-                                ),
-                                (
-                                    tr("Dark"),
-                                    self.state.theme == "dark",
-                                    Message::SetTheme("dark".into()),
-                                ),
-                            ],
-                            sem,
-                        ))
-                        .push(segmented_row(
-                            tr("Language"),
-                            tr("Interface language"),
-                            vec![
-                                (
-                                    tr("System"),
-                                    self.state.language.is_empty(),
-                                    Message::SetLanguage(String::new()),
-                                ),
-                                (
-                                    "English".into(),
-                                    self.state.language == "en",
-                                    Message::SetLanguage("en".into()),
-                                ),
-                                (
-                                    "Русский".into(),
-                                    self.state.language == "ru",
-                                    Message::SetLanguage("ru".into()),
-                                ),
-                                (
-                                    "日本語".into(),
-                                    self.state.language == "ja",
-                                    Message::SetLanguage("ja".into()),
-                                ),
-                            ],
-                            sem,
-                        )),
-                )
-                .padding(20),
+                Row::new()
+                    .spacing(18)
+                    .align_y(Alignment::Start)
+                    .width(Length::Fill)
+                    .push(appearance)
+                    .push(playback),
             )
             .push(
-                container(
-                    Column::new()
-                        .spacing(16)
-                        .push(section_title(tr("Playback"), sem))
-                        .extend(playback_rows),
-                )
-                .padding(20),
-            )
-            .push(
-                container(
-                    Column::new()
-                        .spacing(16)
-                        .push(section_title(tr("Rotation"), sem))
-                        .extend(rotation_rows),
-                )
-                .padding(20),
-            )
-            .push(
-                container(
-                    Column::new()
-                        .spacing(16)
-                        .push(section_title(tr("Desktop integration"), sem))
-                        .extend(desktop_rows),
-                )
-                .padding(20),
+                Row::new()
+                    .spacing(18)
+                    .align_y(Alignment::Start)
+                    .width(Length::Fill)
+                    .push(rotation)
+                    .push(desktop),
             )
             .into()
     }
@@ -2242,6 +2293,25 @@ fn card<'a, M: 'a>(
         .padding(20)
         .width(Length::Fill)
         .style(move |_| floating_card_style(sem))
+}
+
+/// A Settings section: title plus its rows, as a glass card that shares half
+/// of a `Row` with its sibling.
+fn settings_card<'a, M: 'a>(
+    title: String,
+    rows: Vec<Element<'a, M>>,
+    sem: &'static Semantics,
+) -> Element<'a, M> {
+    container(
+        Column::new()
+            .spacing(16)
+            .push(section_title(title, sem))
+            .extend(rows),
+    )
+    .padding(20)
+    .width(Length::Fill)
+    .style(move |_| floating_card_style(sem))
+    .into()
 }
 
 fn section_title<M>(label: String, sem: &'static Semantics) -> Element<'static, M> {

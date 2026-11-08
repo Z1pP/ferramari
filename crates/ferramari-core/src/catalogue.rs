@@ -1370,7 +1370,10 @@ mod tests {
         let result: Result<CachedMetadata, _> = serde_json::from_str("{}");
         assert!(result.is_err());
         let err_text = result.unwrap_err().to_string();
-        assert!(err_text.contains("width") || err_text.contains("missing"), "{err_text}");
+        assert!(
+            err_text.contains("width") || err_text.contains("missing"),
+            "{err_text}"
+        );
     }
 
     /// Listing with missing pagination fields still loads via default.
@@ -1388,10 +1391,22 @@ mod tests {
     /// Malformed image URLs are handled gracefully by absolute_url.
     #[test]
     fn absolute_url_handles_various_formats() {
-        assert_eq!(absolute_url("/uploads/image.jpg"), "https://winzoro.net/uploads/image.jpg");
-        assert_eq!(absolute_url("//cdn.example/img.jpg"), "https://cdn.example/img.jpg");
-        assert_eq!(absolute_url("https://safe.example/img.jpg"), "https://safe.example/img.jpg");
-        assert_eq!(absolute_url("relative.png"), "https://winzoro.net/relative.png");
+        assert_eq!(
+            absolute_url("/uploads/image.jpg"),
+            "https://winzoro.net/uploads/image.jpg"
+        );
+        assert_eq!(
+            absolute_url("//cdn.example/img.jpg"),
+            "https://cdn.example/img.jpg"
+        );
+        assert_eq!(
+            absolute_url("https://safe.example/img.jpg"),
+            "https://safe.example/img.jpg"
+        );
+        assert_eq!(
+            absolute_url("relative.png"),
+            "https://winzoro.net/relative.png"
+        );
     }
 
     /// Very long descriptions parsed from HTML cards do not crash.
@@ -1484,10 +1499,11 @@ mod tests {
         // A value that could theoretically overflow when multiplied.
         // "999999999999999 GB" might overflow — it should be clamped or fail.
         let result = parse_size("999999999999999 GB");
-        // Either returns None (overflow → parsing fails on f64) or wraps.
-        match result {
-            Some(v) => assert!(v <= u64::MAX),
-            None => {} // also acceptable if f64 parsing fails
+        // Either None (overflow → parsing refuses the value) or Some. The
+        // guarantee under test is that parsing terminates without panicking;
+        // a returned u64 cannot exceed u64::MAX by construction.
+        if let Some(bytes) = result {
+            assert!(bytes > 0);
         }
     }
 
@@ -1506,13 +1522,21 @@ mod tests {
             let ext = Path::new(url.split('?').next().unwrap())
                 .extension()
                 .and_then(|e| e.to_str())
-                .filter(|e| matches!(e.to_ascii_lowercase().as_str(), "png" | "jpg" | "jpeg" | "webp" | "gif"));
+                .filter(|e| {
+                    matches!(
+                        e.to_ascii_lowercase().as_str(),
+                        "png" | "jpg" | "jpeg" | "webp" | "gif"
+                    )
+                });
             // When filtering by lowercase, these should be accepted.
             // But the filter only checks lowercase values against lowercase list.
             match ext {
                 Some(e) => {
                     let lower = e.to_ascii_lowercase();
-                    assert!(matches!(lower.as_str(), "png" | "jpg" | "jpeg" | "webp" | "gif"), "url: {url}, got: {ext:?}");
+                    assert!(
+                        matches!(lower.as_str(), "png" | "jpg" | "jpeg" | "webp" | "gif"),
+                        "url: {url}, got: {ext:?}"
+                    );
                 }
                 None => assert_eq!(expected_ext, None, "url: {url}"),
             }
@@ -1532,8 +1556,7 @@ mod tests {
     /// Large pages exceeding HTML_LIMIT are rejected by fetch_page_cached.
     #[test]
     fn oversized_pages_exceed_html_limit() {
-        // The constant limit is 5 MiB; verify it exists.
-        assert!(HTML_LIMIT > 0);
+        const { assert!(HTML_LIMIT > 0) };
         assert_eq!(HTML_LIMIT, 5 * 1024 * 1024);
     }
 
@@ -1541,8 +1564,8 @@ mod tests {
     #[test]
     fn video_and_zip_limits_have_expected_values() {
         assert_eq!(VIDEO_LIMIT, 1024 * 1024 * 1024); // 1 GiB
-        assert_eq!(ZIP_LIMIT, 512 * 1024 * 1024);    // 512 MiB
-        assert_eq!(PREVIEW_LIMIT, 8 * 1024 * 1024);  // 8 MiB
+        assert_eq!(ZIP_LIMIT, 512 * 1024 * 1024); // 512 MiB
+        assert_eq!(PREVIEW_LIMIT, 8 * 1024 * 1024); // 8 MiB
     }
 
     /// Extraction only picks video extensions (case-insensitive).
@@ -1590,7 +1613,7 @@ mod tests {
     #[test]
     fn ensure_preview_rejects_non_image_response() {
         // This test verifies logic via read_limited which checks limit.
-        assert!(read_limited(std::io::empty(), 0u64 + 1).is_ok());
+        assert!(read_limited(std::io::empty(), 1).is_ok());
     }
 
     /// PageCacheDir structure: sheet, video, preview, page directories exist as subdirs of cache_dir.

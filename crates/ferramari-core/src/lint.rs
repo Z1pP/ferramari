@@ -1214,13 +1214,17 @@ mod tests {
         std::fs::write(
             dir.join("manifest.json"),
             r#"{"name":"Clean","author":"Ada","type":"video","description":"desc"}"#,
-        ).unwrap();
+        )
+        .unwrap();
         std::fs::write(dir.join("wallpaper.mp4"), [0u8; 2048]).unwrap();
         // Gather facts — entry exists but won't measure without ffmpeg.
         let facts = gather(&dir);
         let report = review(&facts);
         // No import error means lint didn't find structural problems.
-        assert!(report.errors().count() <= 1, "at most one structurally reported finding: {report:?}");
+        assert!(
+            report.errors().count() <= 1,
+            "at most one structurally reported finding: {report:?}"
+        );
         if !report.blocked() {
             let imported = import(&dir, &temp_dir("import-passing")).unwrap();
             assert_eq!(imported.name, "Clean");
@@ -1237,7 +1241,8 @@ mod tests {
         std::fs::write(
             dir.join("manifest.json"),
             r#"{"name":"Warnings Pack","type":"video"}"#,
-        ).unwrap();
+        )
+        .unwrap();
         std::fs::write(dir.join("wallpaper.mp4"), b"v").unwrap();
         let facts = gather(&dir);
         let report = review(&facts);
@@ -1259,7 +1264,8 @@ mod tests {
         std::fs::write(
             dir.join("manifest.json"),
             r#"{"name":"","author":"A","type":"video"}"#,
-        ).unwrap();
+        )
+        .unwrap();
         std::fs::write(dir.join("wallpaper.mp4"), b"v").unwrap();
         let facts = gather(&dir);
         let report = review(&facts);
@@ -1284,8 +1290,10 @@ mod tests {
         let report = review(&facts);
         let finding = find(&report, "import-rejected").expect("import-rejected expected");
         // The message must contain the original reason words from load.
-        assert!(finding.message.to_lowercase().contains("relative path") ||
-                finding.message.to_lowercase().contains(".."));
+        assert!(
+            finding.message.to_lowercase().contains("relative path")
+                || finding.message.to_lowercase().contains("..")
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -1300,11 +1308,12 @@ mod tests {
         std::fs::write(dir.join("wallpaper.mp4"), b"v").unwrap();
         std::fs::write(dir.join("preview.jpg"), b"p").unwrap();
         // Write a valid checksums file so verify_checksums sees it.
-        let digests: std::collections::BTreeMap<String, String> = crate::package::checksums(&dir).unwrap();
+        let digests: std::collections::BTreeMap<String, String> =
+            crate::package::checksums(&dir).unwrap();
         let cs_text = serde_json::to_string_pretty(&digests).unwrap();
         std::fs::write(dir.join("checksums.json"), format!("{cs_text}\n")).unwrap();
         let facts = gather(&dir);
-        assert_eq!(facts.checksummed, true);
+        assert!(facts.checksummed);
         let report = review(&facts);
         // May have unsigned warning but no errors.
         assert!(!report.blocked());
@@ -1323,7 +1332,8 @@ mod tests {
         std::fs::write(
             dir.join("manifest.json"),
             r#"{"name":"W","author":"A","type":"web","entry":"index.html"}"#,
-        ).unwrap();
+        )
+        .unwrap();
         std::fs::write(dir.join("index.html"), b"<html></html>").unwrap();
         let facts = gather(&dir);
         let report = review(&facts);
@@ -1340,7 +1350,8 @@ mod tests {
         std::fs::write(
             dir.join("manifest.json"),
             r#"{"name":"J","author":"A","type":"video","description":"d"}"#,
-        ).unwrap();
+        )
+        .unwrap();
         std::fs::write(dir.join("wallpaper.mp4"), b"not-video").ok();
         let facts = gather(&dir);
         let report = review(&facts);
@@ -1411,7 +1422,7 @@ mod tests {
             ..Facts::default()
         };
         let report = review(&facts);
-        let kept = filter(report.findings, &vec!["unsigned".to_string()]);
+        let kept = filter(report.findings, &["unsigned".to_string()]);
         let filtered = Report {
             name: report.name.clone(),
             kind: report.kind.clone(),
@@ -1425,11 +1436,23 @@ mod tests {
     /// Measured::resolution returns None when either dimension is missing.
     #[test]
     fn measured_resolution_requires_both_dimensions() {
-        let m = Measured { width: Some(1920), height: None, unprobed: false };
+        let m = Measured {
+            width: Some(1920),
+            height: None,
+            unprobed: false,
+        };
         assert_eq!(m.resolution(), None);
-        let m = Measured { width: None, height: Some(1080), unprobed: false };
+        let m = Measured {
+            width: None,
+            height: Some(1080),
+            unprobed: false,
+        };
         assert_eq!(m.resolution(), None);
-        let m = Measured { width: Some(1920), height: Some(1080), unprobed: false };
+        let m = Measured {
+            width: Some(1920),
+            height: Some(1080),
+            unprobed: false,
+        };
         assert_eq!(m.resolution(), Some("1920x1080".to_string()));
     }
 
@@ -1451,7 +1474,8 @@ mod tests {
         std::fs::write(
             dir.join("manifest.json"),
             r#"{"name":"WS","author":"A","type":"video","entry":"  wallpaper.mp4  "}"#,
-        ).unwrap();
+        )
+        .unwrap();
         // The file is named without spaces, so this should fail because
         // checked_file constructs dir/"  wallpaper.mp4  " which doesn't exist.
         assert!(crate::package::load(&dir).is_err());
@@ -1466,9 +1490,12 @@ mod tests {
         std::fs::write(
             dir.join("manifest.json"),
             r#"{"name":"DE","author":"A","type":"video","entry":"subdir"}"#,
-        ).unwrap();
+        )
+        .unwrap();
         std::fs::write(dir.join("wallpaper.mp4"), b"x").unwrap();
-        assert!(crate::package::load(&dir).unwrap_err().contains("not found"));
+        assert!(crate::package::load(&dir)
+            .unwrap_err()
+            .contains("not found"));
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -1479,7 +1506,8 @@ mod tests {
         std::fs::write(
             dir.join("manifest.json"),
             r#"{"name":"PF","author":"A","type":"video"}"#,
-        ).unwrap();
+        )
+        .unwrap();
         std::fs::write(dir.join("wallpaper.mp4"), b"x").unwrap();
         std::fs::write(dir.join("preview.jpg"), b"jpeg").unwrap();
         let pkg = crate::package::load(&dir).unwrap();

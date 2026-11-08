@@ -392,7 +392,9 @@ mod tests {
     #[test]
     fn id_length_boundary_at_200_chars() {
         let id_long = "x".repeat(200);
-        let body = format!(r#"{{"items":[{{"id":"{id_long}","name":"N","download":"https://example.com/n.mp4"}}]}}"#);
+        let body = format!(
+            r#"{{"items":[{{"id":"{id_long}","name":"N","download":"https://example.com/n.mp4"}}]}}"#
+        );
         let (base, req) = serve_once(&body);
         let client = Client::new(&base).unwrap();
         let page = client.list(1, None, None).unwrap();
@@ -400,7 +402,9 @@ mod tests {
         req.join().unwrap();
 
         let id_too_long = "y".repeat(201);
-        let body2 = format!(r#"{{"items":[{{"id":"{id_too_long}","name":"N","download":"https://example.com/n.mp4"}}]}}"#);
+        let body2 = format!(
+            r#"{{"items":[{{"id":"{id_too_long}","name":"N","download":"https://example.com/n.mp4"}}]}}"#
+        );
         let (base2, req2) = serve_once(&body2);
         let client2 = Client::new(&base2).unwrap();
         assert!(client2.list(1, None, None).is_err());
@@ -411,7 +415,9 @@ mod tests {
     #[test]
     fn name_length_boundary_at_300_chars() {
         let name_long = "x".repeat(300);
-        let body = format!(r#"{{"items":[{{"id":"n","name":"{name_long}","download":"https://example.com/n.mp4"}}]}}"#);
+        let body = format!(
+            r#"{{"items":[{{"id":"n","name":"{name_long}","download":"https://example.com/n.mp4"}}]}}"#
+        );
         let (base, req) = serve_once(&body);
         let client = Client::new(&base).unwrap();
         let page = client.list(1, None, None).unwrap();
@@ -419,7 +425,9 @@ mod tests {
         req.join().unwrap();
 
         let name_too_long = "y".repeat(301);
-        let body2 = format!(r#"{{"items":[{{"id":"n","name":"{name_too_long}","download":"https://example.com/n.mp4"}}]}}"#);
+        let body2 = format!(
+            r#"{{"items":[{{"id":"n","name":"{name_too_long}","download":"https://example.com/n.mp4"}}]}}"#
+        );
         let (base2, req2) = serve_once(&body2);
         let client2 = Client::new(&base2).unwrap();
         assert!(client2.list(1, None, None).is_err());
@@ -432,7 +440,9 @@ mod tests {
     fn list_at_max_items_boundary_succeeds() {
         let mut items = Vec::new();
         for i in 0..MAX_ITEMS {
-            items.push(format!(r#"{{"id":"i{i}","name":"I","download":"https://ex.com/i{i}.mp4"}}"#));
+            items.push(format!(
+                r#"{{"id":"i{i}","name":"I","download":"https://ex.com/i{i}.mp4"}}"#
+            ));
         }
         let body = format!(r#"{{"page":1,"items":[{}]}}"#, items.join(","));
         let (base, req) = serve_once(&body);
@@ -448,7 +458,9 @@ mod tests {
     fn list_exceeding_max_items_rejected_by_validation() {
         let mut items = Vec::new();
         for i in 0..MAX_ITEMS + 50 {
-            items.push(format!(r#"{{"id":"i{i}","name":"I","download":"https://ex.com/i{i}.mp4"}}"#));
+            items.push(format!(
+                r#"{{"id":"i{i}","name":"I","download":"https://ex.com/i{i}.mp4"}}"#
+            ));
         }
         let body = format!(r#"{{"page":1,"items":[{}]}}"#, items.join(","));
         let (base, req) = serve_once(&body);
@@ -468,7 +480,11 @@ mod tests {
             let client = Client::new(&base).unwrap();
             let result = client.list(1, None, None);
             if proto.starts_with("http") {
-                assert!(result.is_ok(), "{proto} should be accepted, got: {:?}", result.err());
+                assert!(
+                    result.is_ok(),
+                    "{proto} should be accepted, got: {:?}",
+                    result.err()
+                );
             } else {
                 assert!(result.is_err(), "{proto} should be rejected");
             }
@@ -526,7 +542,11 @@ mod tests {
         let client = Client::new(&base).unwrap();
         let _ = client.list(1, Some("hello world & more"), None);
         let request = request_handle.join().unwrap();
-        assert!(request.contains("q=hello%20world%20%26%20more"), "{}", request);
+        assert!(
+            request.contains("q=hello%20world%20%26%20more"),
+            "{}",
+            request
+        );
     }
 
     /// Category parameter is percent encoded.
@@ -582,11 +602,18 @@ mod tests {
         let address = listener.local_addr().unwrap();
         std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            write!(stream, "HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok").unwrap();
+            write!(
+                stream,
+                "HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"
+            )
+            .unwrap();
         });
         let client = Client::new(&format!("http://{address}/v1")).unwrap();
         let err = client.list(1, None, None).unwrap_err();
-        assert!(err.contains("404") || err.contains("HTTP"), "error was: {err}");
+        assert!(
+            err.contains("404") || err.contains("HTTP"),
+            "error was: {err}"
+        );
     }
 
     /// Server response exceeding MAX_BODY_BYTES is rejected.
@@ -678,9 +705,7 @@ mod tests {
     #[test]
     fn download_is_required_in_wallpaper_item() {
         // Serde will fail on missing required field 'download'.
-        let result: Result<WallpaperItem, _> = serde_json::from_str(
-            r#"{"id":"x","name":"X"}"#
-        );
+        let result: Result<WallpaperItem, _> = serde_json::from_str(r#"{"id":"x","name":"X"}"#);
         assert!(result.is_err(), "download field is required");
     }
 

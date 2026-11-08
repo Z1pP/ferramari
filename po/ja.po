@@ -541,6 +541,14 @@ msgstr "ハードウェアデコード"
 
 msgid "Auto lets mpv choose a safe decoder; VA-API forces it; Off uses software"
 msgstr "自動では mpv が安全なデコーダーを選択し、VA-API は強制、オフはソフトウェアを使用します"
+msgid "Hardware decoding is not available here; decoding on the CPU."
+msgstr "ハードウェアデコードはこの環境では利用できません。CPUでデコードしています。"
+msgid "The selected decoder is not available here; decoding on the CPU instead."
+msgstr "選択したデコーダーは利用できないため、CPUでデコードしています。"
+msgid "The selected decoder is not available; a different hardware decoder is active."
+msgstr "選択したデコーダーは利用できません。代わりに別のハードウェアデコーダーが動作しています。"
+msgid "Hardware decoding is active although software decoding was selected."
+msgstr "ソフトウェアデコードが選択されているのにハードウェアデコードが有効です。"
 
 msgid "Auto"
 msgstr "自動"
@@ -578,8 +586,14 @@ msgstr "利用不可"
 msgid "Waiting for the first sample…"
 msgstr "最初のサンプルを待っています…"
 
-msgid "Metrics cover the Ferramari process and its mpv/WebKit children. GPU usage is read from sysfs and is unavailable on drivers that do not expose gpu_busy_percent."
-msgstr "計測対象は Ferramari プロセスとその mpv/WebKit 子プロセスです。GPU 使用率は sysfs から読み取り、gpu_busy_percent を公開しないドライバーでは利用できません。"
+msgid "Metrics cover the Ferramari server and its mpv children."
+msgstr "計測対象は Ferramari サーバーとその mpv 子プロセスです。"
+
+msgid "Not measurable here"
+msgstr "この環境では計測不可"
+
+msgid "Measuring…"
+msgstr "計測中…"
 
 msgid "Live resource use"
 msgstr "リアルタイムのリソース使用量"

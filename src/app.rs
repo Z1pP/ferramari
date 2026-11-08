@@ -25,12 +25,14 @@ use rand::seq::SliceRandom;
 
 use crate::autostart;
 use crate::config::{Config, Mode};
+use crate::display_ids::DisplayIdRegistry;
 use crate::eco;
 use crate::error::{ErrorKind, UserError};
 use crate::library::Library;
 use crate::monitors::MonitorInfo;
 use crate::package;
 use crate::paths;
+use crate::session::{IdleState, LockState};
 use crate::signing;
 use crate::supervisor::{RestartPolicy, Retry, MAX_RETRIES};
 use crate::tray;
@@ -63,6 +65,9 @@ pub use crate::bus::{Command, CommandSender, PackageReport, Snapshot};
 pub struct App {
     pub config: Config,
     pub monitors: Vec<MonitorInfo>,
+    /// Which physical screen owns which config key. Kept separate from the
+    /// config so a `--reset-config` cannot orphan a wallpaper assignment.
+    pub display_ids: DisplayIdRegistry,
     pub windows: Vec<Engine>,
     pub snapshot: Arc<Mutex<Snapshot>>,
     tx: CommandSender,
@@ -74,13 +79,15 @@ pub struct App {
     weak_self: Weak<RefCell<App>>,
     background: bool,
     paused_by_user: bool,
-    /// Aggregate lock state; a lock from either source keeps it true.
-    screen_locked: bool,
-    screensaver_locked: bool,
-    logind_locked: bool,
+    /// Lock state aggregated over every facility the session exposes: a lock
+    /// from either source keeps it locked, and one source's unlock cannot
+    /// cancel a lock another still holds.
+    lock: LockState,
     suspended: bool,
-    /// Set from desktop idle time; only the Eco profile stops for it.
-    idle: bool,
+    /// Desktop activity from the session's idle facility. `Unknown` is not
+    /// `Active`: a service that vanished says nothing, and guessing would be
+    /// a claim about the user. Only Eco pauses for real idle.
+    idle: IdleState,
     /// Latest per-window occlusion sample from the X11 watcher.
     window_state: WindowState,
     /// Last Eco decision applied to each monitor, so a state change only touches
@@ -110,6 +117,10 @@ pub struct App {
     gui_shown: bool,
     operation_status: String,
     operation_error: bool,
+    /// What the players report as the decoder actually in use, from the
+    /// supervision tick. Empty while nothing has decoded. The setting in the
+    /// config is what the user asked for; this is what the machine does.
+    hwdec_running: String,
 }
 
 impl App {
@@ -131,23 +142,22 @@ impl App {
                 util::cleanup_partial_files(&paths::static_cache_dir(), age);
             })
             .ok();
-        let monitors = display_provider.displays();
-        let names: Vec<String> = monitors
-            .iter()
-            .map(|monitor| monitor.name.clone())
-            .collect();
+        let mut monitors = display_provider.displays();
+        let mut display_ids = DisplayIdRegistry::load();
+        let names = bind_display_ids(&mut monitors, &mut display_ids);
         let config = Config::load(&names);
         let background_wallpaper = GnomeBackground::capture();
         // Read the power supply once: two separate `status()` calls can
         // observe different states while a charger is being plugged in.
         let power_status = power_provider.status();
         let idle_threshold = Arc::new(AtomicU64::new(
-            config.idle_timeout_sec.clamp(30, 86_400) as u64,
+            config.idle_timeout_sec.clamp(30, 86_400) as u64
         ));
 
         let app = Self {
             config,
             monitors,
+            display_ids,
             windows: Vec::new(),
             snapshot,
             tx: tx.clone(),
@@ -159,11 +169,9 @@ impl App {
             weak_self: Weak::new(),
             background: args.background,
             paused_by_user: false,
-            screen_locked: false,
-            screensaver_locked: false,
-            logind_locked: false,
+            lock: LockState::default(),
             suspended: false,
-            idle: false,
+            idle: IdleState::default(),
             window_state: WindowState::default(),
             last_plans: HashMap::new(),
             stream: None,
@@ -184,6 +192,7 @@ impl App {
             gui_shown: false,
             operation_status: String::new(),
             operation_error: false,
+            hwdec_running: String::new(),
         };
         app.sync_snapshot();
 
@@ -267,10 +276,10 @@ impl App {
     }
 
     fn start_external_watchers(&mut self) {
-        self.platform_watchers = Some(self.platform_event_source.start(
-            self.tx.clone(),
-            Arc::clone(&self.idle_threshold),
-        ));
+        self.platform_watchers = Some(
+            self.platform_event_source
+                .start(self.tx.clone(), Arc::clone(&self.idle_threshold)),
+        );
     }
 
     pub fn activate(&mut self) {
@@ -357,17 +366,16 @@ impl App {
                 self.save_config();
                 self.apply_mute_states();
             }
-            Command::ScreenLockActive(active) => {
-                log::debug!("[ScreenLock] screensaver active={active}");
-                self.screensaver_locked = active;
-                self.screen_locked = self.screensaver_locked || self.logind_locked;
-                self.apply_playback_states();
-            }
-            Command::SessionLock(active) => {
-                log::debug!("[ScreenLock] logind lock active={active}");
-                self.logind_locked = active;
-                self.screen_locked = self.screensaver_locked || self.logind_locked;
-                self.apply_playback_states();
+            Command::LockChanged { source, active } => {
+                let changed = self.lock.set(source, active);
+                log::debug!(
+                    "[ScreenLock] active={active} from {source}, locked={}, changed={changed}",
+                    self.lock.locked(),
+                    source = source.as_str(),
+                );
+                if changed {
+                    self.apply_playback_states();
+                }
             }
             Command::WindowState(state) => {
                 if state == self.window_state {
@@ -383,7 +391,11 @@ impl App {
             }
             Command::Idle(idle) => {
                 if self.idle != idle {
-                    log::debug!("[Eco] idle={idle}");
+                    log::debug!(
+                        "[Eco] idle={} (pauses={})",
+                        idle.as_str(),
+                        idle.pauses_playback()
+                    );
                     self.idle = idle;
                     self.apply_playback_states();
                 }
@@ -629,10 +641,7 @@ impl App {
                     .ok();
             }
             Command::PackageVerified(report) => {
-                let invalid = matches!(
-                    &report.signature,
-                    signing::SignatureStatus::Invalid { .. }
-                );
+                let invalid = matches!(&report.signature, signing::SignatureStatus::Invalid { .. });
                 self.set_operation_status(
                     format!(
                         "Verified {}: checksums={}, {}",
@@ -652,24 +661,24 @@ impl App {
             Command::TrustKey(path) => {
                 self.set_operation_status("Trusting package key…", false);
                 match signing::trust_source(&path) {
-                Ok(Some(key_id)) => {
-                    self.set_operation_status(format!("Trusted key {key_id}"), false);
-                    log::info!("[Package] Trusted key {key_id}");
-                }
-                Ok(None) => {
-                    self.set_operation_status("Package contains no signing key", true);
-                    self.notify_user_error(UserError::new(
-                        ErrorKind::FileSystem,
-                        format!("{} carries no key to trust", path.display()),
-                    ));
-                }
-                Err(err) => {
-                    self.set_operation_status(format!("Trust operation failed: {err}"), true);
-                    self.notify_user_error(UserError::new(
-                        ErrorKind::FileSystem,
-                        format!("Could not trust the key: {err}"),
-                    ));
-                }
+                    Ok(Some(key_id)) => {
+                        self.set_operation_status(format!("Trusted key {key_id}"), false);
+                        log::info!("[Package] Trusted key {key_id}");
+                    }
+                    Ok(None) => {
+                        self.set_operation_status("Package contains no signing key", true);
+                        self.notify_user_error(UserError::new(
+                            ErrorKind::FileSystem,
+                            format!("{} carries no key to trust", path.display()),
+                        ));
+                    }
+                    Err(err) => {
+                        self.set_operation_status(format!("Trust operation failed: {err}"), true);
+                        self.notify_user_error(UserError::new(
+                            ErrorKind::FileSystem,
+                            format!("Could not trust the key: {err}"),
+                        ));
+                    }
                 }
             }
             Command::SetMonitorRotation {
@@ -752,11 +761,7 @@ impl App {
                 // yet. Flush first, then merge the new monitor names.
                 self.flush_config();
                 self.monitors = self.display_provider.displays();
-                let names: Vec<String> = self
-                    .monitors
-                    .iter()
-                    .map(|monitor| monitor.name.clone())
-                    .collect();
+                let names = bind_display_ids(&mut self.monitors, &mut self.display_ids);
                 self.config = Config::load(&names);
                 self.idle_threshold.store(
                     self.config.idle_timeout_sec.clamp(30, 86_400) as u64,
@@ -1061,13 +1066,29 @@ impl App {
         let profile = self.config.playback_profile.as_str();
         let hwdec = self.config.hwdec.as_str();
         match key.kind {
-            ContentKind::Video => Engine::video(self.surface_provider.as_ref(), monitor, &key.source, volume, muted, profile, hwdec),
+            ContentKind::Video => Engine::video(
+                self.surface_provider.as_ref(),
+                monitor,
+                &key.source,
+                volume,
+                muted,
+                profile,
+                hwdec,
+            ),
             ContentKind::Stream => {
                 let stream = self
                     .stream
                     .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("stream is not resolved yet"))?;
-                Engine::stream(self.surface_provider.as_ref(), monitor, stream, volume, muted, profile, hwdec)
+                Engine::stream(
+                    self.surface_provider.as_ref(),
+                    monitor,
+                    stream,
+                    volume,
+                    muted,
+                    profile,
+                    hwdec,
+                )
             }
             ContentKind::Web => Engine::web(monitor, &key.source),
         }
@@ -1209,6 +1230,13 @@ impl App {
             }
         }
 
+        // Ask the running players which decoder they ended up with. The
+        // setting is what the user asked for; this is what the machine does,
+        // and mpv falls back to the CPU without saying so. One probe per
+        // second is enough for the settings page and costs the command loop
+        // nothing, because the reply is read on the IPC worker.
+        self.poll_hwdec();
+
         // Free decoders that have been paused out of sight for a while. The
         // decision is checked every second so a monitor that becomes visible
         // again is resumed through `play_fade` before its decoder is released.
@@ -1290,6 +1318,63 @@ impl App {
         }
     }
 
+    /// Collect the decoder each player reports and keep the one worth showing.
+    ///
+    /// Every window decodes through the same mpv options, so the first
+    /// answered probe is representative; a machine where one monitor's GPU
+    /// path differs would be visible as a mixed reading, which the log shows.
+    /// An empty result means nothing has decoded yet, and the UI stays quiet.
+    fn poll_hwdec(&mut self) {
+        let mut reports = Vec::new();
+        for window in self.windows.iter_mut() {
+            let report = window.hwdec_status().report();
+            if !report.is_empty() && !reports.contains(&report) {
+                reports.push(report);
+            }
+        }
+        if reports.is_empty() {
+            // Playback stopped, or every decoder is parked: the previous
+            // reading describes a player that no longer exists, so it has to
+            // be retracted from the snapshot as well, not only locally.
+            if !self.hwdec_running.is_empty() {
+                log::debug!("[HwDec] no player reporting a decoder any more");
+                self.hwdec_running = String::new();
+                self.sync_snapshot();
+            }
+            return;
+        }
+        let joined = reports.join(",");
+        if joined == self.hwdec_running {
+            return;
+        }
+        // Log the raw facts rather than the user-facing sentence: the log is
+        // untranslated, and the verdict is derivable from these two values.
+        let verdict = self.hwdec_verdict(&joined);
+        if verdict.is_silent() {
+            log::debug!(
+                "[HwDec] requested {:?}, decoding as {joined}",
+                self.config.hwdec
+            );
+        } else {
+            log::warn!(
+                "[HwDec] requested {:?}, decoding as {joined}",
+                self.config.hwdec
+            );
+        }
+        self.hwdec_running = joined;
+        // The reading is only useful if bus clients see it; publish it when it
+        // changes rather than on every tick.
+        self.sync_snapshot();
+    }
+
+    /// Compare the configured mode with a reported decoder.
+    fn hwdec_verdict(&self, running: &str) -> ferramari_core::hwdec::HwDecCheck {
+        ferramari_core::hwdec::HwDecCheck::evaluate(
+            &self.config.hwdec,
+            &ferramari_core::hwdec::HwDec::from_report(Some(running)),
+        )
+    }
+
     fn monitor_visibility(&self, monitor: &str) -> WindowVisibility {
         self.monitors
             .iter()
@@ -1311,10 +1396,10 @@ impl App {
             self.config.is_pause_when_maximized,
             eco::Signals {
                 user_paused: self.paused_by_user,
-                screen_locked: self.screen_locked,
+                screen_locked: self.lock.locked(),
                 suspended: self.suspended,
                 battery_paused: self.config.pause_on_battery && self.on_battery,
-                idle: self.idle,
+                idle: self.idle.pauses_playback(),
                 covered: visibility.covered,
                 fullscreen: visibility.fullscreen,
             },
@@ -1329,7 +1414,7 @@ impl App {
         if self.paused_by_user {
             return false;
         }
-        if self.screen_locked || self.suspended {
+        if self.lock.locked() || self.suspended {
             return true;
         }
         let visibility = self.monitor_visibility(monitor);
@@ -1667,6 +1752,7 @@ impl App {
             pause_on_battery: self.config.pause_on_battery,
             idle_timeout_sec: self.config.idle_timeout_sec,
             hwdec: self.config.hwdec.clone(),
+            hwdec_running: self.hwdec_running.clone(),
             web_allow_network: self.config.web_allow_network,
             fade_duration_sec: self.config.fade_duration_sec,
             fade_interval: self.config.fade_interval,
@@ -1703,15 +1789,31 @@ fn launch_control_surface() -> anyhow::Result<()> {
     // `ferramari-ui` exits immediately when another instance owns its name.
     // Spawning a process is quick and returning the error here lets
     // show_gui() report a missing or non-executable UI binary to the log.
-    std::process::Command::new(&program)
+    let mut child = std::process::Command::new(&program)
         .spawn()
-        .map(|_| ())
         .map_err(|err| {
             anyhow::anyhow!(
                 "could not launch control surface {}: {err}",
                 program.display()
             )
-        })
+        })?;
+    // The UI may exit a few milliseconds after it starts (another window
+    // already owns the instance name). Nothing else waits on it, so without
+    // a reaper every closed control surface would linger as a zombie for
+    // the whole lifetime of the server. We move the Child into a dedicated
+    // background thread that calls `wait()` on drop.
+    let pid = child.id();
+    let _reaper = thread::Builder::new()
+        .name("ferramari-ui-reaper".to_string())
+        .spawn(move || -> Result<(), std::io::Error> {
+            let status = child.wait()?;
+            if !status.success() {
+                log::debug!("[GUI] Control surface exited with status {status}");
+            }
+            Ok(())
+        });
+    log::trace!("[GUI] Launched control surface PID {pid}");
+    Ok(())
 }
 
 /// Pure planning step: which wallpaper window should exist for every monitor
@@ -1762,6 +1864,25 @@ fn desired_windows_for(
         }
         Mode::Null | Mode::Unknown => Vec::new(),
     }
+}
+
+/// Resolve the durable config key of every connected display and keep the
+/// registry on disk. The enumeration name is only a label; `name` is what the
+/// config is indexed by, so binding it to the remembered key is what stops a
+/// replug or a reordered layout from swapping two wallpapers.
+///
+/// Saving is best-effort: an unwritable registry must not cost the user their
+/// wallpaper, and the next successful bind records it again.
+fn bind_display_ids(monitors: &mut [MonitorInfo], registry: &mut DisplayIdRegistry) -> Vec<String> {
+    if registry.bind(monitors) {
+        if let Err(err) = registry.save() {
+            log::warn!("[DisplayIds] {err}");
+        }
+    }
+    monitors
+        .iter()
+        .map(|monitor| monitor.name.clone())
+        .collect()
 }
 
 /// X11 root coordinates are device pixels; monitor geometry from RandR is
@@ -1866,6 +1987,8 @@ fn kind_label(kind: ContentKind) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ferramari_core::session::LockSource;
+    use ferramari_core::DisplayIdentity;
 
     fn monitor(name: &str, x: i32) -> MonitorInfo {
         MonitorInfo {
@@ -1877,6 +2000,7 @@ mod tests {
             height: 1080,
             scale_factor: 1,
             is_primary: name == "eDP-1",
+            identity: DisplayIdentity::default(),
         }
     }
 
@@ -1891,9 +2015,10 @@ mod tests {
         );
         config.mode = Mode::Video;
         for monitor in &monitors {
-            config
-                .data_source
-                .insert(monitor.name.clone(), format!("/videos/{}.mp4", monitor.name));
+            config.data_source.insert(
+                monitor.name.clone(),
+                format!("/videos/{}.mp4", monitor.name),
+            );
         }
 
         // Unplug HDMI-1: only the built-in display should get a window.
@@ -1950,16 +2075,28 @@ mod tests {
     #[test]
     fn order_rotation_advances_and_wraps() {
         let items = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        assert_eq!(next_rotation_path("order", &items, "a"), Some("b".to_string()));
-        assert_eq!(next_rotation_path("order", &items, "c"), Some("a".to_string()));
-        assert_eq!(next_rotation_path("order", &items, "gone"), Some("a".to_string()));
+        assert_eq!(
+            next_rotation_path("order", &items, "a"),
+            Some("b".to_string())
+        );
+        assert_eq!(
+            next_rotation_path("order", &items, "c"),
+            Some("a".to_string())
+        );
+        assert_eq!(
+            next_rotation_path("order", &items, "gone"),
+            Some("a".to_string())
+        );
     }
 
     #[test]
     fn random_rotation_avoids_the_current_item() {
         let items = vec!["a".to_string(), "b".to_string(), "c".to_string()];
         for _ in 0..50 {
-            assert_ne!(next_rotation_path("random", &items, "a").as_deref(), Some("a"));
+            assert_ne!(
+                next_rotation_path("random", &items, "a").as_deref(),
+                Some("a")
+            );
         }
         // One candidate left: it has to repeat.
         assert_eq!(
@@ -1999,5 +2136,221 @@ mod tests {
         let wanted = desired_windows_for(&config, &monitors, None);
         assert_eq!(wanted.len(), 1);
         assert_eq!(wanted[0].monitor, "eDP-1");
+    }
+
+    // ======================================================================== //
+    // Eco Engine integration: platform signals → policy decision                //
+    // ======================================================================== //
+
+    /// Minimal App skeleton for eco_plan_for() unit tests — only the fields
+    // that `eco_plan_for` actually touches are populated.
+    use crate::window::{MonitorVisibility, WindowRect, WindowState};
+
+    struct EcoTestHarness {
+        paused_by_user: bool,
+        lock: LockState,
+        suspended: bool,
+        on_battery: bool,
+        idle: IdleState,
+        window_state: WindowState,
+        monitors: Vec<MonitorInfo>,
+        playback_profile: String,
+        pause_on_battery: bool,
+        is_pause_when_maximized: bool,
+    }
+
+    impl EcoTestHarness {
+        fn new(config_mode: &'static str) -> Self {
+            let monitors = vec![
+                MonitorInfo {
+                    index: 0,
+                    name: "eDP-1".to_string(),
+                    x: 0,
+                    y: 0,
+                    width: 1920,
+                    height: 1080,
+                    scale_factor: 1,
+                    is_primary: true,
+                    identity: DisplayIdentity::default(),
+                },
+                MonitorInfo {
+                    index: 1,
+                    name: "HDMI-1".to_string(),
+                    x: 1920,
+                    y: 0,
+                    width: 1920,
+                    height: 1080,
+                    scale_factor: 1,
+                    is_primary: false,
+                    identity: DisplayIdentity::default(),
+                },
+            ];
+            Self {
+                paused_by_user: false,
+                lock: LockState::default(),
+                suspended: false,
+                on_battery: false,
+                idle: IdleState::Active,
+                window_state: WindowState::default(),
+                monitors,
+                playback_profile: config_mode.to_string(),
+                pause_on_battery: false,
+                is_pause_when_maximized: true,
+            }
+        }
+
+        /// Equivalent of `App::eco_plan_for(monitor)` with local state.
+        fn plan(&self, monitor: &str) -> eco::Plan {
+            let visibility = self.monitor_visibility(monitor);
+            eco::plan(
+                eco::Profile::from_config(&self.playback_profile),
+                self.is_pause_when_maximized,
+                eco::Signals {
+                    user_paused: self.paused_by_user,
+                    screen_locked: self.lock.locked(),
+                    suspended: self.suspended,
+                    battery_paused: self.pause_on_battery && self.on_battery,
+                    idle: self.idle.pauses_playback(),
+                    covered: visibility.covered,
+                    fullscreen: visibility.fullscreen,
+                },
+            )
+        }
+
+        fn monitor_visibility(&self, monitor: &str) -> MonitorVisibility {
+            self.monitors
+                .iter()
+                .find(|info| info.name == monitor)
+                .map(|info| {
+                    let scale = info.scale_factor.max(1);
+                    self.window_state.visibility_at(
+                        info.x * scale,
+                        info.y * scale,
+                        info.width * scale,
+                        info.height * scale,
+                    )
+                })
+                .unwrap_or_default()
+        }
+    }
+
+    #[test]
+    fn session_signals_override_all_profiles() {
+        // Each high-priority signal suspends playback for every profile.
+        for profile in ["quality", "balanced", "eco"] {
+            let mut h = EcoTestHarness::new(profile);
+            h.paused_by_user = true;
+            let p = h.plan("eDP-1");
+            assert_eq!(p.state, eco::State::Suspended, "{profile}: user pause");
+            assert!(!p.play);
+
+            let mut h = EcoTestHarness::new(profile);
+            h.lock.set(LockSource::ScreenSaver, true);
+            let p = h.plan("eDP-1");
+            assert_eq!(p.state, eco::State::Suspended, "{profile}: lock");
+            assert!(!p.play);
+
+            let mut h = EcoTestHarness::new(profile);
+            h.suspended = true;
+            let p = h.plan("eDP-1");
+            assert_eq!(p.state, eco::State::Suspended, "{profile}: suspend");
+            assert!(!p.play);
+        }
+    }
+
+    #[test]
+    fn battery_pause_is_profile_agnostic() {
+        for profile in ["quality", "balanced", "eco"] {
+            let mut h = EcoTestHarness::new(profile);
+            h.on_battery = true;
+            h.pause_on_battery = true;
+            let p = h.plan("eDP-1");
+            assert_eq!(p.state, eco::State::Suspended);
+            assert!(!p.play);
+        }
+    }
+
+    #[test]
+    fn occlusion_pauses_every_profile_when_smart_pause_is_on() {
+        let mut h = EcoTestHarness::new("quality");
+        h.window_state.windows.push(WindowRect {
+            fullscreen: true,
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            ..Default::default()
+        });
+        for prof in ["quality", "balanced", "eco"] {
+            h.playback_profile = prof.to_string();
+            let p = h.plan("eDP-1");
+            assert_eq!(p.state, eco::State::Occluded);
+            assert!(!p.play);
+        }
+    }
+
+    #[test]
+    fn smart_pause_disabled_means_occlusion_does_not_stop_playback() {
+        let mut h = EcoTestHarness::new("eco");
+        h.is_pause_when_maximized = false;
+        h.window_state.windows.push(WindowRect {
+            maximized: true,
+            x: 0,
+            y: 32,
+            width: 1920,
+            height: 1048,
+            ..Default::default()
+        });
+        let p = h.plan("eDP-1");
+        assert!(p.play);
+    }
+
+    #[test]
+    fn per_monitor_independence_coverage_vs_idle() {
+        // eDP-1 fully covered (fullscreen game); HDMI-1 idle but uncovered.
+        let mut h = EcoTestHarness::new("eco");
+        h.window_state.windows.push(WindowRect {
+            fullscreen: true,
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            ..Default::default()
+        });
+        h.idle = IdleState::Idle;
+
+        let edp = h.plan("eDP-1");
+        let hdmi = h.plan("HDMI-1");
+
+        // Covered monitor is Occluded regardless of idle.
+        assert_eq!(edp.state, eco::State::Occluded);
+        assert!(!edp.play);
+
+        // Uncovered monitor sees idle and should be handled per profile (Eco stops).
+        assert_eq!(hdmi.state, eco::State::Idle);
+        assert!(!hdmi.play);
+    }
+
+    #[test]
+    fn quality_still_plays_through_idle_but_blocks_through_occlusion() {
+        let mut h = EcoTestHarness::new("quality");
+        // Idle alone doesn't stop Quality.
+        h.idle = IdleState::Idle;
+        let p_idle = h.plan("eDP-1");
+        assert_eq!(p_idle.state, eco::State::Active);
+        assert!(p_idle.play);
+
+        // Now add fullscreen occlusion.
+        h.window_state.windows.push(WindowRect {
+            fullscreen: true,
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            ..Default::default()
+        });
+        let p_occl = h.plan("eDP-1");
+        assert_eq!(p_occl.state, eco::State::Occluded);
+        assert!(!p_occl.play);
     }
 }

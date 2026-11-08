@@ -35,12 +35,14 @@ The interface has a hand-tuned dark palette as well as the light one:
 - Event-driven X11 window watcher (no 300 ms polling)
 - Performance page with live CPU, RAM, thread, process and (where available)
   GPU metrics
-- Hardware decoding selector (Auto / VA-API / Off)
+- Hardware decoding selector (Auto / VA-API / Off), with the decoder that is
+  actually running reported when it differs from the choice
 - Web-page wallpapers are temporarily unavailable while a GTK-free browser engine is evaluated; the current media backend reports this explicitly instead of silently failing
 - Reproducible benchmark harness (`make bench`) for startup, CPU, RAM,
   processes, GPU and mpv recovery
 - `--doctor` diagnostics for session/backend, desktop, media tools, DRM nodes,
-  idle and lock services
+  idle and lock services, the decoder that is really running, and a per-feature
+  support level with the reason for anything that is only partial
 - Logind lock/unlock fallback, aggregated with screensaver lock state
 - `.ferramari` package import/export with strict metadata, path, symlink, file
   count and size validation, plus SHA-256 checksums and Ed25519 signatures
@@ -136,10 +138,13 @@ Uninstall with `sudo make uninstall` (same `PREFIX`).
 
 ### Flatpak
 
-A self-hosted manifest is present in `flatpak/`, but it targets the pre-Iced
-GTK/WebKitGTK build. It has not been migrated to the 2.0 split server/UI
-workspace and should not be used for 2.0 packaging yet. See
-[`flatpak/README.md`](flatpak/README.md) for the historical setup notes.
+A self-hosted manifest is present in `flatpak/` and has been migrated to the
+2.0 workspace: it builds both binaries (`cargo build --workspace`) and
+installs the server next to the Iced control surface, with no GTK or WebKitGTK
+in the dependency graph. Media tools (`mpv`, `ffmpeg`, `yt-dlp`) run from the
+host through `flatpak-spawn`. The sandbox has not yet been exercised end to
+end; see [`flatpak/README.md`](flatpak/README.md) for the checks to run before
+calling a bundle tested. Flathub packaging is not ready.
 
 ## Usage
 
@@ -233,9 +238,12 @@ gdbus call --session --dest io.github.ferramari.Ferramari.server \
 keys are ignored, missing keys get defaults, and a schema-3 file is migrated on
 first start.
 
-Favourites, history and collections live next to it in `library.json`.
+Favourites, history and collections live next to it in `library.json`, and
+`display-ids.json` remembers which connected screen owns which per-monitor
+key, so a wallpaper follows the monitor across replugs and reboots. Resetting
+the configuration does not discard those bindings.
 
-Both files are written atomically through a temporary file and rename; the
+All three files are written atomically through a temporary file and rename; the
 previous good copy is kept as `.json.bak`. A truncated or invalid
 `config.json` is restored from that backup instead of silently resetting the
 settings.
@@ -377,16 +385,19 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
   Wayland sessions (through XWayland). Wayland-native windows are not exposed
   through EWMH at all, so a native fullscreen app cannot be detected there;
   an X11 fullscreen window can, and is.
-- The Flatpak bundle is self-hosted and uses host media tools. Tray and portal
-  autostart inside the sandbox are not verified.
+- A Flatpak manifest builds the 2.0 workspace and installs both binaries;
+  neither links GTK or WebKitGTK. The sandbox itself has not been exercised
+  end to end — see [`flatpak/README.md`](flatpak/README.md) for the checks to
+  run before calling a bundle tested. Flathub packaging is not ready.
 - Two- and three-monitor performance scenarios are not measured on the current
   single-display test machine.
 - Streaming currently uses one shared source for all monitors; local video
   sources are assigned independently. Web-page wallpapers are temporarily
   unavailable in 2.0.0.
 - The Performance page reports GPU usage only where the driver exposes
-  `gpu_busy_percent` (currently AMDGPU). NVIDIA/Intel utilisation is shown as
-  unavailable.
+  `gpu_busy_percent` (currently AMDGPU). NVIDIA/Intel utilisation is labelled
+  *not measurable here* rather than zero, and the same page distinguishes a
+  platform with no process sampler from a server that is not running.
 - Multi-monitor, 4K/60, locked-screen and long-idle benchmarks are not yet
   measured on the single-display test machine. Single-monitor 1080p, synthetic
   4K and local-canvas web results are in `docs/BENCHMARKS.md`.
@@ -418,7 +429,9 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 - Window state detection uses EWMH atoms over X11.
 - `-b` starts only the wallpaper, `-p` adds a startup delay, and `-r` resets the
   config (only when no instance is running).
-- A Flatpak manifest exists, but it still targets the pre-Iced GNOME/WebKitGTK build and has not been migrated or validated for the 2.0 workspace.
+- A Flatpak manifest builds both binaries from the 2.0 workspace, with host
+  `mpv`/`ffmpeg`/`yt-dlp` through `flatpak-spawn`; the sandbox has not been
+  exercised end to end and Flathub packaging is not ready.
 
 ## Testing notes
 

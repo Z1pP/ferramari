@@ -62,6 +62,9 @@ pub struct ServerState {
     pub idle_timeout_sec: i32,
     /// `auto`, `vaapi` or `none`.
     pub hwdec: String,
+    /// Decoder reported by the players (`hwdec-current`): API name, `no` for
+    /// software, empty while nothing has decoded.
+    pub hwdec_running: String,
     pub web_allow_network: bool,
     pub autostart_enabled: bool,
     pub operation_status: String,
@@ -174,7 +177,8 @@ impl Server {
         monitor: String,
         collection: String,
     ) -> Result<(), String> {
-        self.player_command_args("set_monitor_rotation", &(monitor, collection)).await
+        self.player_command_args("set_monitor_rotation", &(monitor, collection))
+            .await
     }
 
     /// Write one server property through the standard Properties interface.
@@ -237,6 +241,7 @@ impl Server {
             state.pause_on_battery = bool_of(&values, "pause_on_battery");
             state.idle_timeout_sec = int_of(&values, "idle_timeout_sec");
             state.hwdec = string_of(&values, "hwdec");
+            state.hwdec_running = string_of(&values, "hwdec_running");
             state.web_allow_network = bool_of(&values, "web_allow_network");
             state.autostart_enabled = bool_of(&values, "autostart_enabled");
             state.operation_status = string_of(&values, "operation_status");
@@ -250,11 +255,7 @@ impl Server {
         state
     }
 
-    async fn get_all(
-        &self,
-        path: &str,
-        interface: &str,
-    ) -> Option<HashMap<String, OwnedValue>> {
+    async fn get_all(&self, path: &str, interface: &str) -> Option<HashMap<String, OwnedValue>> {
         self.connection
             .call_method(
                 Some(SERVER_NAME),
@@ -327,5 +328,64 @@ mod tests {
 
     fn owned(value: Value<'static>) -> OwnedValue {
         OwnedValue::try_from(value).expect("owned value")
+    }
+
+    #[test]
+    fn string_map_returns_empty_when_key_is_missing() {
+        let values = HashMap::new();
+        let map = string_map_of(&values, "data_source");
+        assert!(map.is_empty());
+        assert_eq!(map.len(), 0);
+    }
+
+    #[test]
+    fn int_of_returns_zero_for_unparseable_values() {
+        let mut values = HashMap::new();
+        values.insert("volume".to_string(), owned(Value::from("not_a_number")));
+        assert_eq!(int_of(&values, "volume"), 0);
+    }
+
+    #[test]
+    fn bool_of_returns_false_for_unparseable_values() {
+        let mut values = HashMap::new();
+        values.insert("is_mute".to_string(), owned(Value::from(42i32)));
+        assert!(!bool_of(&values, "is_mute"));
+    }
+
+    #[test]
+    fn all_property_extractors_are_noop_on_empty_map() {
+        let values = HashMap::<String, OwnedValue>::new();
+        assert_eq!(string_of(&values, "mode"), "");
+        assert_eq!(string_of(&values, "theme"), "");
+        assert_eq!(string_of(&values, "language"), "");
+        assert_eq!(string_of(&values, "rotation_mode"), "");
+        assert_eq!(string_of(&values, "playback_profile"), "");
+        assert_eq!(string_of(&values, "hwdec"), "");
+        assert_eq!(int_of(&values, "volume"), 0);
+        assert_eq!(int_of(&values, "blur_radius"), 0);
+        assert_eq!(int_of(&values, "rotation_interval_sec"), 0);
+        assert_eq!(int_of(&values, "idle_timeout_sec"), 0);
+        assert!(!bool_of(&values, "is_mute"));
+        assert!(!bool_of(&values, "is_playing"));
+        assert!(!bool_of(&values, "is_paused_by_user"));
+        assert!(!bool_of(&values, "is_static_wallpaper"));
+        assert!(!bool_of(&values, "pause_on_battery"));
+        assert!(!bool_of(&values, "web_allow_network"));
+        assert!(!bool_of(&values, "autostart_enabled"));
+        assert!(!bool_of(&values, "operation_error"));
+        assert!(string_map_of(&values, "data_source").is_empty());
+        assert!(string_map_of(&values, "monitor_states").is_empty());
+        assert!(string_map_of(&values, "rotations").is_empty());
+    }
+
+    #[test]
+    fn server_state_defaults_are_all_unreachable() {
+        let state = ServerState::default();
+        assert!(!state.reachable);
+        assert_eq!(state.mode, "");
+        assert_eq!(state.volume, 0);
+        assert!(state.data_source.is_empty());
+        assert!(state.monitor_states.is_empty());
+        assert!(state.rotations.is_empty());
     }
 }

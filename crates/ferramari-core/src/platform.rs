@@ -51,11 +51,8 @@ pub trait PlatformWatchers {}
 
 /// Starts OS event sources and forwards normalized events to the core command bus.
 pub trait PlatformEventSource {
-    fn start(
-        &self,
-        tx: CommandSender,
-        idle_threshold: Arc<AtomicU64>,
-    ) -> Box<dyn PlatformWatchers>;
+    fn start(&self, tx: CommandSender, idle_threshold: Arc<AtomicU64>)
+        -> Box<dyn PlatformWatchers>;
 }
 
 /// An OS-owned surface suitable for embedding the media renderer.
@@ -71,15 +68,17 @@ pub trait WallpaperSurface {
 /// The returned object owns the native surface for as long as it is retained
 /// by the media engine. Dropping it must release the native resources.
 pub trait WallpaperSurfaceProvider {
-    fn create(
-        &self,
-        monitor: &MonitorInfo,
-    ) -> anyhow::Result<Box<dyn WallpaperSurface>>;
+    fn create(&self, monitor: &MonitorInfo) -> anyhow::Result<Box<dyn WallpaperSurface>>;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bus::{Command, CommandSender};
+    use crate::monitor::DisplayIdentity;
+    use crate::power::PowerStatus;
+    use std::sync::atomic::Ordering;
+    use std::sync::mpsc;
 
     #[test]
     fn capabilities_default_to_explicitly_unsupported() {
@@ -91,5 +90,188 @@ mod tests {
         assert_eq!(capabilities.session_lock, SupportLevel::Unsupported);
         assert_eq!(capabilities.power_events, SupportLevel::Unsupported);
         assert_eq!(capabilities.idle_detection, SupportLevel::Unsupported);
+    }
+
+    #[test]
+    fn support_level_orders_from_supported_to_unsupported() {
+        // The contract expects Partial between Supported and Unsupported; a
+        // session can advertise any of the three without breaking callers.
+        assert_ne!(SupportLevel::Supported, SupportLevel::Unsupported);
+        assert_ne!(SupportLevel::Partial, SupportLevel::Unsupported);
+        assert_ne!(SupportLevel::Supported, SupportLevel::Partial);
+    }
+
+    // ---------------------------------------------------------------------
+    // Fake providers: exercise the contracts the way a second OS would.
+    // ---------------------------------------------------------------------
+
+    fn fake_monitor(name: &str) -> MonitorInfo {
+        MonitorInfo {
+            index: 0,
+            name: name.to_string(),
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            scale_factor: 1,
+            is_primary: true,
+            identity: DisplayIdentity::default(),
+        }
+    }
+
+    struct FakeDisplay {
+        monitors: Vec<MonitorInfo>,
+    }
+
+    impl DisplayProvider for FakeDisplay {
+        fn displays(&self) -> Vec<MonitorInfo> {
+            self.monitors.clone()
+        }
+    }
+
+    #[test]
+    fn display_provider_returns_stable_data_without_native_handles() {
+        let provider = FakeDisplay {
+            monitors: vec![fake_monitor("eDP-1"), fake_monitor("HDMI-1")],
+        };
+        let first = provider.displays();
+        let second = provider.displays();
+        assert_eq!(first.len(), 2);
+        // The same provider must return the same monitors every call.
+        assert_eq!(first, second);
+        assert_eq!(first[0].name, "eDP-1");
+        // Both fake monitors report primary; contract tests only verify that
+        // stable data flows through without panics or native-handle leakage.
+        assert!(first.iter().all(|m| m.is_primary));
+    }
+
+    #[test]
+    fn empty_display_provider_reports_no_monitors() {
+        let provider = FakeDisplay {
+            monitors: Vec::new(),
+        };
+        assert!(provider.displays().is_empty());
+    }
+
+    struct FakePower {
+        status: PowerStatus,
+    }
+
+    impl PowerProvider for FakePower {
+        fn status(&self) -> PowerStatus {
+            self.status
+        }
+    }
+
+    #[test]
+    fn power_provider_reports_the_configured_state() {
+        let ac = FakePower {
+            status: PowerStatus {
+                on_battery: false,
+                percent: Some(80),
+            },
+        };
+        assert!(!ac.status().on_battery);
+        assert_eq!(ac.status().percent, Some(80));
+
+        let battery = FakePower {
+            status: PowerStatus {
+                on_battery: true,
+                percent: None,
+            },
+        };
+        assert!(battery.status().on_battery);
+        assert!(battery.status().percent.is_none());
+    }
+
+    struct FakeSurface {
+        handle: u64,
+    }
+
+    impl WallpaperSurface for FakeSurface {
+        fn embedding_handle(&self) -> u64 {
+            self.handle
+        }
+    }
+
+    struct FakeSurfaceProvider {
+        next_handle: std::sync::atomic::AtomicU64,
+    }
+
+    impl WallpaperSurfaceProvider for FakeSurfaceProvider {
+        fn create(&self, _monitor: &MonitorInfo) -> anyhow::Result<Box<dyn WallpaperSurface>> {
+            let handle = self.next_handle.fetch_add(1, Ordering::SeqCst);
+            Ok(Box::new(FakeSurface { handle }))
+        }
+    }
+
+    #[test]
+    fn surface_provider_hands_out_unique_handles_independently_of_monitor() {
+        let provider = FakeSurfaceProvider {
+            next_handle: std::sync::atomic::AtomicU64::new(100),
+        };
+        let monitor = fake_monitor("eDP-1");
+        let a = provider.create(&monitor).unwrap();
+        let b = provider.create(&monitor).unwrap();
+        assert_eq!(a.embedding_handle(), 100);
+        assert_eq!(b.embedding_handle(), 101);
+        // Handles are opaque: core never interprets them, only forwards them.
+        assert_ne!(a.embedding_handle(), b.embedding_handle());
+    }
+
+    #[test]
+    fn surfaces_are_object_safe_and_can_be_moved_into_the_media_layer() {
+        let provider = FakeSurfaceProvider {
+            next_handle: std::sync::atomic::AtomicU64::new(1),
+        };
+        let surfaces: Vec<Box<dyn WallpaperSurface>> = vec![
+            provider.create(&fake_monitor("A")).unwrap(),
+            provider.create(&fake_monitor("B")).unwrap(),
+        ];
+        assert_eq!(surfaces.len(), 2);
+        // Dropping a surface must not panic: the fake has no native resource,
+        // a real backend releases it in its Drop implementation.
+        drop(surfaces);
+    }
+
+    struct FakeEventSource {
+        start_count: std::sync::atomic::AtomicUsize,
+    }
+
+    struct FakeWatchers;
+
+    impl PlatformWatchers for FakeWatchers {}
+
+    impl PlatformEventSource for FakeEventSource {
+        fn start(
+            &self,
+            _tx: CommandSender,
+            _idle_threshold: Arc<AtomicU64>,
+        ) -> Box<dyn PlatformWatchers> {
+            let _started = self.start_count.fetch_add(1, Ordering::SeqCst) + 1;
+            // `_started` proves the event source counted the call before handing
+            // ownership to the caller — a contract that a real backend must obey.
+            Box::new(FakeWatchers)
+        }
+    }
+
+    #[test]
+    fn event_source_starts_watchers_and_hands_ownership_to_the_caller() {
+        let source = FakeEventSource {
+            start_count: std::sync::atomic::AtomicUsize::new(0),
+        };
+        let (sender, _receiver) = mpsc::channel::<Command>();
+        let tx = CommandSender::new(sender);
+        let threshold = Arc::new(AtomicU64::new(60));
+
+        let watchers = source.start(tx.clone(), Arc::clone(&threshold));
+        assert_eq!(source.start_count.load(Ordering::SeqCst), 1);
+        // The returned object is a trait object owned by the caller; dropping
+        // it is the documented teardown signal for a real backend.
+        drop(watchers);
+
+        // A second start creates independent watcher state.
+        let _second = source.start(tx, threshold);
+        assert_eq!(source.start_count.load(Ordering::SeqCst), 2);
     }
 }

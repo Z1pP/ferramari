@@ -9,8 +9,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use ferramari_core::{Command, CommandSender, Snapshot};
 use ferramari_core::paths;
+use ferramari_core::{Command, CommandSender, Snapshot};
 
 pub const SERVER_INTERFACE: &str = "io.github.ferramari.ferramari.server";
 #[allow(dead_code)] // documented API surface, asserted in tests
@@ -65,6 +65,28 @@ pub fn request_show_gui() -> anyhow::Result<()> {
     )?;
     proxy.call::<_, _, ()>("show_gui", &())?;
     Ok(())
+}
+
+/// Ask the running instance which decoder its players report, for `--doctor`.
+///
+/// `None` means the question cannot be answered here: no server, no session
+/// bus, or an old server without the property. That is deliberately not the
+/// same as an empty string, which would mean "a server is running and nothing
+/// is decoding yet".
+pub fn hwdec_running() -> Option<String> {
+    use zbus::blocking::{Connection, Proxy};
+    let connection = Connection::session().ok()?;
+    let proxy = Proxy::new(
+        &connection,
+        paths::SERVER_NAME,
+        SERVER_PATH,
+        SERVER_INTERFACE,
+    )
+    .ok()?;
+    proxy
+        .get_property::<zbus::zvariant::OwnedValue>("hwdec_running")
+        .ok()
+        .and_then(|value| String::try_from(value).ok())
 }
 
 pub fn register(
@@ -364,6 +386,14 @@ impl ServerInterface {
     #[zbus(property, name = "hwdec")]
     fn set_hwdec(&self, mode: String) {
         send(&self.tx, Command::SetHardwareDecoding(mode));
+    }
+
+    /// What the players report as the decoder actually running: an API name,
+    /// `no` for software decoding, or empty while nothing has decoded. Paired
+    /// with `hwdec` above, which is only what the user asked for.
+    #[zbus(property, name = "hwdec_running")]
+    fn hwdec_running(&self) -> String {
+        self.snapshot().hwdec_running
     }
 
     #[zbus(property, name = "web_allow_network")]

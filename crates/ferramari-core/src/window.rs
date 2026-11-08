@@ -94,25 +94,40 @@ mod tests {
     #[test]
     fn an_empty_window_list_covers_nothing() {
         let state = WindowState::default();
-        assert_eq!(state.visibility_at(0, 0, 1920, 1080), MonitorVisibility::default());
+        assert_eq!(
+            state.visibility_at(0, 0, 1920, 1080),
+            MonitorVisibility::default()
+        );
     }
 
     #[test]
     fn a_fullscreen_window_covers_only_its_own_monitor() {
         let state = WindowState {
-            windows: vec![WindowRect { fullscreen: true, ..rect(1920, 0, 1920, 1080) }],
+            windows: vec![WindowRect {
+                fullscreen: true,
+                ..rect(1920, 0, 1920, 1080)
+            }],
         };
-        assert_eq!(state.visibility_at(0, 0, 1920, 1080), MonitorVisibility::default());
+        assert_eq!(
+            state.visibility_at(0, 0, 1920, 1080),
+            MonitorVisibility::default()
+        );
         assert_eq!(
             state.visibility_at(1920, 0, 1920, 1080),
-            MonitorVisibility { covered: true, fullscreen: true }
+            MonitorVisibility {
+                covered: true,
+                fullscreen: true
+            }
         );
     }
 
     #[test]
     fn a_window_spanning_both_monitors_covers_both() {
         let state = WindowState {
-            windows: vec![WindowRect { fullscreen: true, ..rect(0, 0, 3840, 1080) }],
+            windows: vec![WindowRect {
+                fullscreen: true,
+                ..rect(0, 0, 3840, 1080)
+            }],
         };
         for x in [0, 1920] {
             let visibility = state.visibility_at(x, 0, 1920, 1080);
@@ -123,14 +138,19 @@ mod tests {
 
     #[test]
     fn a_small_window_does_not_pause_the_wallpaper() {
-        let state = WindowState { windows: vec![rect(100, 100, 800, 600)] };
+        let state = WindowState {
+            windows: vec![rect(100, 100, 800, 600)],
+        };
         assert!(!state.visibility_at(0, 0, 1920, 1080).covered);
     }
 
     #[test]
     fn a_maximized_window_with_a_panel_inset_still_counts() {
         let state = WindowState {
-            windows: vec![WindowRect { maximized: true, ..rect(0, 32, 1920, 1048) }],
+            windows: vec![WindowRect {
+                maximized: true,
+                ..rect(0, 32, 1920, 1048)
+            }],
         };
         let visibility = state.visibility_at(0, 0, 1920, 1080);
         assert!(visibility.covered);

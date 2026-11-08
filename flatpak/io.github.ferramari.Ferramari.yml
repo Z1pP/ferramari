@@ -4,22 +4,61 @@ runtime-version: '50'
 sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
+# The desktop file launches the server, which spawns the control surface when
+# it is asked to show a window. Both binaries are installed; see below.
 command: ferramari
 
 finish-args:
+  # Wallpaper surfaces are X11/XWayland windows. The backend does not
+  # implement a native Wayland surface, so x11 is requested directly rather
+  # than as a Wayland fallback (--doctor reports native Wayland as absent).
   - --share=ipc
-  - --share=network
   - --socket=x11
+  # Audio for wallpapers with sound tracks.
   - --socket=pulseaudio
+  # mpv renders through EGL on the GPU; without dri the player falls back to
+  # software and the Eco profile loses its whole point.
   - --device=dri
+  # Catalogue browsing, stream resolution, package downloads.
+  - --share=network
+  # Local library videos live in the (localised) XDG Videos folder. The whole
+  # home directory is deliberately not requested.
   - --filesystem=xdg-videos
+
+  # Media tools and the GNOME background keys run on the host through the
+  # wrappers in flatpak/bin. The alternative is bundling mpv, ffmpeg and
+  # yt-dlp plus their codec stacks; see flatpak/README.md.
   - --talk-name=org.freedesktop.Flatpak
-  - --talk-name=org.freedesktop.ScreenSaver
+
+  # Screen lock and desktop idle. There is no single freedesktop interface
+  # for this, so every implementation the app probes is allowed. A missing
+  # service degrades to a weaker SupportLevel instead of failing.
   - --talk-name=org.gnome.ScreenSaver
-  - --talk-name=org.freedesktop.login1
-  - --system-talk-name=org.freedesktop.login1
+  - --talk-name=org.cinnamon.ScreenSaver
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.kde.screensaver
+  - --talk-name=org.xfce.ScreenSaver
+  - --talk-name=org.gnome.Mutter.IdleMonitor
+
+  # Logout handshake and the desktop-icon redraw workaround.
+  - --talk-name=org.gnome.SessionManager
+  - --talk-name=org.gnome.Shell.Extensions
+
+  # Tray host (StatusNotifierItem). The app only registers with the watcher;
+  # ksni is told not to claim `org.kde.StatusNotifierItem-<pid>-<n>` because a
+  # sandbox may not own names outside its own id, so no own-name is needed.
   - --talk-name=org.kde.StatusNotifierWatcher
-  - --talk-name=org.freedesktop.portal.Desktop
+
+  # logind: lock/unlock fallback, PrepareForSleep, PrepareForShutdown. It
+  # lives on the system bus only.
+  - --system-talk-name=org.freedesktop.login1
+
+  # Not listed on purpose:
+  #  * io.github.ferramari.Ferramari.server and .ui (the control surface's
+  #    single-instance name) are subnames of the app id, which the default bus
+  #    policy already lets the app own and talk to.
+  #  * org.freedesktop.portal.* (file picker, autostart through the Background
+  #    portal) is allowed for every sandbox by default.
 
 modules:
   - name: ferramari
@@ -31,8 +70,16 @@ modules:
       build-args:
         - --share=network
     build-commands:
-      - cargo build --release --locked
+      # --workspace is required, not stylistic: the default members are the
+      # root package only, so `cargo build` alone produces the server and
+      # silently skips the crates/ferramari-ui binary.
+      - cargo build --workspace --release --locked
       - install -Dm755 target/release/ferramari /app/bin/ferramari
+      - install -Dm755 target/release/ferramari-ui /app/bin/ferramari-ui
+      # The server looks for the control surface next to its own executable
+      # first; failing that it falls back to PATH. Both must be installed, and
+      # the check keeps a one-binary build from passing silently.
+      - test -x /app/bin/ferramari-ui
       - install -Dm644 data/io.github.ferramari.Ferramari.desktop /app/share/applications/io.github.ferramari.Ferramari.desktop
       - install -Dm644 data/io.github.ferramari.Ferramari.metainfo.xml /app/share/metainfo/io.github.ferramari.Ferramari.metainfo.xml
       - install -Dm644 data/icons/hicolor/scalable/apps/io.github.ferramari.Ferramari.svg /app/share/icons/hicolor/scalable/apps/io.github.ferramari.Ferramari.svg

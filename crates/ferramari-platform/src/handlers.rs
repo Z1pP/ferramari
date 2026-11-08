@@ -7,43 +7,91 @@ use std::time::Duration;
 
 use zbus::blocking::{Connection, Proxy};
 
-use ferramari_core::{Command, CommandSender};
 use ferramari_core::paths;
+use ferramari_core::session::{IdleState, LockSource};
+use ferramari_core::{Command, CommandSender};
+
+/// Consecutive unanswered polls before the idle facility is declared gone.
+/// A restarted desktop shell takes a few seconds to own its bus name again,
+/// and flipping to `Unknown` (and therefore resuming playback) during that
+/// gap would stutter the wallpaper.
+const IDLE_MISSINGS_BEFORE_UNKNOWN: u8 = 4;
+
+/// Idle polling rule, separated from the thread so it can be tested.
+///
+/// The watcher has to answer three questions on every poll: what the reading
+/// means, whether that is news, and whether silence means a transient D-Bus
+/// failure or a service that really went away. Getting the third one wrong
+/// either stutters the wallpaper while a shell restarts or leaves it paused
+/// forever behind a dead screensaver.
+#[derive(Debug)]
+pub struct IdlePoller {
+    /// The last state handed to the command bus. `None` until the first one,
+    /// so even an opening reading of `Unknown` reaches the app, which still
+    /// thinks its default `Active` was a measured fact.
+    reported: Option<IdleState>,
+    misses: u8,
+    miss_limit: u8,
+}
+
+impl Default for IdlePoller {
+    /// The production starting point: nothing reported yet, and the miss
+    /// tolerance the watcher polls with. A derived default would leave the
+    /// limit at zero, which reports `Unknown` on the very first unanswered
+    /// poll and makes a restarting shell stutter the wallpaper.
+    fn default() -> Self {
+        Self {
+            reported: None,
+            misses: 0,
+            miss_limit: IDLE_MISSINGS_BEFORE_UNKNOWN,
+        }
+    }
+}
+
+impl IdlePoller {
+    /// Feed one poll: `Some(millis)` is the idle counter, `None` is "the
+    /// service did not answer". Returns the state to send, if anything
+    /// changed.
+    pub fn poll(&mut self, idle_millis: Option<u64>, threshold_millis: u64) -> Option<IdleState> {
+        let state = match idle_millis {
+            Some(millis) => {
+                self.misses = 0;
+                // The boundary itself belongs to core, so every backend
+                // compares the same way.
+                IdleState::from_millis(Some(millis), threshold_millis)
+            }
+            None => {
+                self.misses = self.misses.saturating_add(1);
+                if self.misses < self.miss_limit {
+                    // Not news yet: keep the last reported state rather than
+                    // flickering through `Unknown` during a shell restart.
+                    return None;
+                }
+                IdleState::Unknown
+            }
+        };
+        (self.reported != Some(state)).then(|| {
+            self.reported = Some(state);
+            state
+        })
+    }
+}
 
 /// Portable idle detection. There is no freedesktop signal for "the user has
 /// been idle for N seconds", so this polls the desktop's idle counter. The
 /// poll runs on its own thread and only turns into a command when the
-/// threshold is crossed, keeping the GTK loop untouched.
+/// threshold is crossed, keeping the command loop untouched.
 pub fn start_idle_watcher(tx: CommandSender, threshold_secs: Arc<AtomicU64>) {
     std::thread::Builder::new()
         .name("ferramari-idle".to_string())
         .spawn(move || {
-            let mut idle = false;
-            let mut misses = 0u8;
+            let mut poller = IdlePoller::default();
             loop {
                 std::thread::sleep(Duration::from_secs(15));
                 let threshold_ms = threshold_secs.load(Ordering::Relaxed).saturating_mul(1000);
-                match session_idle_ms() {
-                    Some(milliseconds) => {
-                        misses = 0;
-                        let now = milliseconds >= threshold_ms;
-                        if now != idle {
-                            idle = now;
-                            if tx.send(Command::Idle(now)).is_err() {
-                                break;
-                            }
-                        }
-                    }
-                    None => {
-                        // The screensaver service may vanish on logout or
-                        // restart. Do not stay latched in Eco idle forever.
-                        misses = misses.saturating_add(1);
-                        if idle && misses >= 4 {
-                            idle = false;
-                            if tx.send(Command::Idle(false)).is_err() {
-                                break;
-                            }
-                        }
+                if let Some(state) = poller.poll(session_idle_ms(), threshold_ms) {
+                    if tx.send(Command::Idle(state)).is_err() {
+                        break;
                     }
                 }
             }
@@ -126,7 +174,13 @@ pub fn start_screen_lock_watcher(tx: CommandSender) {
                     let Ok(active) = message.body().deserialize::<bool>() else {
                         continue;
                     };
-                    if tx.send(Command::ScreenLockActive(active)).is_err() {
+                    if tx
+                        .send(Command::LockChanged {
+                            source: LockSource::ScreenSaver,
+                            active,
+                        })
+                        .is_err()
+                    {
                         break;
                     }
                 }
@@ -161,7 +215,13 @@ pub fn start_logind_lock_watcher(tx: CommandSender) {
                     .name("ferramari-logind-lock-on".to_string())
                     .spawn(move || {
                         for _ in signals {
-                            if tx.send(Command::SessionLock(true)).is_err() {
+                            if tx
+                                .send(Command::LockChanged {
+                                    source: LockSource::SessionManager,
+                                    active: true,
+                                })
+                                .is_err()
+                            {
                                 break;
                             }
                         }
@@ -173,7 +233,13 @@ pub fn start_logind_lock_watcher(tx: CommandSender) {
                     .name("ferramari-logind-lock-off".to_string())
                     .spawn(move || {
                         for _ in signals {
-                            if unlock_tx.send(Command::SessionLock(false)).is_err() {
+                            if unlock_tx
+                                .send(Command::LockChanged {
+                                    source: LockSource::SessionManager,
+                                    active: false,
+                                })
+                                .is_err()
+                            {
                                 break;
                             }
                         }
@@ -312,6 +378,79 @@ fn start_logind_watcher(tx: CommandSender) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn new_poller() -> IdlePoller {
+        IdlePoller::default()
+    }
+
+    #[test]
+    fn the_first_reading_always_reaches_the_app() {
+        // The app starts from `Active` as a default, not a measurement. If the
+        // service is already idle at startup, or already gone, the app has to
+        // be told; swallowing the opening reading would hide both.
+        let mut poller = new_poller();
+        assert_eq!(poller.poll(Some(600_000), 300_000), Some(IdleState::Idle));
+
+        let mut poller = new_poller();
+        assert!(poller.poll(None, 300_000).is_none(), "one miss is not news");
+        for _ in 0..10 {
+            if let Some(state) = poller.poll(None, 300_000) {
+                assert_eq!(state, IdleState::Unknown);
+                break;
+            }
+        }
+        assert_eq!(poller.reported, Some(IdleState::Unknown));
+    }
+
+    #[test]
+    fn a_restarted_shell_does_not_flicker_through_unknown() {
+        // A few missed polls while GNOME Shell reacquires its bus name must
+        // not pause and resume the wallpaper: the last reported state stands.
+        let mut poller = new_poller();
+        assert_eq!(poller.poll(Some(10_000), 300_000), Some(IdleState::Active));
+        for _ in 1..IDLE_MISSINGS_BEFORE_UNKNOWN {
+            assert_eq!(poller.poll(None, 300_000), None, "still tolerating misses");
+        }
+        // The service answers again before the limit; nothing new is sent.
+        assert_eq!(poller.poll(Some(10_000), 300_000), None);
+        assert_eq!(poller.misses, 0, "an answer clears the miss counter");
+    }
+
+    #[test]
+    fn a_service_that_stays_gone_is_reported_once_as_unknown() {
+        let mut poller = new_poller();
+        assert_eq!(poller.poll(Some(10_000), 300_000), Some(IdleState::Active));
+        let mut sent = Vec::new();
+        for _ in 0..20 {
+            if let Some(state) = poller.poll(None, 300_000) {
+                sent.push(state);
+            }
+        }
+        assert_eq!(sent, vec![IdleState::Unknown], "exactly one Unknown");
+    }
+
+    #[test]
+    fn idle_and_active_edges_are_reported_once_each() {
+        let mut poller = new_poller();
+        assert_eq!(poller.poll(Some(10_000), 300_000), Some(IdleState::Active));
+        assert_eq!(
+            poller.poll(Some(20_000), 300_000),
+            None,
+            "same state, no spam"
+        );
+        assert_eq!(poller.poll(Some(400_000), 300_000), Some(IdleState::Idle));
+        assert_eq!(poller.poll(Some(900_000), 300_000), None);
+        assert_eq!(poller.poll(Some(1_000), 300_000), Some(IdleState::Active));
+    }
+
+    #[test]
+    fn a_raised_threshold_can_move_a_stale_reading_back_to_active() {
+        // The threshold is read from a shared atomic every poll, so changing it
+        // in Settings must be able to flip the conclusion without a new event.
+        let mut poller = new_poller();
+        assert_eq!(poller.poll(Some(400_000), 300_000), Some(IdleState::Idle));
+        assert_eq!(poller.poll(Some(400_000), 600_000), Some(IdleState::Active));
+    }
 
     #[test]
     fn idle_probe_does_not_panic_on_any_desktop() {

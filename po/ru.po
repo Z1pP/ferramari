@@ -893,6 +893,14 @@ msgstr "Аппаратное декодирование"
 
 msgid "Auto lets mpv choose a safe decoder; VA-API forces it; Off uses software"
 msgstr "Авто позволяет mpv выбрать безопасный декодер; VA-API включает его принудительно; Выкл использует программное декодирование"
+msgid "Hardware decoding is not available here; decoding on the CPU."
+msgstr "Аппаратное декодирование недоступно; декодирование выполняется на CPU."
+msgid "The selected decoder is not available here; decoding on the CPU instead."
+msgstr "Выбранный декодер недоступен; декодирование выполняется на CPU."
+msgid "The selected decoder is not available; a different hardware decoder is active."
+msgstr "Выбранный декодер недоступен; вместо него работает другой аппаратный декодер."
+msgid "Hardware decoding is active although software decoding was selected."
+msgstr "Аппаратное декодирование активно, хотя выбрано программное."
 
 msgid "Auto"
 msgstr "Авто"
@@ -927,8 +935,14 @@ msgstr "ГП"
 msgid "Waiting for the first sample…"
 msgstr "Ожидание первого замера…"
 
-msgid "Metrics cover the Ferramari process and its mpv/WebKit children. GPU usage is read from sysfs and is unavailable on drivers that do not expose gpu_busy_percent."
-msgstr "Метрики охватывают процесс Ferramari и его дочерние mpv/WebKit. Загрузка ГП читается из sysfs и недоступна на драйверах без gpu_busy_percent."
+msgid "Metrics cover the Ferramari server and its mpv children."
+msgstr "Метрики охватывают сервер Ferramari и его дочерние процессы mpv."
+
+msgid "Not measurable here"
+msgstr "Здесь не измеримо"
+
+msgid "Measuring…"
+msgstr "Измерение…"
 
 msgid "Live resource use"
 msgstr "Потребление ресурсов"

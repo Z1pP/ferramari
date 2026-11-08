@@ -8,8 +8,8 @@ use ferramari_core::util::tr;
 use ksni::menu::StandardItem;
 use ksni::{MenuItem, Tray as KsniTray};
 
-use ferramari_core::{Command, CommandSender};
 use ferramari_core::paths;
+use ferramari_core::{Command, CommandSender};
 
 pub struct Tray {
     tx: CommandSender,
@@ -75,7 +75,19 @@ where
 /// Spawn the tray. Returns a handle so the caller can keep it alive; `None`
 /// when the desktop has no StatusNotifierWatcher.
 pub fn spawn(tx: CommandSender) -> Option<Handle<Tray>> {
-    match (Tray { tx }).assume_sni_available(true).spawn() {
+    // The SNI spec name is `org.kde.StatusNotifierItem-<pid>-<n>`, which a
+    // sandboxed app may not own: the bus policy only grants names under the
+    // app's own id. ksni would fail the spawn outright, so inside Flatpak the
+    // item is served on the connection's unique name instead — what sandboxed
+    // tray implementations do (the same route Chromium took). Watching and
+    // registration still go through the watcher as usual.
+    let builder = Tray { tx }.assume_sni_available(true);
+    let result = if paths::is_flatpak() {
+        builder.disable_dbus_name(true).spawn()
+    } else {
+        builder.spawn()
+    };
+    match result {
         Ok(handle) => {
             log::info!("[Systray] Ready");
             Some(handle)

@@ -147,11 +147,72 @@ verify as trusted on their machine.
 ferramari package key --name "Alice" --export alice.json
 ferramari package sign MyWallpaper.ferramari
 ferramari package verify MyWallpaper.ferramari   # 0 trusted, 1 untrusted, 2 invalid
+ferramari package lint MyWallpaper.ferramari     # 0 publishable, 2 blocked, 3 bad input
 ferramari package trust alice.json               # or a signed package directory
 ferramari package keys
 ```
 
-These commands run before GTK starts, so they work over SSH and headless.
+These commands run before the server starts, so they work over SSH and headless.
+
+## Creator review: `package lint`
+
+`verify` answers "is this package intact and signed". `lint` answers a
+different question — **"what will a recipient see"** — because import accepts
+many packages that look broken once they are installed: no description, no
+preview, no resolution and no signature all pass validation and then render as
+an empty card in the library and the catalogue.
+
+Findings have two severities:
+
+| Severity | Meaning | Exit code |
+| --- | --- | --- |
+| `error` | do not publish: import refuses it, or the signature does not verify | `2` |
+| `warning` | publishable, but the result is degraded | `0` (or `2` with `--strict`) |
+
+An invalid signature is an error even though `package::load` only reports it
+and still copies the package: a tampered package must never reach a catalogue.
+
+Each finding carries a stable code, so a CI job can assert on machine-readable
+output instead of grepping sentences:
+
+```sh
+ferramari package lint --json MyWallpaper.ferramari
+ferramari package lint --ignore preview-missing MyWallpaper.ferramari
+ferramari package lint --strict MyWallpaper.ferramari
+```
+
+| Code | Severity | Raised when |
+| --- | --- | --- |
+| `import-rejected` | error | `package::load` refused the package; the message is import's own |
+| `name-missing` | error | the manifest declares an empty name and import did not already report it |
+| `signature-invalid` | error | a `signature.json` exists and does not verify |
+| `unsigned` | warning | no `signature.json` |
+| `checksums-missing` | warning | no complete `checksums.json` |
+| `author-missing` | warning | `author` is empty: nothing to credit or match a key against |
+| `description-missing` | warning | `description` is empty |
+| `preview-missing` | warning | no preview image in the package |
+| `preview-unreadable` | warning | a preview is present but does not decode as an image |
+| `resolution-mismatch` | warning | declared `resolution` contradicts the measured entry |
+| `resolution-missing` | warning | no resolution declared |
+
+Warnings exit 0 by default on purpose. A creator iterating on a package would
+otherwise get a red build for shipping something merely incomplete, which is
+how lint output ends up ignored; `--strict` is the opt-in gate.
+
+`--ignore` refuses unknown codes with exit `3`: a filter that silently matches
+nothing turns a real finding into a green build.
+
+Rules absent from the table are absent deliberately. lint does not re-implement
+import's structural checks (name length, path traversal, symlinks, size caps,
+`format`, `engine_min`); those arrive inside `import-rejected` as import's own
+words, so there is one place to keep them in sync and a creator is never told
+the same violation twice in different phrasing.
+
+Measurement follows the same honesty rule. lint probes the entry and preview
+with `ffprobe` when it can and distinguishes three kinds of "no number": no
+tool available, a web page that has no intrinsic size, and a file that refuses
+to decode. Only the last is the creator's problem; blaming someone for a
+missing ffmpeg is how output gets ignored everywhere else.
 
 ### When integrity is checked
 

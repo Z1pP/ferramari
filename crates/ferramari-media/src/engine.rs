@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use ferramari_core::eco;
+use ferramari_core::hwdec::HwDec;
 use ferramari_core::platform::{WallpaperSurface, WallpaperSurfaceProvider};
 use ferramari_core::MonitorInfo;
 
@@ -129,7 +130,11 @@ impl Engine {
         let mpv = match Mpv::spawn(&MpvOptions {
             wid: Some(surface.embedding_handle()),
             source: stream.video_url.clone(),
-            audio_file: if primary { stream.audio_url.clone() } else { None },
+            audio_file: if primary {
+                stream.audio_url.clone()
+            } else {
+                None
+            },
             no_audio: !primary,
             volume: if primary { volume } else { 0 },
             muted,
@@ -190,7 +195,9 @@ impl Engine {
     /// and the mpv process, which saves the ~120 ms cold start.
     pub fn load_video(&mut self, source: &str, volume: i64, muted: bool) -> anyhow::Result<()> {
         let Content::Video { mpv } = &self.content;
-        let mut mpv = mpv.lock().map_err(|_| anyhow::anyhow!("mpv lock poisoned"))?;
+        let mut mpv = mpv
+            .lock()
+            .map_err(|_| anyhow::anyhow!("mpv lock poisoned"))?;
         mpv.set_volume(if self.primary { volume } else { 0 })?;
         mpv.set_mute(muted)?;
         mpv.load_file(source)?;
@@ -209,6 +216,28 @@ impl Engine {
         match &self.content {
             Content::Video { mpv } => mpv.lock().ok().and_then(|mpv| mpv.take_error()),
         }
+    }
+
+    /// Ask the player which decoder it is actually using and report the last
+    /// known answer. The request is queued on the IPC worker, so the first
+    /// call returns [`HwDec::Unknown`] and a later supervision tick sees the
+    /// reply — the command loop never waits on mpv.
+    ///
+    /// This exists because the setting is not the fact: mpv accepts
+    /// `--hwdec=vaapi` on a machine without a VA-API path and decodes on the
+    /// CPU without failing. Comparing the two is what turns a silent fallback
+    /// into something the user can see.
+    pub fn hwdec_status(&mut self) -> HwDec {
+        let Content::Video { mpv } = &self.content;
+        let Ok(mut mpv) = mpv.lock() else {
+            return HwDec::Unknown;
+        };
+        let current = mpv.hwdec_current();
+        if current == HwDec::Unknown {
+            // Nothing recorded yet; ask once per call until an answer lands.
+            let _ = mpv.probe_hwdec();
+        }
+        current
     }
 
     /// True while the embedded player is alive.
@@ -339,7 +368,10 @@ impl Engine {
             return false;
         };
         if let Err(err) = mpv.park() {
-            log::warn!("[Eco] could not park the decoder on {}: {err}", self.key.monitor);
+            log::warn!(
+                "[Eco] could not park the decoder on {}: {err}",
+                self.key.monitor
+            );
             return false;
         }
         self.parked = true;
@@ -421,6 +453,7 @@ fn needs_unpark(parked: bool, allowed: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ferramari_core::DisplayIdentity;
 
     fn key(kind: ContentKind, monitor: &str, source: &str) -> WindowKey {
         WindowKey {
@@ -461,7 +494,10 @@ mod tests {
             key(ContentKind::Video, "eDP-1", "/videos/a.mp4"),
             key(ContentKind::Video, "HDMI-1", "/videos/old.mp4"),
         ];
-        let kept: Vec<&WindowKey> = existing.iter().filter(|window| desired.contains(window)).collect();
+        let kept: Vec<&WindowKey> = existing
+            .iter()
+            .filter(|window| desired.contains(window))
+            .collect();
         assert_eq!(kept, vec![&existing[0]]);
     }
 
@@ -476,6 +512,7 @@ mod tests {
             height: 1080,
             scale_factor: 1,
             is_primary: true,
+            identity: DisplayIdentity::default(),
         };
         let error = Engine::web(&monitor, "file:///tmp/a.html")
             .err()

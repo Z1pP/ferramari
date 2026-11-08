@@ -12,8 +12,8 @@
 //! * `finish_after` schedules only the completion (no interpolation),
 //! * `cancel` stops the fade without running the completion.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Shared slot state: bumped by every `start`/`cancel` so running threads
@@ -45,8 +45,15 @@ impl Fade {
 
     /// Interpolate `from → to` over `duration` seconds, calling `each_value`
     /// every `interval` seconds, then `complete`.
-    pub fn start<F, C>(&mut self, from: f64, to: f64, duration: f64, interval: f64, each_value: F, complete: C)
-    where
+    pub fn start<F, C>(
+        &mut self,
+        from: f64,
+        to: f64,
+        duration: f64,
+        interval: f64,
+        each_value: F,
+        complete: C,
+    ) where
         F: Fn(f64) + Send + 'static,
         C: FnOnce() + Send + 'static,
     {

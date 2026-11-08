@@ -165,9 +165,7 @@ pub fn uri_to_path(uri: &str) -> Option<PathBuf> {
         if !host.is_empty() && host != "localhost" {
             return None;
         }
-        return Url::parse(uri)
-            .ok()
-            .and_then(|url| url.to_file_path().ok());
+        return Url::parse(uri).ok().and_then(|url| url.to_file_path().ok());
     }
     // Anything else with a scheme (`https://`, `data:`) is not a local file.
     let local = !uri.is_empty() && !uri.contains("://") && !uri.starts_with("data:");
@@ -237,6 +235,7 @@ pub fn random_other_video(videos: &[PathBuf], current: &str) -> Option<PathBuf> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::monitor::DisplayIdentity;
 
     #[test]
     fn uri_to_path_decodes_escapes_and_refuses_remote_hosts() {
@@ -283,6 +282,7 @@ mod tests {
                 height: 1080,
                 scale_factor: 1,
                 is_primary: true,
+                identity: DisplayIdentity::default(),
             },
             MonitorInfo {
                 index: 1,
@@ -293,6 +293,7 @@ mod tests {
                 height: 1080,
                 scale_factor: 1,
                 is_primary: false,
+                identity: DisplayIdentity::default(),
             },
         ];
         assert_eq!(primary_source(&config, &monitors), "/a.mp4");

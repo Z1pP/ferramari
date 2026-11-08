@@ -55,8 +55,15 @@ fn set_prop(
     // The X `length` is the number of items of the given `format` size.
     let item_size = (format / 8).max(1) as u32;
     let length = data.len() as u32 / item_size;
-    connection
-        .change_property(PropMode::REPLACE, window, property, type_, format, length, data)?;
+    connection.change_property(
+        PropMode::REPLACE,
+        window,
+        property,
+        type_,
+        format,
+        length,
+        data,
+    )?;
     Ok(())
 }
 
@@ -105,13 +112,11 @@ pub fn create(monitor: &MonitorInfo) -> anyhow::Result<Surface> {
         WindowClass::INPUT_OUTPUT,
         visual,
         &CreateWindowAux::new().event_mask(
-            EventMask::EXPOSURE
-                | EventMask::STRUCTURE_NOTIFY
-                | EventMask::BUTTON_PRESS,
+            EventMask::EXPOSURE | EventMask::STRUCTURE_NOTIFY | EventMask::BUTTON_PRESS,
         ),
     )?
-        .check()
-        .map_err(|err| anyhow::anyhow!("could not create wallpaper window: {err}"))?;
+    .check()
+    .map_err(|err| anyhow::anyhow!("could not create wallpaper window: {err}"))?;
 
     // Desktop-type window: the WM places it in the desktop layer and skips it
     // in the taskbar and pager. Motif hints strip the decorations explicitly
@@ -138,7 +143,6 @@ pub fn create(monitor: &MonitorInfo) -> anyhow::Result<Surface> {
     })
 }
 
-
 /// Provider used by the Linux server while the native Wayland backend is not
 /// implemented. Media depends only on the core contract, never on this type.
 #[derive(Debug, Clone, Copy, Default)]
@@ -151,10 +155,7 @@ impl WallpaperSurface for Surface {
 }
 
 impl WallpaperSurfaceProvider for X11SurfaceProvider {
-    fn create(
-        &self,
-        monitor: &MonitorInfo,
-    ) -> anyhow::Result<Box<dyn WallpaperSurface>> {
+    fn create(&self, monitor: &MonitorInfo) -> anyhow::Result<Box<dyn WallpaperSurface>> {
         Ok(Box::new(create(monitor)?))
     }
 }
@@ -250,11 +251,7 @@ impl Atoms {
     }
 }
 
-fn set_desktop_type(
-    connection: &RustConnection,
-    atoms: &Atoms,
-    window: u32,
-) -> anyhow::Result<()> {
+fn set_desktop_type(connection: &RustConnection, atoms: &Atoms, window: u32) -> anyhow::Result<()> {
     set_prop(
         connection,
         window,
@@ -301,11 +298,7 @@ fn set_window_name(
 /// `WM_HINTS` with `flags = 2` (input field present) and `input = False`,
 /// keeping the window out of the focus chain like the GTK window's
 /// `accept_focus(false)` / `can_focus(false)`.
-fn set_no_focus(
-    connection: &RustConnection,
-    atoms: &Atoms,
-    window: u32,
-) -> anyhow::Result<()> {
+fn set_no_focus(connection: &RustConnection, atoms: &Atoms, window: u32) -> anyhow::Result<()> {
     let values: [u32; 9] = [0x2, 0, 0, 0, 0, 0, 0, 0, 0];
     set_prop(
         connection,

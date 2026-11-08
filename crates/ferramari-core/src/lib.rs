@@ -10,16 +10,20 @@ pub mod catalog_api;
 pub mod catalogue;
 pub mod cli;
 pub mod config;
+pub mod display_ids;
 pub mod eco;
 pub mod error;
+pub mod hwdec;
 pub mod library;
+pub mod lint;
 pub mod metrics;
 pub mod monitor;
-pub mod platform;
 pub mod package;
 pub mod paths;
+pub mod platform;
 pub mod plugin;
 pub mod power;
+pub mod session;
 pub mod signing;
 pub mod supervisor;
 pub mod thumbnails;
@@ -29,4 +33,4 @@ pub mod ytdlp;
 
 // Convenience aliases so call sites read the way the modules are known.
 pub use bus::{Command, CommandReceiver, CommandSender, PackageReport, Snapshot};
-pub use monitor::{display_name, geometry_matches, MonitorInfo};
+pub use monitor::{display_name, geometry_matches, DisplayIdentity, MonitorInfo};

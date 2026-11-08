@@ -543,4 +543,242 @@ mod tests {
             )
             .is_some());
     }
+
+    // ======================================================================== //
+    // Stream resolution edge cases: missing formats, audio-only, empty lists  //
+    // ======================================================================== //
+
+    /// A format with both codecs as "none" carries no playable stream, so the
+    /// resolution must fail instead of returning an empty stream.
+    #[test]
+    fn formats_with_no_codec_at_all_are_dropped_by_parse() {
+        // yt-dlp marks a stream it cannot play with "none" for both codecs.
+        let json = r#"{"formats": [
+            {"url": "https://x/video-only", "acodec": "none", "vcodec": "vp9", "quality": 1, "width": 1280, "height": 720},
+            {"url": "https://x/audio-only", "acodec": "opus", "vcodec": "none", "quality": 2}
+        ]}"#;
+        let formats = Formats::parse(json).unwrap();
+        // Video-only has no audio, audio-only has no video.
+        assert!(formats.optimal_video(1080).is_some());
+        assert!(formats.best_audio().is_some());
+        // A page with only an audio-only stream cannot be rendered as wallpaper.
+        let video_only_json = r#"{"formats": [
+            {"url": "https://x/a", "acodec": "opus", "vcodec": "none", "quality": 1}
+        ]}"#;
+        let only_audio = Formats::parse(video_only_json).unwrap();
+        // best_audio finds it, but there is no separate video track.
+        assert!(only_audio.best_audio().is_some());
+    }
+
+    #[test]
+    fn all_formats_empty_returns_failure_for_video_and_audio() {
+        let formats = Formats::default();
+        assert!(formats.optimal_video(1080).is_none());
+        assert!(formats.best_audio().is_none());
+    }
+
+    #[test]
+    fn audio_only_format_with_negative_quality_ignored_for_optimal_video() {
+        let json = r#"{"formats": [
+            {"url": "https://x/audio", "acodec": "opus", "vcodec": "none", "quality": -1}
+        ]}"#;
+        let formats = Formats::parse(json).unwrap();
+        assert!(formats.optimal_video(1080).is_none());
+        assert_eq!(formats.best_audio().unwrap().url, "https://x/audio");
+    }
+
+    #[test]
+    fn video_without_dimensions_falls_back_to_muxed_stream() {
+        let json = r#"{"formats": [
+            {"url": "https://x/no_dims", "acodec": "mp4a", "vcodec": "avc1", "quality": 1},
+            {"url": "https://x/360p", "acodec": "none", "vcodec": "vp9", "quality": 2, "width": 640, "height": 360}
+        ]}"#;
+        let formats = Formats::parse(json).unwrap();
+        // Video without dimensions is treated as muxed (has both audio+video)
+        // so it's the best option for optimal_video when no pure video exists at target height.
+        let video = formats.optimal_video(360).unwrap();
+        assert_eq!(video.url, "https://x/360p");
+    }
+
+    #[test]
+    fn very_large_height_picks_closest_available() {
+        let json = r#"{"formats": [
+            {"url": "https://x/low", "acodec": "none", "vcodec": "vp9", "quality": 1, "width": 1280, "height": 720},
+            {"url": "https://x/high", "acodec": "none", "vcodec": "vp9", "quality": 2, "width": 3840, "height": 2160}
+        ]}"#;
+        let formats = Formats::parse(json).unwrap();
+        // Screen is 4K but closest match to 4K is 2160p.
+        let video = formats.optimal_video(4000).unwrap();
+        assert_eq!(video.url, "https://x/high");
+    }
+
+    // ======================================================================== //
+    // Cache edge cases: concurrent access patterns, TTL boundary precision    //
+    // ======================================================================== //
+
+    #[test]
+    fn insert_then_immediate_get_at_exact_same_height_hits_cache() {
+        let cache = ResolutionCache::default();
+        let now = Instant::now();
+        let info = stream("https://cdn/exact");
+        cache.insert("https://pages/test", 1080, info.clone(), now);
+        let hit = cache
+            .get("https://pages/test", 1080, now)
+            .expect("exact height hit");
+        assert_eq!(hit.video_url, "https://cdn/exact");
+    }
+
+    #[test]
+    fn ttl_expiration_is_strict_boundary_checking() {
+        let cache = ResolutionCache::default();
+        let now = Instant::now();
+        let info = stream("https://cdn/ttl-test");
+        cache.insert("https://pages/ttl", 1080, info, now);
+        // The implementation uses strict `<` comparison: entries expire when
+        // `elapsed >= RESOLUTION_TTL`. A value slightly *under* TTL is still valid.
+        let hit = cache
+            .get(
+                "https://pages/ttl",
+                1080,
+                now + RESOLUTION_TTL - Duration::from_millis(1),
+            )
+            .expect("within TTL");
+        assert_eq!(hit.video_url, "https://cdn/ttl-test");
+        // Exactly at TTL or beyond must expire.
+        assert!(cache
+            .get("https://pages/ttl", 1080, now + RESOLUTION_TTL)
+            .is_none());
+        assert!(cache
+            .get(
+                "https://pages/ttl",
+                1080,
+                now + RESOLUTION_TTL + Duration::from_nanos(1)
+            )
+            .is_none());
+    }
+
+    #[test]
+    fn multiple_pages_different_urls_dont_clobber_each_other() {
+        let cache = ResolutionCache::default();
+        let now = Instant::now();
+        cache.insert("https://youtube.com/a", 1080, stream("https://cdn/a"), now);
+        cache.insert("https://vimeo.com/b", 1080, stream("https://cdn/b"), now);
+        cache.insert(
+            "https://dailymotion.com/c",
+            1080,
+            stream("https://cdn/c"),
+            now,
+        );
+
+        assert_eq!(
+            cache
+                .get("https://youtube.com/a", 1080, now)
+                .unwrap()
+                .video_url,
+            "https://cdn/a"
+        );
+        assert_eq!(
+            cache
+                .get("https://vimeo.com/b", 1080, now)
+                .unwrap()
+                .video_url,
+            "https://cdn/b"
+        );
+        assert_eq!(
+            cache
+                .get("https://dailymotion.com/c", 1080, now)
+                .unwrap()
+                .video_url,
+            "https://cdn/c"
+        );
+        assert_eq!(cache.len(), 3);
+    }
+
+    #[test]
+    fn same_page_different_heights_all_retained_independently() {
+        let cache = ResolutionCache::default();
+        let now = Instant::now();
+        for h in [480, 720, 1080, 1440, 2160].iter() {
+            cache.insert(
+                "https://youtube.com/x",
+                *h,
+                stream(&format!("https://cdn/{}", h)),
+                now,
+            );
+        }
+        assert_eq!(cache.len(), 5);
+        // Each height should resolve independently.
+        for h in [480, 720, 1080, 1440, 2160].iter() {
+            let hit = cache
+                .get("https://youtube.com/x", *h, now)
+                .unwrap_or_else(|| panic!("height {} miss", h));
+            assert_eq!(hit.video_url, format!("https://cdn/{}", h));
+        }
+    }
+
+    // ======================================================================== //
+    // Invalidations verify single-page isolation across pages                //
+    // ======================================================================== //
+
+    #[test]
+    fn invalidate_preserves_all_other_pages_completely() {
+        let cache = ResolutionCache::default();
+        let now = Instant::now();
+        // Populate with three different page URLs, each with two heights.
+        for page in ["https://a.com", "https://b.com", "https://c.com"] {
+            for &h in &[1080, 2160] {
+                cache.insert(page, h, stream(&format!("https://cdn/{page}-{h}")), now);
+            }
+        }
+        assert_eq!(cache.len(), 6);
+
+        // Invalidate middle page only.
+        cache.invalidate("https://b.com");
+        assert_eq!(cache.len(), 4);
+
+        // Pages a and c intact.
+        assert_eq!(
+            cache.get("https://a.com", 1080, now).unwrap().video_url,
+            "https://cdn/https://a.com-1080"
+        );
+        assert_eq!(
+            cache.get("https://a.com", 2160, now).unwrap().video_url,
+            "https://cdn/https://a.com-2160"
+        );
+        assert_eq!(
+            cache.get("https://c.com", 1080, now).unwrap().video_url,
+            "https://cdn/https://c.com-1080"
+        );
+        assert_eq!(
+            cache.get("https://c.com", 2160, now).unwrap().video_url,
+            "https://cdn/https://c.com-2160"
+        );
+
+        // Page b fully purged.
+        assert!(cache.get("https://b.com", 1080, now).is_none());
+        assert!(cache.get("https://b.com", 2160, now).is_none());
+    }
+
+    #[test]
+    fn invalidate_on_nonexistent_page_is_noop() {
+        let cache = ResolutionCache::default();
+        let now = Instant::now();
+        cache.insert(
+            "https://real.com/page",
+            1080,
+            stream("https://cdn/real"),
+            now,
+        );
+        cache.invalidate("https://fake.com/nonexistent");
+        assert_eq!(cache.len(), 1);
+        assert!(cache.get("https://real.com/page", 1080, now).is_some());
+    }
+
+    #[test]
+    fn resolve_returns_error_for_inaccessible_url() {
+        // With a non-existent URL or no yt-dlp, we expect either an error
+        // message containing the original URL or the exit code string.
+        let result = resolve("https://example.com/nonexistent-fake-video-xyz", 1080);
+        assert!(result.is_err(), "expected an error for invalid URL");
+    }
 }

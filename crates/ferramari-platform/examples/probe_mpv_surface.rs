@@ -23,6 +23,7 @@ fn root_monitor() -> anyhow::Result<ferramari_core::MonitorInfo> {
         height: info.height_in_pixels as i32,
         scale_factor: 1,
         is_primary: true,
+        identity: ferramari_core::DisplayIdentity::default(),
     })
 }
 
@@ -63,10 +64,7 @@ fn main() -> anyhow::Result<()> {
     // The player must have reparented its output window into the surface —
     // exactly what makes `--wid` embedding work.
     let tree = surface.connection().query_tree(surface.xid)?.reply()?;
-    println!(
-        "child windows of surface: {} total",
-        tree.children.len()
-    );
+    println!("child windows of surface: {} total", tree.children.len());
     assert!(
         !tree.children.is_empty(),
         "mpv did not create a child window inside the surface"

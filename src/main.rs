@@ -7,14 +7,17 @@
 // Business logic, the command bus and the data models live in `ferramari-core`.
 // The binary re-exports the modules under their historic names so that `app.rs`
 // keeps referring to `crate::paths`, `crate::util`, … unchanged.
-pub use ferramari_core::{
-    bus, catalog_api, catalogue, cli, config, eco, error, library, metrics, package, paths,
-    plugin, signing, supervisor, thumbnails, util, window, ytdlp,
-};
-pub use ferramari_core::MonitorInfo;
 pub use ferramari_core::bus::{Command, CommandReceiver, CommandSender, PackageReport, Snapshot};
+pub use ferramari_core::MonitorInfo;
+pub use ferramari_core::{
+    bus, catalog_api, catalogue, cli, config, display_ids, eco, error, library, lint, metrics,
+    package, paths, plugin, session, signing, supervisor, thumbnails, util, window, ytdlp,
+};
 pub use ferramari_media::mpv;
-pub use ferramari_platform::{autostart, dbus, desktop, event_source, gnome_bg, gnome_extensions, handlers, monitors, power, surface, tray, x11};
+pub use ferramari_platform::{
+    autostart, dbus, desktop, event_source, gnome_bg, gnome_extensions, handlers, monitors, power,
+    surface, tray, x11,
+};
 // The static-background module kept its historic name in the binary.
 pub use ferramari_platform::gnome_bg as wallpaper;
 
@@ -297,6 +300,61 @@ fn run_package_command(command: PackageCommand) -> i32 {
             }
             0
         }
+        PackageCommand::Lint {
+            dir,
+            json,
+            ignore,
+            strict,
+        } => {
+            // Validate the ignore list before touching the package: a code
+            // that does not exist would otherwise filter nothing and report a
+            // clean run over a package that is not.
+            let ignored = match &ignore {
+                Some(csv) => match lint::parse_ignore_list(csv) {
+                    Ok(codes) => codes,
+                    Err(err) => {
+                        eprintln!("ignore: {err}");
+                        return cli::LINT_BAD_INPUT;
+                    }
+                },
+                None => Vec::new(),
+            };
+            let report = lint::review(&lint::gather(&dir));
+            let findings = lint::filter(report.findings, &ignored);
+            let blocked = findings.iter().any(|f| f.severity == lint::Severity::Error);
+            let warns = findings
+                .iter()
+                .any(|f| f.severity == lint::Severity::Warning);
+            if json {
+                let value = serde_json::json!({
+                    "name": report.name,
+                    "kind": report.kind,
+                    "blocked": blocked,
+                    "findings": findings,
+                });
+                println!("{}", serde_json::to_string_pretty(&value).unwrap());
+            } else {
+                if findings.is_empty() {
+                    println!("{}: no findings", dir.display());
+                }
+                for finding in &findings {
+                    println!(
+                        "{} [{}] {}",
+                        finding.severity.as_str(),
+                        finding.code,
+                        finding.message
+                    );
+                }
+            }
+            // Warnings do not fail the command by default: a package that is
+            // publishable but incomplete is a normal state while a creator is
+            // still working, and a red build for that teaches people to ignore
+            // the output. --strict is the opt-in gate for CI.
+            if blocked || (strict && warns) {
+                return cli::LINT_BLOCKED;
+            }
+            0
+        }
     }
 }
 
@@ -306,7 +364,6 @@ fn author_name(requested: &str) -> String {
     }
     signing::default_author_name()
 }
-
 
 #[cfg(not(unix))]
 fn install_signal_handlers(_tx: &CommandSender) {

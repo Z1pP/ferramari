@@ -47,16 +47,15 @@ pub struct Options {
     pub hwdec: String,
 }
 
-/// Map the user-facing setting to an mpv `--hwdec` value. `auto-safe` is the
-/// default because it only enables decoders mpv knows to be safe on the
-/// current platform; `vaapi` is an explicit override for hardware testing.
-pub fn hwdec_arg(mode: &str) -> &'static str {
-    match mode {
-        "vaapi" => "vaapi",
-        "none" => "no",
-        _ => "auto-safe",
-    }
-}
+// The user-facing hardware-decoding vocabulary (`hwdec_arg`, `HwDec`,
+// `HwDecCheck`) lives in `ferramari_core::hwdec`, because the control surface
+// has to render the same verdict without depending on this crate. It is
+// re-exported here so media call sites read naturally. The `hwdec-current`
+// reply (verified on mpv 0.41; the older `current-hwdec` name does not exist)
+// reads `no` when the requested API silently fell back, names the API when
+// hardware is active, and is *unavailable* before a file has been decoded —
+// which is what `HwDec::from_report` interprets.
+pub use ferramari_core::hwdec::{hwdec_arg, HwDec, HwDecCheck};
 
 /// The base `vf` chain for a profile. Eco starts with a 30 fps cap; the idle
 /// policy may replace it with a lower cap and must restore this value later.
@@ -108,12 +107,19 @@ struct Shared {
     parked_position: Mutex<Option<f64>>,
     /// True between a successful `stop` and the next `unpark`.
     parked: AtomicBool,
+    /// Last `hwdec-current` reading, so the owning thread can validate the
+    /// hardware decoding request without waiting on the IPC socket.
+    hwdec_current: Mutex<Option<String>>,
 }
 
 /// Commands for the dedicated IPC thread. Keeping them here means a wedged
 /// mpv can never stall the GTK main loop: the UI only enqueues work.
 enum Request {
     Execute(Value),
+    /// Read `hwdec-current` into the shared slot. The property only exists
+    /// once a file is being decoded, so a missing reply simply leaves the
+    /// previous reading in place and the caller probes again next tick.
+    ProbeHwdec,
     LoadFile(String),
     /// Remember `time-pos`, switch mpv to idle and unload the file. This frees
     /// the decoder and its buffers while keeping the process and IPC socket.
@@ -224,6 +230,7 @@ impl Mpv {
             last_error: Mutex::new(None),
             parked_position: Mutex::new(None),
             parked: AtomicBool::new(false),
+            hwdec_current: Mutex::new(None),
         });
         let stop = Arc::new(AtomicBool::new(false));
         let (requests, receiver) = mpsc::channel();
@@ -290,6 +297,24 @@ impl Mpv {
     /// This is used by the Eco Engine to lower the frame rate while idle.
     pub fn set_video_filter(&mut self, filter: &str) -> anyhow::Result<()> {
         self.set_property("vf", json!(filter))
+    }
+
+    /// Ask the worker to read `hwdec-current`. Queued, never blocking: the
+    /// result appears in [`Mpv::hwdec_current`] on a later supervision tick.
+    pub fn probe_hwdec(&mut self) -> anyhow::Result<()> {
+        self.enqueue(Request::ProbeHwdec)
+    }
+
+    /// The decoder mpv is actually using, from the last successful probe.
+    /// [`HwDec::Unknown`] until a file is decoded and a reply has arrived.
+    pub fn hwdec_current(&self) -> HwDec {
+        let value = self
+            .shared
+            .hwdec_current
+            .lock()
+            .ok()
+            .and_then(|current| current.clone());
+        HwDec::from_report(value.as_deref())
     }
 
     /// The volume last applied to mpv. Reads an atomic, so fade steps never
@@ -413,6 +438,29 @@ fn serve_ipc(mut ipc: Ipc, receiver: Receiver<Request>, shared: &Shared, _stop: 
                     }
                 }
             }
+            Request::ProbeHwdec => {
+                match exchange(&mut ipc, json!(["get_property", "hwdec-current"])) {
+                    Ok(reply) => {
+                        let value = reply
+                            .get("data")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                            .filter(|value| !value.is_empty());
+                        if let Ok(mut current) = shared.hwdec_current.lock() {
+                            *current = value;
+                        }
+                    }
+                    // `hwdec-current` is *unavailable* until a file is being
+                    // decoded, so a rejection here is the normal answer during
+                    // startup and while a decoder is parked. Only a transport
+                    // failure deserves the usual error path.
+                    Err(err) if is_fatal(&err) => {
+                        record_failure(&err, false, shared);
+                        break;
+                    }
+                    Err(_) => {}
+                }
+            }
             Request::LoadFile(source) => {
                 if let Err(err) = exchange(&mut ipc, json!(["loadfile", source, "replace"])) {
                     if record_failure(&err, true, shared) {
@@ -423,6 +471,12 @@ fn serve_ipc(mut ipc: Ipc, receiver: Receiver<Request>, shared: &Shared, _stop: 
                 // mpv in idle mode with a saved position. The new file must
                 // start from its own beginning and keep normal end of file.
                 if let Ok(mut slot) = shared.parked_position.lock() {
+                    *slot = None;
+                }
+                // The new file may decode on another path, so the previous
+                // reading is dropped and the next probe reports the truth
+                // about this source.
+                if let Ok(mut slot) = shared.hwdec_current.lock() {
                     *slot = None;
                 }
                 shared.parked.store(false, Ordering::Relaxed);
@@ -718,6 +772,7 @@ mod tests {
             last_error: Mutex::new(None),
             parked_position: Mutex::new(None),
             parked: AtomicBool::new(false),
+            hwdec_current: Mutex::new(None),
         }
     }
 
@@ -838,6 +893,139 @@ mod tests {
         peer.join().unwrap();
         assert!(!shared.parked.load(Ordering::Relaxed));
         assert_eq!(*shared.parked_position.lock().unwrap(), None);
+        assert!(!shared.ipc_dead.load(Ordering::Relaxed));
+    }
+
+    /// A successful probe records the decoder the player picked, which is the
+    /// only way to learn that a requested API silently fell back.
+    #[test]
+    fn a_hwdec_probe_records_the_reported_decoder() {
+        let (client, mut server) = UnixStream::pair().unwrap();
+        let ipc = test_ipc(client);
+        let shared = Arc::new(test_shared());
+        let stop = Arc::new(AtomicBool::new(false));
+        let (requests, receiver) = mpsc::channel();
+
+        let peer = std::thread::spawn(move || {
+            let mut reader = BufReader::new(server.try_clone().unwrap());
+            let replies = [
+                ("hwdec-current", Some(json!("vulkan")), "success"),
+                ("hwdec-current", Some(json!("no")), "success"),
+                ("quit", None, "success"),
+            ];
+            for (expected, data, error) in replies {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                assert!(line.contains(expected), "{line}");
+                let request: Value = serde_json::from_str(&line).unwrap();
+                let request_id = request["request_id"].as_u64().unwrap();
+                let mut reply = json!({ "request_id": request_id, "error": error });
+                if let Some(data) = data {
+                    reply["data"] = data;
+                }
+                writeln!(server, "{reply}").unwrap();
+                server.flush().unwrap();
+            }
+        });
+
+        let worker = {
+            let shared = Arc::clone(&shared);
+            let stop = Arc::clone(&stop);
+            std::thread::spawn(move || serve_ipc(ipc, receiver, &shared, &stop))
+        };
+
+        requests.send(Request::ProbeHwdec).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while shared.hwdec_current.lock().unwrap().as_deref() != Some("vulkan")
+            && Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(
+            shared.hwdec_current.lock().unwrap().as_deref(),
+            Some("vulkan")
+        );
+
+        // `no` is mpv's way of saying the requested API is not in use.
+        requests.send(Request::ProbeHwdec).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while shared.hwdec_current.lock().unwrap().as_deref() != Some("no")
+            && Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(shared.hwdec_current.lock().unwrap().as_deref(), Some("no"));
+
+        requests.send(Request::Quit).unwrap();
+        drop(requests);
+        worker.join().unwrap();
+        peer.join().unwrap();
+        assert!(!shared.ipc_dead.load(Ordering::Relaxed));
+    }
+
+    /// mpv reports `hwdec-current` as *unavailable* until a file is decoded.
+    /// That is the normal answer while starting up or parked, so it must not
+    /// be treated as an error and must not destroy the reading or the socket.
+    #[test]
+    fn an_unavailable_hwdec_reading_is_not_a_failure() {
+        let (client, mut server) = UnixStream::pair().unwrap();
+        let ipc = test_ipc(client);
+        let shared = Arc::new(test_shared());
+        let stop = Arc::new(AtomicBool::new(false));
+        let (requests, receiver) = mpsc::channel();
+
+        let peer = std::thread::spawn(move || {
+            let mut reader = BufReader::new(server.try_clone().unwrap());
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap() == 0 {
+                    break;
+                }
+                let request: Value = serde_json::from_str(&line).unwrap();
+                let request_id = request["request_id"].as_u64().unwrap();
+                // Only the decoder probe is rejected; real commands succeed.
+                let error = if line.contains("hwdec-current") {
+                    "property unavailable"
+                } else {
+                    "success"
+                };
+                writeln!(
+                    server,
+                    "{}",
+                    json!({ "request_id": request_id, "error": error })
+                )
+                .unwrap();
+                server.flush().unwrap();
+                if line.contains("quit") {
+                    break;
+                }
+            }
+        });
+
+        let worker = {
+            let shared = Arc::clone(&shared);
+            let stop = Arc::clone(&stop);
+            std::thread::spawn(move || serve_ipc(ipc, receiver, &shared, &stop))
+        };
+
+        // A rejected probe followed by a live command proves the worker kept
+        // the connection, and no user-facing error was recorded.
+        requests.send(Request::ProbeHwdec).unwrap();
+        requests
+            .send(Request::Execute(json!(["set_property", "volume", 20])))
+            .unwrap();
+        requests.send(Request::ProbeHwdec).unwrap();
+        requests.send(Request::Quit).unwrap();
+        drop(requests);
+        // Joining drains the queue, so every request above has been answered.
+        worker.join().unwrap();
+        peer.join().unwrap();
+
+        assert!(
+            shared.last_error.lock().unwrap().is_none(),
+            "a rejected probe must not look like a playback failure"
+        );
+        assert_eq!(*shared.hwdec_current.lock().unwrap(), None);
         assert!(!shared.ipc_dead.load(Ordering::Relaxed));
     }
 

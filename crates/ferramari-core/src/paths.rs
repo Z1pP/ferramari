@@ -93,6 +93,13 @@ pub fn library_path() -> PathBuf {
     config_dir().join("library.json")
 }
 
+/// Remembered display identities: which physical screen owns which config key.
+/// Separate from `config.json` because it is internal bookkeeping that must
+/// survive a config reset.
+pub fn display_ids_path() -> PathBuf {
+    config_dir().join("display-ids.json")
+}
+
 pub fn autostart_dir() -> PathBuf {
     config_base().join("autostart")
 }

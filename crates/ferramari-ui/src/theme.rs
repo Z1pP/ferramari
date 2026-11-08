@@ -259,7 +259,10 @@ mod tests {
     #[test]
     fn ferramari_theme_is_named_custom() {
         let name = ferramari_theme(true, "dark").name().to_lowercase();
-        assert!(name.contains("ferramari"), "expected custom theme, got: {name}");
+        assert!(
+            name.contains("ferramari"),
+            "expected custom theme, got: {name}"
+        );
     }
 
     #[test]

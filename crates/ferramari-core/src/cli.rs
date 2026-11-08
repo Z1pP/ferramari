@@ -67,6 +67,20 @@ pub enum PackageCommand {
         /// The `.ferramari` package directory
         dir: PathBuf,
     },
+    /// Review a package directory the way a catalogue would show it
+    Lint {
+        /// The `.ferramari` package directory
+        dir: PathBuf,
+        /// Machine-readable findings (for CI)
+        #[arg(long)]
+        json: bool,
+        /// Suppress findings by code (comma-separated); unknown codes fail
+        #[arg(long, value_name = "CODES")]
+        ignore: Option<String>,
+        /// Fail the exit code for any warning, not only blockers
+        #[arg(long)]
+        strict: bool,
+    },
     /// Trust a key: a package directory with a signature, or a public key file
     Trust {
         /// Package directory or `*.json` public key
@@ -80,3 +94,13 @@ pub enum PackageCommand {
 pub const VERIFY_OK: i32 = 0;
 pub const VERIFY_NOT_TRUSTED: i32 = 1;
 pub const VERIFY_INVALID: i32 = 2;
+
+/// Exit codes for `ferramari package lint`.
+///
+/// Warnings exit 0 by default: the point of splitting findings into two
+/// severities is that a creator's CI can require "nothing blocks
+/// publication" without an incomplete-but-valid package failing the build.
+/// `--strict` promotes warnings to failures for those who want the bar higher.
+pub const LINT_OK: i32 = 0;
+pub const LINT_BLOCKED: i32 = 2;
+pub const LINT_BAD_INPUT: i32 = 3;

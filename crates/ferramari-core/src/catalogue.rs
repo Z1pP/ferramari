@@ -871,7 +871,10 @@ fn is_video_extension(extension: &str) -> bool {
     )
 }
 
-const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long a media probe may take. Public because `lint::measure` performs
+/// its own `ffprobe` call and must not pick a different deadline for the same
+/// tool; the value itself is not a stable interface.
+pub const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 const SHEET_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Read video metadata with `ffprobe`. Failures are not fatal: the download

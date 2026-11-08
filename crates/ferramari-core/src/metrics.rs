@@ -1,26 +1,88 @@
 //! Lightweight process-tree metrics for the Performance page.
 //!
-//! Everything is read from `/proc`; there is no dependency on a system
-//! monitor, UPower or `nvidia-smi`. A sample covers Ferramari plus its mpv and
-//! WebKit children. GPU utilisation is only available on drivers that expose
-//! `gpu_busy_percent` (currently AMDGPU); other systems show “unavailable”.
+//! The Linux sampler reads `/proc`; there is no dependency on a system
+//! monitor, UPower or `nvidia-smi`. A sample covers Ferramari plus its mpv
+//! children.
+//!
+//! Every number is a [`Metric`], so a missing value carries *why* it is
+//! missing. Showing `0%` for a platform that cannot measure CPU at all, or for
+//! the very first sample, makes an unmeasurable thing look like an idle one —
+//! which is the opposite of what the Eco work is trying to prove.
 
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+/// One metric reading, or the reason there is none.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Metric<T> {
+    /// Measured this round.
+    Value(T),
+    /// This platform, driver or session has no way to measure it. Permanent
+    /// until the code gains a sampler for it.
+    Unsupported,
+    /// Measurable here, but this round produced nothing: the process tree is
+    /// gone, or the interface did not answer.
+    Unavailable,
+    /// A rate that needs two samples; the first one has no interval yet.
+    Pending,
+}
+
+impl<T> Metric<T> {
+    pub fn value(self) -> Option<T> {
+        match self {
+            Metric::Value(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub fn is_value(&self) -> bool {
+        matches!(self, Metric::Value(_))
+    }
+
+    /// The value when present, otherwise `fallback`. Used by call sites that
+    /// only need a number for display formatting.
+    pub fn unwrap_or(self, fallback: T) -> T {
+        self.value().unwrap_or(fallback)
+    }
+}
+
+/// A single resource reading for the whole process tree.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Sample {
-    /// False when this platform has no supported process-tree sampler.
-    pub available: bool,
-    /// CPU used by the whole process tree since the previous sample. The first
-    /// sample reports 0 because there is no interval to divide by.
-    pub cpu_percent: f64,
-    pub rss_bytes: u64,
-    pub threads: u32,
-    pub processes: u32,
-    pub gpu_percent: Option<f64>,
+    /// CPU used by the process tree since the previous sample.
+    pub cpu: Metric<f64>,
+    pub memory: Metric<u64>,
+    pub threads: Metric<u32>,
+    pub processes: Metric<u32>,
+    /// GPU utilisation, only available on drivers that expose
+    /// `gpu_busy_percent` (currently AMDGPU).
+    pub gpu: Metric<f64>,
+}
+
+impl Sample {
+    /// A sample for a platform with no process sampler at all, so the page can
+    /// say so instead of drawing zeroes.
+    pub fn unsupported() -> Self {
+        Self {
+            cpu: Metric::Unsupported,
+            memory: Metric::Unsupported,
+            threads: Metric::Unsupported,
+            processes: Metric::Unsupported,
+            gpu: Metric::Unsupported,
+        }
+    }
+
+    /// True when nothing in this sample is a measurement, which is what makes
+    /// the UI show a single explanation rather than five dashes.
+    pub fn is_empty(&self) -> bool {
+        !self.cpu.is_value()
+            && !self.memory.is_value()
+            && !self.threads.is_value()
+            && !self.processes.is_value()
+            && !self.gpu.is_value()
+    }
 }
 
 #[derive(Debug, Default)]
@@ -30,34 +92,60 @@ pub struct Monitor {
 
 impl Monitor {
     pub fn sample(&mut self) -> Sample {
-        self.sample_of(std::process::id() as u32)
+        self.sample_of(std::process::id())
     }
 
     /// Sample a specific process tree. The UI needs this to report the
     /// server's footprint (mpv children included) instead of its own.
     pub fn sample_of(&mut self, root: u32) -> Sample {
-        let tree = read_tree(root);
+        let gpu = gpu_percent(Path::new("/sys/class/drm"));
+        let Some(tree) = read_tree(root) else {
+            // Either this platform has no sampler, or the tree is gone. The
+            // distinction belongs to the sampler, so ask it directly.
+            return Sample {
+                cpu: Metric::Unsupported,
+                memory: Metric::Unsupported,
+                threads: Metric::Unsupported,
+                processes: Metric::Unsupported,
+                gpu,
+            };
+        };
+        if tree.processes == 0 {
+            // The sampler works here but this pid is not in the table any
+            // more: the server exited or was never reachable.
+            self.previous = None;
+            return Sample {
+                cpu: Metric::Unavailable,
+                memory: Metric::Unavailable,
+                threads: Metric::Unavailable,
+                processes: Metric::Unavailable,
+                gpu,
+            };
+        }
+
         let now = Instant::now();
-        let cpu_percent = match self.previous {
+        let cpu = match self.previous {
             Some((previous_at, previous_ticks)) => {
                 let elapsed = now.duration_since(previous_at).as_secs_f64();
-                let ticks = tree.ticks.saturating_sub(previous_ticks);
                 if elapsed > 0.0 {
-                    ticks as f64 / clock_ticks() as f64 / elapsed * 100.0
+                    let ticks = tree.ticks.saturating_sub(previous_ticks);
+                    Metric::Value(ticks as f64 / clock_ticks() as f64 / elapsed * 100.0)
                 } else {
-                    0.0
+                    // Two reads within the same clock tick: there is no
+                    // interval to divide by, and `0%` would be a guess.
+                    Metric::Pending
                 }
             }
-            None => 0.0,
+            None => Metric::Pending,
         };
         self.previous = Some((now, tree.ticks));
+
         Sample {
-            available: tree.processes > 0,
-            cpu_percent,
-            rss_bytes: tree.rss_bytes,
-            threads: tree.threads,
-            processes: tree.processes,
-            gpu_percent: gpu_percent(Path::new("/sys/class/drm")),
+            cpu,
+            memory: Metric::Value(tree.rss_bytes),
+            threads: Metric::Value(tree.threads),
+            processes: Metric::Value(tree.processes),
+            gpu,
         }
     }
 }
@@ -82,10 +170,12 @@ struct Status {
     threads: u32,
 }
 
-fn read_tree(root: u32) -> Tree {
-    let Ok(entries) = fs::read_dir("/proc") else {
-        return Tree::default();
-    };
+/// Walk the process tree below `root`. `None` means this platform has no
+/// process table the sampler understands; an empty [`Tree`] means the tree
+/// was read and the root was not in it.
+#[cfg(target_os = "linux")]
+fn read_tree(root: u32) -> Option<Tree> {
+    let entries = fs::read_dir("/proc").ok()?;
     let mut stats: HashMap<u32, Stat> = HashMap::new();
     let mut statuses: HashMap<u32, Status> = HashMap::new();
     for entry in entries.flatten() {
@@ -131,7 +221,15 @@ fn read_tree(root: u32) -> Tree {
             stack.extend(children);
         }
     }
-    tree
+    Some(tree)
+}
+
+/// Platforms without a `/proc` table have no sampler yet. Windows needs
+/// `GetProcessTimes`/PSAPI and macOS `proc_pid_rusage`; until one of those is
+/// wired up the metrics page must report that rather than zeroes.
+#[cfg(not(target_os = "linux"))]
+fn read_tree(_root: u32) -> Option<Tree> {
+    None
 }
 
 /// Parse `/proc/<pid>/stat`. The command name can contain spaces and `)`, so
@@ -178,25 +276,34 @@ fn clock_ticks() -> u64 {
 
 #[cfg(not(unix))]
 fn clock_ticks() -> u64 {
-    // /proc-based process sampling is currently unavailable on Windows.
+    // Only reached by code paths that already reported Unsupported.
     100
 }
 
-fn gpu_percent(root: &Path) -> Option<f64> {
-    let entries = fs::read_dir(root).ok()?;
-    entries
-        .flatten()
-        .filter_map(|entry| {
-            if !entry.file_name().to_string_lossy().starts_with("card") {
-                return None;
-            }
-            fs::read_to_string(entry.path().join("device/gpu_busy_percent"))
-                .ok()?
-                .trim()
-                .parse::<f64>()
-                .ok()
-        })
-        .reduce(f64::max)
+/// Busiest GPU, or the reason nothing is known.
+///
+/// `gpu_busy_percent` is an AMDGPU-specific sysfs file; i915, nouveau and
+/// NVIDIA do not provide it, and neither does any non-Linux platform. That is
+/// a missing measurement, not a free one, so it reports `Unsupported`.
+fn gpu_percent(root: &Path) -> Metric<f64> {
+    let entries = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(_) => return Metric::Unsupported,
+    };
+    let mut busiest: Option<f64> = None;
+    for entry in entries.flatten() {
+        if !entry.file_name().to_string_lossy().starts_with("card") {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(entry.path().join("device/gpu_busy_percent")) else {
+            continue;
+        };
+        match text.trim().parse::<f64>() {
+            Ok(value) => busiest = Some(busiest.map_or(value, |current| current.max(value))),
+            Err(_) => return Metric::Unavailable,
+        }
+    }
+    busiest.map_or(Metric::Unsupported, Metric::Value)
 }
 
 #[cfg(test)]
@@ -225,30 +332,127 @@ mod tests {
     }
 
     #[test]
-    fn gpu_reader_takes_the_busiest_card_and_tolerates_absence() {
+    fn the_busiest_card_wins_and_a_missing_driver_is_unsupported() {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
         let root =
             std::env::temp_dir().join(format!("ferramari-gpu-{}-{unique}", std::process::id()));
-        let device = root.join("card0/device");
-        fs::create_dir_all(&device).unwrap();
-        fs::write(device.join("gpu_busy_percent"), "37\n").unwrap();
-        assert_eq!(gpu_percent(&root), Some(37.0));
-        fs::write(device.join("gpu_busy_percent"), "91\n").unwrap();
-        assert_eq!(gpu_percent(&root), Some(91.0));
+
+        // No DRM directory at all: nothing can be known.
+        assert_eq!(gpu_percent(&root), Metric::Unsupported);
+
+        let first = root.join("card0/device");
+        let second = root.join("card1/device");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        // A card without the file (i915, nouveau, NVIDIA) does not make the
+        // metric supported.
+        assert_eq!(gpu_percent(&root), Metric::Unsupported);
+
+        fs::write(first.join("gpu_busy_percent"), "37\n").unwrap();
+        assert_eq!(gpu_percent(&root), Metric::Value(37.0));
+        fs::write(second.join("gpu_busy_percent"), "12\n").unwrap();
+        assert_eq!(gpu_percent(&root), Metric::Value(37.0));
+        fs::write(second.join("gpu_busy_percent"), "91\n").unwrap();
+        assert_eq!(gpu_percent(&root), Metric::Value(91.0));
+
+        fs::write(second.join("gpu_busy_percent"), "not a number\n").unwrap();
+        assert_eq!(gpu_percent(&root), Metric::Unavailable);
         let _ = fs::remove_dir_all(root);
-        assert_eq!(gpu_percent(Path::new("/definitely/not/drm")), None);
+    }
+
+    #[test]
+    fn a_gpu_directory_that_is_a_file_is_unsupported_not_a_panic() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("ferramari-gpu-file-{}", unique));
+        fs::write(&path, "x").unwrap();
+        assert_eq!(gpu_percent(&path), Metric::Unsupported);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn the_first_sample_has_no_rate_to_report() {
+        let mut monitor = Monitor::default();
+        let sample = monitor.sample();
+        assert_eq!(
+            sample.cpu,
+            Metric::Pending,
+            "a rate needs two samples; reporting 0% would claim an idle process"
+        );
+        assert!(sample.memory.is_value());
+        assert!(sample.processes.is_value());
+        assert!(sample.threads.is_value());
     }
 
     #[test]
     fn current_process_tree_contains_this_test() {
         let mut monitor = Monitor::default();
+        monitor.sample();
         let sample = monitor.sample();
-        assert!(sample.available);
-        assert!(sample.processes >= 1);
-        assert!(sample.threads >= 1);
-        assert!(sample.rss_bytes > 0);
+        if !sample.cpu.is_value() {
+            // A second read inside one clock tick is legitimately Pending.
+            assert_eq!(sample.cpu, Metric::Pending);
+        }
+        assert!(sample.processes.unwrap_or(0) >= 1);
+        assert!(sample.threads.unwrap_or(0) >= 1);
+        assert!(sample.memory.unwrap_or(0) > 0);
+        assert!(!sample.is_empty());
+    }
+
+    #[test]
+    fn a_dead_process_tree_is_unavailable_not_zero() {
+        // Sample a pid that cannot exist here. The tree read succeeds and
+        // finds nothing, which is "gone", not "unsupported".
+        let mut monitor = Monitor::default();
+        let sample = monitor.sample_of(u32::MAX);
+        if cfg!(target_os = "linux") {
+            assert_eq!(sample.processes, Metric::Unavailable);
+            assert_eq!(sample.cpu, Metric::Unavailable);
+            assert_eq!(sample.memory, Metric::Unavailable);
+            assert_eq!(sample.threads, Metric::Unavailable);
+        } else {
+            assert_eq!(sample.processes, Metric::Unsupported);
+        }
+        // A dead process tree says nothing about the GPU: the driver reading
+        // is taken independently and must not be dragged into the failure.
+        assert!(!matches!(sample.gpu, Metric::Pending));
+    }
+
+    #[test]
+    fn a_gone_server_resets_the_cpu_interval() {
+        // Otherwise the next live sample would divide by the elapsed time
+        // across the gap and report a meaningless spike.
+        let mut monitor = Monitor::default();
+        monitor.sample();
+        let _ = monitor.sample_of(u32::MAX);
+        assert_eq!(monitor.sample().cpu, Metric::Pending);
+    }
+
+    #[test]
+    fn an_unsupported_sample_reports_no_measurement_anywhere() {
+        let sample = Sample::unsupported();
+        assert!(sample.is_empty());
+        assert_eq!(sample.cpu, Metric::Unsupported);
+        assert_eq!(sample.memory, Metric::Unsupported);
+        assert_eq!(sample.threads, Metric::Unsupported);
+        assert_eq!(sample.processes, Metric::Unsupported);
+        assert_eq!(sample.gpu, Metric::Unsupported);
+    }
+
+    #[test]
+    fn metrics_expose_their_value_only_when_measured() {
+        assert_eq!(Metric::Value(12).value(), Some(12));
+        assert_eq!(Metric::Unsupported::<u32>.value(), None);
+        assert_eq!(Metric::Pending::<u32>.value(), None);
+        assert_eq!(Metric::Unavailable::<u32>.value(), None);
+        assert_eq!(Metric::Value(3.5).unwrap_or(0.0), 3.5);
+        assert_eq!(Metric::Pending::<f64>.unwrap_or(0.0), 0.0);
+        assert!(Metric::Value(1).is_value());
+        assert!(!Metric::Pending::<u32>.is_value());
     }
 }

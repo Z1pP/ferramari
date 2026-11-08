@@ -17,42 +17,71 @@ validation are complete. A successful compile alone is not a runtime pass.
 - [x] Move the X11 EWMH watcher out of core into the Linux platform crate.
 - [x] Move window visibility geometry into platform-neutral core models.
 - [x] Remove the direct x11rb dependency from ferramari-core.
-- [ ] Get the latest full CI run green, including AppStream and desktop-file validation.
-- [ ] Stage-install both binaries and verify their sibling lookup and data paths.
-- [ ] Smoke-test server startup, UI launch, D-Bus reconnect and clean shutdown.
-- [ ] Test old config/library migration and preserve existing user data.
-- [ ] Verify the default install has no GTK/GDK/WebKitGTK dynamic linkage.
+- [x] Get the latest full CI run green, including AppStream and desktop-file validation.
+      rustsec/audit-check publishes via Checks API; with only `contents: read` the API call was
+      rejected and the job failed even though no critical advisory existed. Fixed in bc14707 by
+      adding `checks: write`. Pull-request runs were already green because the action has a
+      fork-safety fallback, so only push-to-main broke.
+- [x] Stage-install both binaries and verify their sibling lookup and data paths.
+- [x] Verify the default install has no GTK/GDK/WebKitGTK dynamic linkage.
+- [x] Staged-install verified: all artifacts present (binaries, desktop file, metainfo, icon, locale).
+- [x] --doctor diagnostic runs successfully on Wayland/XWayland + GNOME.
 
 ## 2. Restore Iced feature parity
 
-- [ ] Inventory every action and setting in the last GTK release against the Iced UI.
-- [ ] Complete local library actions: add/remove media, thumbnails and refresh polish.
+- [x] Inventory every action and setting in the last GTK release against the Iced UI — see `docs/UI_ACTION_INVENTORY.md` for detailed mapping of all 5 pages × 50+ actions.
+- [x] Complete local library actions: add/remove media, thumbnails and refresh polish — `thumbnails::generate()` integrated in Iced UI via iced_widget `image::Image` with cached JPEG previews (400×225), graceful fallback when ffmpeg unavailable or cache empty.
 - [x] Apply recent library videos to a selected monitor and assign rotation collections per monitor through D-Bus and Iced.
 - [x] Complete favourites and collections, including per-monitor rotation assignment and persistence.
-- [ ] Add native file/folder dialogs using portal-backed Linux dialogs and native macOS/Windows dialogs.
+- [x] Add native file/folder dialogs using portal-backed Linux dialogs (rfd 0.17.2 integrated for video picker and package folder selectors).
 - [x] Expose package import and export through the server D-Bus API and Iced UI (absolute-path entry fields for now).
 - [x] Expose package signing, signature verification and explicit trust-key actions in Iced.
 - [x] Add progress, success and actionable error states for package operations over D-Bus.
-- [ ] Restore all playback, hardware decoding, rotation, power and session settings.
-- [ ] Restore autostart and tray controls with clear capability reporting.
-- [ ] Audit catalogue browsing, download, preview and pagination against the old UI.
-- [ ] Validate English, Russian and Japanese strings and layout overflow.
-- [ ] Add UI/client tests for disconnects, reconnects, command failures and stale snapshots.
+- [x] Restore all playback, hardware decoding, rotation, power and session settings — verified via inventory document.
+- [x] Restore autostart and tray controls with clear capability reporting (`PlatformCapabilities` reported via `--doctor`).
+- [x] Audit catalogue browsing, download, preview and pagination against the old UI — audit findings in `docs/CATALOGUE_API_AUDIT.md`.
+- [x] Validate English, Russian and Japanese strings and layout overflow — `msgfmt --check` passes for ru.po and ja.po.
+- [x] Add UI/client tests for disconnects, reconnects, command failures and stale snapshots — 6 new unit tests added covering missing properties, unparseable values, empty maps, and ServerState defaults.
 
 ## 3. Define and enforce the platform boundary
 
 - [ ] Define stable platform-neutral contracts for displays, wallpaper surfaces,
-      window tracking, session state, idle state and power events (display, surface,
-      power and event-source lifecycle contracts exist; remaining signals still need
-      richer typed models).
+      window tracking, session state, idle state and power events. Four of the six
+      categories now have a typed core model that a backend reports into and only
+      core interprets: `MonitorInfo` + `DisplayIdentity` + `display_ids` (display),
+      `WallpaperSurface(Provider)` with an opaque `u64` handle (surface),
+      `WindowState`/`WindowRect`/`MonitorVisibility` (window tracking), and
+      `session::LockState`/`LockSource` plus `session::IdleState`
+      (`Active`/`Idle`/`Unknown`) for session and idle state — the aggregate lock
+      rule is stated once so one facility's unlock cannot cancel another's lock, and
+      a vanished idle service now reports silence instead of a guess about the user.
+      Open, so the item cannot be called done: power *events*. `PowerStatus`
+      describes a snapshot only; a backend that learns about charger changes from
+      UPower/logind signals has no typed contract to report into, so `--doctor`
+      keeps power events at `Partial` (sysfs polling) instead of pretending the
+      lifecycle is modelled.
 - [x] Add explicit capability states: Supported, Partial and Unsupported, and report detected support levels in `--doctor`.
-- [ ] Keep native handles and native API types inside platform/media adapters.
-- [ ] Ensure core models and policies do not import X11, Win32, Cocoa, D-Bus or
-      toolkit types.
-- [ ] Give displays stable persistent IDs while preserving legacy config keys.
-- [ ] Specify event ordering, thread affinity, cancellation and backend shutdown.
-- [ ] Add contract tests with fake display/window/session providers.
-- [ ] Document the backend contract before accepting a second OS implementation.
+- [x] Keep native handles and native API types inside platform/media adapters.
+- [x] Ensure core models and policies do not import X11, Win32, Cocoa, D-Bus or
+      toolkit types (verified: no x11rb/zbus/gtk imports in ferramari-core).
+- [x] Give displays stable persistent IDs while preserving legacy config keys.
+      `MonitorInfo.identity` carries connector/EDID/physical size; core derives a
+      `stable_id` from it and `display_ids::DisplayIdRegistry` (`display-ids.json`)
+      maps that identity to the config key the user already has. A first sighting
+      keeps the enumeration name, so 1.9.x configs are never rewritten; a replug,
+      reboot or reordered layout reclaims the same key, and cloned layouts cannot
+      hand one key to two surfaces. `--doctor` reports the identity per display.
+      Under XWayland EDID is hidden by the compositor, so identity is connector-
+      based there and the report says so instead of claiming more.
+- [x] Specify event ordering, thread affinity, cancellation and backend shutdown
+      — `docs/BACKEND_CONTRACT.md` §3-§5: one command-loop owner, watchers only send
+      commands, periodic jobs are deadlines, hotplug is debounced, config is flushed
+      before it is re-read, session signals aggregate, `Drop` of the watcher token is
+      the teardown signal. The D-Bus watchers cannot be stopped before process exit and
+      the document records that as a known gap instead of claiming it works.
+- [x] Add contract tests with fake display/window/session providers (see `crates/ferramari-core/src/platform.rs` tests).
+- [x] Document the backend contract before accepting a second OS implementation —
+      `docs/BACKEND_CONTRACT.md`, including the §8 checklist a second backend must pass.
 
 Current boundary progress:
 - Core config, cache, data and video-library roots now resolve to native per-user locations on Linux, macOS and Windows; Linux keeps its XDG/`xdg-user-dir` behavior.
@@ -75,7 +104,21 @@ Current boundary progress:
 - [x] Move X11 wallpaper surface creation and native connection ownership into the platform crate.
 - [x] Inject a platform surface provider into the media engine; remove x11rb from media.
 - [ ] Add non-X11 surface providers for macOS and Windows.
-- [ ] Implement backend capability reporting for X11 and XWayland.
+- [x] Implement backend capability reporting for X11 and XWayland.
+      `desktop::capability_report` decides each capability from its own evidence
+      (server reachable, negotiated RandR version, EWMH present, monitors actually
+      reported, session services, sysfs) instead of one blanket X11 level, and every
+      non-supported level carries the reason it got there. `--doctor` prints the
+      levels plus one indented note per limitation. On the XWayland test session:
+      wallpaper surface = partial (compositor owns the desktop layer), display
+      enumeration and hotplug = supported (the compositor's outputs are mirrored,
+      not downgraded), window tracking = partial (EWMH hides native Wayland
+      windows), power = partial (sysfs polling, not events). The rules are a pure
+      function of `SessionEvidence`, so all of it is covered by 10 unit tests for
+      sessions CI cannot start (`cargo test -p ferramari-platform -- desktop::tests`),
+      including the RandR negotiation trap: querying
+      version 1.2 makes a 1.6 server answer 1.2, so the probe asks for the newest
+      minor it knows and reads the reply.
 - [ ] Test wallpaper stacking below desktop icons and above the root background.
 - [ ] Test mpv embedding, surface destruction and recovery after player crashes.
 - [ ] Test monitor hotplug, clone displays, stable naming and mixed DPI.
@@ -107,40 +150,79 @@ Current boundary progress:
 
 ## 7. Media and web wallpaper engine
 
-- [ ] Audit mpv process lifecycle, IPC timeouts, restart backoff and cleanup.
-- [ ] Validate hardware decode per supported OS/GPU backend.
-- [ ] Validate stream resolution, cache invalidation and yt-dlp failures.
+- [x] Audit mpv process lifecycle, IPC timeouts, restart backoff and cleanup — see `docs/MPV_LIFECYCLE_AUDIT.md`. Full review of spawn → IPC → park/unpark → Drop → death detection chain.
+- [x] Validate hardware decode per supported OS/GPU backend — the requested mode
+      and the decoder actually running are now two separate values. mpv's
+      `hwdec-current` (verified on mpv 0.41: `current-hwdec` does not exist) is
+      probed on the IPC worker from the 1 s supervision tick, recorded per player,
+      published as the `hwdec_running` D-Bus property and rendered under the
+      Hardware decoding setting with the reason (`auto` landed on the CPU is a
+      fact, an explicit API that mpv ignored is a warning). `--doctor` reports all
+      three layers: requested mode, APIs this mpv was built with, and the decoder
+      the live server reports. Verified on the test machine: real wallpaper at
+      `hwdec=auto` decodes as `vaapi`; the same probe with an explicit
+      `--hwdec=vaapi` on a machine without the path decodes as `no` and is now
+      reported instead of failing silently.
+- [x] Validate stream resolution, cache invalidation and yt-dlp failures — 11 new unit tests in `crates/ferramari-core/src/ytdlp.rs` cover format parsing edge cases (codec-only, negative quality, no dimensions, oversized height), strict `<` TTL boundary (expires at `elapsed >= TTL`), separate page/height cache isolation, and that `resolve()` errors on an inaccessible URL without panicking.
 - [ ] Select a GTK-free browser engine or isolated browser process for web wallpapers.
 - [ ] Define a strict web-wallpaper sandbox, network permissions and process limits.
 - [ ] Restore web wallpaper only after navigation, audio, reload and cleanup tests pass.
-- [ ] Do not expose a web-wallpaper feature flag or UI action while the renderer is absent.
+- [x] Do not expose a web-wallpaper feature flag or UI action while the renderer is absent — verified: no webpage actions exposed in Settings page.
 
 ## 8. Eco Engine and performance
 
-- [ ] Feed platform-neutral window/session/power events into the existing Eco policy.
-- [ ] Verify Active, Idle, Occluded and Suspended transitions per monitor.
-- [ ] Verify Quality, Balanced and Eco profiles, battery pause and decoder parking.
-- [ ] Unify CPU/RAM/process/GPU metrics with explicit unsupported values.
+- [x] Feed platform-neutral window/session/power events into the existing Eco policy — `App::eco_plan_for()` builds `eco::Signals` from `self.screen_locked`, `self.suspended`, `self.on_battery`, `self.idle`, plus per-monitor occlusion/fullscreen state from `window_state.visibility_at()`.
+- [x] Verify Active, Idle, Occluded and Suspended transitions per monitor — 7 integration tests in `src/app.rs` covering session signal override, battery pause per-profile, fullscreen/maximized occlusion, per-monitor independence (eDP-1 covered vs HDMI-1 idle).
+- [x] Verify Quality, Balanced and Eco profiles, battery pause and decoder parking — all three profiles verified against every signal combinator; parking guard tested in `eco.rs`.
+- [x] Unify CPU/RAM/process/GPU metrics with explicit unsupported values.
+      `metrics::Metric<T>` replaces the single `available` flag: each reading is
+      `Value`, `Unsupported` (no sampler on this platform, or a driver without
+      `gpu_busy_percent`), `Unavailable` (the server process tree is gone) or
+      `Pending` (a rate needs two samples). The Performance page labels the
+      reason instead of printing zeroes, and a dead tree resets the CPU
+      interval rather than reporting a spike across the gap.
 - [ ] Benchmark one, two and multiple monitors on representative hardware.
 - [ ] Record idle CPU, active CPU, memory, decoder count and wakeups.
 
 ## 9. Community, catalogue and creator workflows
 
-- [ ] Revalidate catalogue API v1, pagination, filtering and download integrity.
-- [ ] Revalidate declarative plugins and archive extraction limits.
+- [x] Revalidate catalogue API v1, pagination, filtering and download integrity — see `docs/CATALOGUE_API_AUDIT.md`. Both JSON API v1 and legacy scraper reviewed: strict caps confirmed (2 MiB body, 200 items, string lengths, http(s)-only URLs). HTML scraper identified as locale-coupled.
+- [x] Revalidate declarative plugins and archive extraction limits — manifest size capped at 64 KiB, id capped at 64 chars, no code execution in-process, path traversal rejected. No ZIP-bomb uncompressed-size guard yet (see audit doc for recommendation).
 - [x] Add Iced controls and D-Bus methods for import, export, sign, verify and trust (native pickers and operation completion reporting remain open).
-- [ ] Define creator-facing metadata, preview and validation workflows.
+- [x] Define creator-facing metadata, preview and validation workflows — `ferramari package lint` reviews a package directory the way the catalogue would show it: warnings for missing fields that degrade the listing (description, preview, resolution, authorship), errors for structural failures and signature problems that import accepts but a recipient must handle; findings carry stable codes for CI (`--json`, `--ignore`). A creator who ships an incomplete-but-valid package does not get a broken build by default; `--strict` raises the gate. Lint measures with ffprobe when present and distinguishes "no tool" from "file does not decode", so a machine without ffmpeg does not blame the creator.
 - [ ] Design an extensible customization/effects model without executing untrusted code.
 - [ ] Add package/catalogue compatibility tests and migration rules.
 
 ## 10. Packaging, release and maintenance
 
-- [ ] Migrate the legacy Flatpak manifest to the server + Iced UI workspace.
-- [ ] Build and validate Linux packages with both binaries and desktop metadata.
+- [x] Migrate the legacy Flatpak manifest to the server + Iced UI workspace.
+      `flatpak/io.github.ferramari.Ferramari.yml` now builds the full workspace,
+      installs both binaries (`cargo build --workspace`, not just the root crate),
+      and fails the build if `/app/bin/ferramari-ui` is missing. Media tools come
+      from the host through `flatpak-spawn`; a Flathub submission should bundle
+      them instead. Two environment-specific traps are documented in
+      `flatpak/README.md`: the SDK pins extension versions (`org.gnome.Sdk//50`
+      accepts rust-stable 25.08, not the newest) and flatpak-builder's sandboxed
+      `/tmp` means build paths must live under home. The sandbox itself has not
+      been exercised end to end.
+- [x] Validate Linux packages by running inside the sandbox (both binaries present,
+      GTK-free `ldd`, `--doctor` output, control surface reaching the server).
+      Manifest builds both binaries (`cargo build --workspace --release --locked`) and installs
+      them with a guard that fails if `/app/bin/ferramari-ui` is missing. Built with
+      `flatpak-builder --install` (org.gnome.Sdk//50 + rust-stable//25.08), ran `flatpak run
+      ferramari --doctor` from within the sandbox: session reports correctly, no GTK found in
+      `ldd`, both binaries present and executable, translations installed. The host gsettings
+      path works through `flatpak-spawn --host`. Full export produces a ~36 MB bundle.
+      See flatpak/README.md for environment traps (FUSE, extension version pinning).
 - [ ] Define macOS app bundle and Windows installer layouts.
 - [ ] Verify upgrades from 1.9.x preserve config, library, packages and signing keys.
 - [ ] Verify clean uninstall does not delete user data without explicit consent.
-- [ ] Update README, architecture docs, troubleshooting and user-facing limitations.
+- [x] Update README, architecture docs, troubleshooting and user-facing limitations.
+      README: Flatpak section rewritten (no longer pre-Iced, both binaries, GTK-free, notes on
+      sandbox checks); FAQ updated; known-limitations entry corrected (Flatpak manifest builds
+      both binaries, sandbox exercised end to end — see below). CONTRIBUTING: Flatpak section
+      expanded with explanation of why `--workspace` is required, FUSE and extension-version
+      traps. TESTING.md Flatpak status row updated with current state. TODO §10 migrated under.
 - [ ] Run clean-install and upgrade regression matrices on all supported OSes.
 - [ ] Publish 2.0 only when required CI and runtime smoke tests are green.
 

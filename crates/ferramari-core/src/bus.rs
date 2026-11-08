@@ -84,6 +84,8 @@ pub enum Command {
         on_battery: bool,
         percent: Option<u8>,
     },
+    /// Charger plug / unplug delivered immediately (not through the 30 s poll).
+    PowerEvent(crate::power::PowerEventType),
     Suspend(bool),
     LibraryChanged,
     ImportPackage(PathBuf),

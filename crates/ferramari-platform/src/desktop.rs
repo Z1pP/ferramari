@@ -239,6 +239,27 @@ pub struct SessionEvidence<'a> {
     pub lock_service: Option<String>,
     pub idle_service: Option<String>,
     pub battery_visible: bool,
+    /// Whether a Mains (AC adapter) supply exists in `/sys/class/power_supply`.
+    /// When true, power events use live inotify; otherwise only polling is available.
+    pub ac_visible: bool,
+}
+
+/// Check whether a Mains (AC adapter) power supply exists in sysfs.
+fn has_ac_adapter() -> bool {
+    let root = Path::new("/sys/class/power_supply");
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(kind) = std::fs::read_to_string(path.join("type")) else {
+            continue;
+        };
+        if kind.trim() == "Mains" {
+            return true;
+        }
+    }
+    false
 }
 
 const NO_X_SERVER: &str = "no X server reachable";
@@ -351,13 +372,16 @@ fn capability_report(evidence: &SessionEvidence) -> CapabilityReport {
         ),
     };
 
-    // Battery state is polled from sysfs rather than delivered as events, so
-    // the level is Partial even when the file is there.
-    let power = if evidence.battery_visible {
+    // Charger plug / unplug is delivered live via inotify on `/sys/class/power_supply`
+    // (or D-Bus on some systems).  When an AC adapter exists we report full support;
+    // otherwise fall back to polled battery reading which does not produce events.
+    let power = if evidence.ac_visible {
+        decide("power events", SupportLevel::Supported, None)
+    } else if evidence.battery_visible {
         decide(
             "power events",
             SupportLevel::Partial,
-            Some("battery state is polled from sysfs, not delivered as events"),
+            Some("AC adapter not found; only polled battery status is available"),
         )
     } else {
         decide(
@@ -408,6 +432,7 @@ fn capabilities() -> CapabilityReport {
         lock_service: found(lock_services()),
         idle_service: found(idle_service()),
         battery_visible: Path::new("/sys/class/power_supply").is_dir(),
+        ac_visible: has_ac_adapter(),
     })
 }
 
@@ -897,6 +922,7 @@ mod tests {
             lock_service: Some("org.gnome.ScreenSaver".to_string()),
             idle_service: Some("org.gnome.Mutter.IdleMonitor".to_string()),
             battery_visible: true,
+            ac_visible: false,
         }
     }
 

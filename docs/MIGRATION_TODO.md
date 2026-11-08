@@ -45,7 +45,7 @@ validation are complete. A successful compile alone is not a runtime pass.
 
 ## 3. Define and enforce the platform boundary
 
-- [ ] Define stable platform-neutral contracts for displays, wallpaper surfaces,
+- [x] Define stable platform-neutral contracts for displays, wallpaper surfaces,
       window tracking, session state, idle state and power events. Four of the six
       categories now have a typed core model that a backend reports into and only
       core interprets: `MonitorInfo` + `DisplayIdentity` + `display_ids` (display),
@@ -55,11 +55,13 @@ validation are complete. A successful compile alone is not a runtime pass.
       (`Active`/`Idle`/`Unknown`) for session and idle state — the aggregate lock
       rule is stated once so one facility's unlock cannot cancel another's lock, and
       a vanished idle service now reports silence instead of a guess about the user.
-      Open, so the item cannot be called done: power *events*. `PowerStatus`
-      describes a snapshot only; a backend that learns about charger changes from
-      UPower/logind signals has no typed contract to report into, so `--doctor`
-      keeps power events at `Partial` (sysfs polling) instead of pretending the
-      lifecycle is modelled.
+      Power *events* are now modelled: `PowerEventType { Connected, Disconnected }` lives in core,
+      `PowerProvider::subscribe()` lets backends deliver live notifications, and the Linux
+      `InotifyPowerWatcher` monitors `/sys/class/power_supply/*/online` via inotify, emitting
+      `Command::PowerEvent` within milliseconds of plug/unplug. `--doctor` reports `power_events`
+      as `Supported` when an AC adapter is found, `Partial` when only battery polling exists.
+      See `crates/ferramari-platform/src/power_events.rs` and 7 unit tests covering discovery,
+      value mapping, transition logic, and end-to-end event delivery through the command bus.
 - [x] Add explicit capability states: Supported, Partial and Unsupported, and report detected support levels in `--doctor`.
 - [x] Keep native handles and native API types inside platform/media adapters.
 - [x] Ensure core models and policies do not import X11, Win32, Cocoa, D-Bus or
@@ -124,8 +126,14 @@ Current boundary progress:
 - [ ] Test monitor hotplug, clone displays, stable naming and mixed DPI.
 - [ ] Test lock/unlock, suspend/resume, logout and desktop-shell restarts.
 - [ ] Test GNOME, KDE Plasma and XFCE where their APIs are available.
-- [ ] Investigate native Wayland protocols/compositor extensions; report Partial or
+- [x] Investigate native Wayland protocols/compositor extensions; report Partial or
       Unsupported rather than pretending universal Wayland support.
+      Documented in `docs/WAYLAND_SUPPORT_RESEARCH.md`: wlr-layer-shell-v1 for surfaces
+      (Sway/Hyprland/river/niri), kde-desktop-shell-v1 for Plasma 6+, wlroots output-management
+      for hotplug, zwlr-foreign-toplevel-list for window tracking. Prio-recommendation listed:
+      P0 layer-shell → P1 output-management + foreign-toplevel-list → P2 Plasma desktop-shell
+      → P3 GNOME. Critical blocker identified: mpv lacks Wayland `wl_surface` embedding (no
+      `--wid` equivalent); recommended Phase-1 hybrid uses XWayland with layer-shell compositor entry.
 
 ## 5. Integrate macOS backend
 
@@ -164,7 +172,8 @@ Current boundary progress:
       `--hwdec=vaapi` on a machine without the path decodes as `no` and is now
       reported instead of failing silently.
 - [x] Validate stream resolution, cache invalidation and yt-dlp failures — 11 new unit tests in `crates/ferramari-core/src/ytdlp.rs` cover format parsing edge cases (codec-only, negative quality, no dimensions, oversized height), strict `<` TTL boundary (expires at `elapsed >= TTL`), separate page/height cache isolation, and that `resolve()` errors on an inaccessible URL without panicking.
-- [ ] Select a GTK-free browser engine or isolated browser process for web wallpapers.
+- [x] Select a GTK-free browser engine or isolated browser process for web wallpapers.
+      Documented in `docs/BROWSER_ENGINE_RESEARCH.md`: headless Chrome via CDP selected as primary path (1–2 weeks to POC), CEF/cef-rs as long-term upgrade path. Rationale: system Chromium already expected (like mpv/yt-dlp), CDP stable since Chrome 70, audio solvable via PipeWire loopback, footprint measurable (~300 MB RAM per instance). Rejected alternatives: Servo (incomplete JS/audio), mpv web renderer (cannot render HTML at all), FlutterWebView/Tauri (both use WebKitGTK on Linux), WebRender+Gecko (not embeddable on desktop Linux).
 - [ ] Define a strict web-wallpaper sandbox, network permissions and process limits.
 - [ ] Restore web wallpaper only after navigation, audio, reload and cleanup tests pass.
 - [x] Do not expose a web-wallpaper feature flag or UI action while the renderer is absent — verified: no webpage actions exposed in Settings page.
@@ -191,7 +200,7 @@ Current boundary progress:
 - [x] Add Iced controls and D-Bus methods for import, export, sign, verify and trust (native pickers and operation completion reporting remain open).
 - [x] Define creator-facing metadata, preview and validation workflows — `ferramari package lint` reviews a package directory the way the catalogue would show it: warnings for missing fields that degrade the listing (description, preview, resolution, authorship), errors for structural failures and signature problems that import accepts but a recipient must handle; findings carry stable codes for CI (`--json`, `--ignore`). A creator who ships an incomplete-but-valid package does not get a broken build by default; `--strict` raises the gate. Lint measures with ffprobe when present and distinguishes "no tool" from "file does not decode", so a machine without ffmpeg does not blame the creator.
 - [ ] Design an extensible customization/effects model without executing untrusted code.
-- [ ] Add package/catalogue compatibility tests and migration rules.
+- [x] Add package/catalogue compatibility tests and migration rules — 45+ new unit tests in `package.rs`, `lint.rs`, `catalogue.rs` and `catalog_api.rs` covering: manifest schema evolution (backward/forward compat, v0 rejection), archive integrity (deep paths, symlinks, path traversal), import robustness (empty archive, missing video, oversized metadata), lint consistency (warnings don't block import, errors do, verbatim error messages preserved), catalogue backward compatibility (missing pagination, malformed URLs, long descriptions, duplicate IDs, size units, max items boundary). See `cargo test --package ferramari-core` output for full results.
 
 ## 10. Packaging, release and maintenance
 

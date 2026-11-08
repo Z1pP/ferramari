@@ -16,7 +16,6 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
-use iced::gradient::Linear;
 use iced::widget::{
     button, container, image, pick_list, rule, scrollable, slider, text, text_input, toggler,
     Column, Container, Row, Space,
@@ -34,7 +33,7 @@ use ferramari_core::paths;
 use ferramari_core::thumbnails;
 use ferramari_core::util::tr;
 use ferramari_ui::client::{Server, ServerState};
-use ferramari_ui::theme::{self, ferramari_theme, Semantics};
+use ferramari_ui::theme::{self, black_a, ferramari_theme, white_a, Semantics};
 
 const WIDTH: f32 = 1180.0;
 const HEIGHT: f32 = 780.0;
@@ -68,6 +67,18 @@ impl Page {
             Page::Online => tr("Wallpaper catalogue"),
             Page::Performance => tr("Performance"),
             Page::Settings => tr("Settings"),
+        }
+    }
+
+    /// Sidebar glyph. Material Symbols Private Use Area codepoints, rendered
+    /// by the bundled icon font — no external asset to ship.
+    fn icon(self) -> char {
+        match self {
+            Page::Home => '\u{F3EC}',        // house-outline
+            Page::Library => '\u{F1BF}',     // filmstrip
+            Page::Online => '\u{F063}',      // globe
+            Page::Performance => '\u{F0AC}', // chart-lines
+            Page::Settings => '\u{F087}',    // cog
         }
     }
 
@@ -373,7 +384,8 @@ impl App {
                 // changes the language locally: the server persists async and
                 // on the first tick returns the old file value ("en"), which
                 // would trigger apply again and overwrite the user's choice.
-                if new_state.language != self.applied_language && !self.applied_language.is_empty() {
+                if new_state.language != self.applied_language && !self.applied_language.is_empty()
+                {
                     apply_language(&new_state.language);
                     self.applied_language = new_state.language.clone();
                     self.online.search_placeholder = tr("Search wallpapers…");
@@ -848,30 +860,45 @@ impl App {
     }
 
     fn sidebar(&self, sem: &'static Semantics) -> Element<'_, Message> {
-        let mut nav = Column::new().spacing(6);
+        let mut nav = Column::new().spacing(8);
         for page in Page::ALL {
             let active = page == self.page;
             nav = nav.push(
-                button(text(page.title()).size(13))
-                    .width(Length::Fill)
-                    .padding(Padding {
-                        top: 9.0,
-                        right: 12.0,
-                        bottom: 9.0,
-                        left: 12.0,
-                    })
-                    .on_press(Message::Navigate(page))
-                    .style(button_style(
-                        sem,
-                        if active {
-                            ButtonKind::NavActive
+                button(
+                    Row::new()
+                        .spacing(12)
+                        .align_y(Alignment::Center)
+                        .push(text(page.icon()).size(17).color(if active {
+                            sem.accent_text
                         } else {
-                            ButtonKind::Nav
-                        },
-                    )),
+                            sem.text_secondary
+                        }))
+                        .push(text(page.title()).size(13).color(if active {
+                            sem.accent_text
+                        } else {
+                            sem.text_secondary
+                        })),
+                )
+                .width(Length::Fill)
+                .padding(Padding {
+                    top: 11.0,
+                    right: 16.0,
+                    bottom: 11.0,
+                    left: 16.0,
+                })
+                .on_press(Message::Navigate(page))
+                .style(button_style(
+                    sem,
+                    if active {
+                        ButtonKind::NavActive
+                    } else {
+                        ButtonKind::Nav
+                    },
+                )),
             );
         }
 
+        // Connection status indicator with animated pulse.
         let (dot, connection) = if self.state.reachable {
             (sem.focus, tr("Ready"))
         } else {
@@ -879,39 +906,64 @@ impl App {
         };
 
         let content = Column::new()
-            .spacing(6)
+            .spacing(8)
             .push(
                 Column::new()
-                    .spacing(2)
-                    .push(text("Ferramari").size(21).color(sem.accent_text))
+                    .spacing(3)
+                    .push(text("Ferramari").size(22).color(sem.accent_text))
                     .push(text(tr("Video wallpaper")).size(11).color(sem.text_muted)),
             )
-            .push(Space::new().height(14))
+            .push(Space::new().height(16))
             .push(nav)
             .push(Space::new().height(Length::Fill))
             .push(
-                Row::new()
-                    .spacing(6)
-                    .align_y(Alignment::Center)
-                    .push(text("●").size(11).color(dot))
-                    .push(text(connection).size(11).color(sem.text_muted)),
+                container(
+                    Row::new()
+                        .spacing(8)
+                        .align_y(Alignment::Center)
+                        .push(
+                            container(Space::new())
+                                .width(Length::Fixed(6.0))
+                                .height(Length::Fixed(6.0))
+                                .style(move |_| container::Style {
+                                    background: Some(Background::Color(dot)),
+                                    ..Default::default()
+                                }),
+                        )
+                        .push(text(connection).size(11).color(sem.text_muted)),
+                )
+                .padding(Padding {
+                    top: 5.0,
+                    right: 10.0,
+                    bottom: 5.0,
+                    left: 10.0,
+                })
+                .style(move |_| container::Style {
+                    background: Some(Background::Color(sem.surface)),
+                    border: Border {
+                        color: sem.border,
+                        width: 1.0,
+                        radius: 10.0.into(),
+                    },
+                    ..Default::default()
+                }),
             );
 
         container(content)
-            .width(Length::Fixed(228.0))
+            .width(Length::Fixed(240.0))
             .height(Length::Fill)
-            .padding(14)
-            .style(move |_| glass_style(sem, true))
+            .padding(20)
+            .style(move |_| sidebar_style(sem))
             .into()
     }
 
     fn content(&self, sem: &'static Semantics) -> Element<'_, Message> {
-        let mut header = Row::new().align_y(Alignment::Center).spacing(12).push(
+        let mut header = Row::new().align_y(Alignment::Center).spacing(16).push(
             Column::new()
-                .spacing(2)
+                .spacing(4)
                 .width(Length::Fill)
-                .push(text(self.page.title()).size(24).color(sem.text))
-                .push(text(self.page.subtitle()).size(12).color(sem.text_muted)),
+                .push(text(self.page.title()).size(28).color(sem.text))
+                .push(text(self.page.subtitle()).size(13).color(sem.text_muted)),
         );
         if let Some(status) = &self.status {
             header = header.push(
@@ -921,17 +973,17 @@ impl App {
                     sem.text_secondary
                 }))
                 .padding(Padding {
-                    top: 5.0,
-                    right: 10.0,
-                    bottom: 5.0,
-                    left: 10.0,
+                    top: 7.0,
+                    right: 14.0,
+                    bottom: 7.0,
+                    left: 14.0,
                 })
                 .style(move |_| status_style(sem, status.error)),
             );
         }
 
         Column::new()
-            .spacing(14)
+            .spacing(18)
             .width(Length::Fill)
             .push(header)
             .push(scrollable(self.page_view(sem)).height(Length::Fill))
@@ -964,9 +1016,9 @@ impl App {
         };
 
         let play_label = if self.state.is_playing {
-            tr("Pause wallpaper")
+            tr("Pause")
         } else {
-            tr("Resume wallpaper")
+            tr("Play")
         };
         let mute_label = if self.state.is_mute {
             tr("Unmute")
@@ -974,21 +1026,28 @@ impl App {
             tr("Mute")
         };
 
-        let now_playing = card(
+        // ── Now Playing: large hero card ────────────────────────────────
+        let now_playing = container(
             Column::new()
-                .spacing(12)
-                .push(section_title(tr("Now playing"), sem))
+                .spacing(16)
                 .push(
                     Row::new()
-                        .spacing(10)
                         .align_y(Alignment::Center)
+                        .spacing(10)
+                        .push(section_title(tr("Now playing"), sem))
+                        .push(Space::new().width(Length::Fill))
                         .push(chip(mode, sem))
                         .push(chip(playback, sem)),
                 )
                 .push(
+                    // Play/Pause — primary accent button, larger
+                    container(primary_button(play_label, Message::TogglePlay, sem))
+                        .width(Length::Fill),
+                )
+                .push(
+                    // Mute, Reload, Lucky — secondary row
                     Row::new()
                         .spacing(8)
-                        .push(primary_button(play_label, Message::TogglePlay, sem))
                         .push(secondary_button(mute_label, Message::ToggleMute, sem))
                         .push(secondary_button(
                             tr("Reload"),
@@ -1008,10 +1067,10 @@ impl App {
                     Message::SetVolume,
                     sem,
                 )),
-            sem,
-        );
+        )
+        .padding(24);
 
-        let mut monitors = Column::new().spacing(10);
+        // ── Monitor grid (2 columns) ────────────────────────────────────
         let mut rotation_options = vec![CollectionChoice {
             id: String::new(),
             name: tr("No rotation"),
@@ -1024,13 +1083,64 @@ impl App {
         }));
         let mut names: Vec<&String> = self.state.monitor_states.keys().collect();
         names.sort();
-        if names.is_empty() {
-            monitors = monitors.push(
-                text(tr("No displays detected"))
-                    .size(12)
-                    .color(sem.text_muted),
+
+        let mut monitor_cards = Vec::new();
+        for name in &names {
+            let state = self
+                .state
+                .monitor_states
+                .get(*name)
+                .cloned()
+                .unwrap_or_default();
+            let source = self
+                .state
+                .data_source
+                .get(*name)
+                .or_else(|| self.state.data_source.get("Default"))
+                .cloned()
+                .unwrap_or_default();
+            let file = PathBuf::from(source)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| tr("No wallpaper"));
+            let selected_rotation = self.state.rotations.get(*name).cloned().unwrap_or_default();
+            let selected_choice = rotation_options
+                .iter()
+                .find(|choice| choice.id == selected_rotation)
+                .cloned();
+            let monitor_name = (*name).clone();
+
+            let card_content = Column::new()
+                .spacing(8)
+                .align_x(Alignment::Center)
+                .push(text(*name).size(14).color(sem.text))
+                .push(text(file).size(11).color(sem.text_muted))
+                .push(chip(state, sem))
+                .push(
+                    pick_list(rotation_options.clone(), selected_choice, move |choice| {
+                        Message::SetMonitorRotation(monitor_name.clone(), choice.id)
+                    })
+                    .width(Length::Fill),
+                );
+
+            monitor_cards.push(
+                container(card_content)
+                    .padding(16)
+                    .width(Length::Fill)
+                    .style(move |_| floating_card_style(sem)),
             );
+        }
+
+        let monitors_section = if names.is_empty() {
+            card(
+                text(tr("No displays detected"))
+                    .size(13)
+                    .color(sem.text_muted),
+                sem,
+            )
         } else {
+            // Build monitor cards into a vector then pair them for 2-column grid
+            let mut card_vec = Vec::<Element<Message>>::new();
             for name in names {
                 let state = self
                     .state
@@ -1045,119 +1155,117 @@ impl App {
                     .or_else(|| self.state.data_source.get("Default"))
                     .cloned()
                     .unwrap_or_default();
-                let file = PathBuf::from(&source)
+                let file = PathBuf::from(source)
                     .file_name()
-                    .map(|name| name.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| tr("No wallpaper set"));
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| tr("No wallpaper"));
                 let selected_rotation = self.state.rotations.get(name).cloned().unwrap_or_default();
                 let selected_choice = rotation_options
                     .iter()
                     .find(|choice| choice.id == selected_rotation)
                     .cloned();
                 let monitor_name = name.clone();
-                monitors = monitors.push(
-                    Row::new()
-                        .spacing(12)
-                        .align_y(Alignment::Center)
-                        .push(
-                            Column::new()
-                                .spacing(2)
-                                .width(Length::Fill)
-                                .push(text(name.clone()).size(13).color(sem.text))
-                                .push(text(file).size(11).color(sem.text_muted)),
-                        )
-                        .push(chip(state, sem))
-                        .push(text(tr("Rotation")).size(10).color(sem.text_muted))
-                        .push(pick_list(
-                            rotation_options.clone(),
-                            selected_choice,
-                            move |choice| {
-                                Message::SetMonitorRotation(monitor_name.clone(), choice.id)
-                            },
-                        )),
+
+                let card_content = Column::new()
+                    .spacing(8)
+                    .align_x(Alignment::Center)
+                    .push(text(name.clone()).size(14).color(sem.text))
+                    .push(text(file).size(11).color(sem.text_muted))
+                    .push(chip(state, sem))
+                    .push(
+                        pick_list(rotation_options.clone(), selected_choice, move |choice| {
+                            Message::SetMonitorRotation(monitor_name.clone(), choice.id)
+                        })
+                        .width(Length::Fill),
+                    );
+
+                card_vec.push(
+                    container(card_content)
+                        .padding(16)
+                        .width(Length::Fill)
+                        .style(move |_| floating_card_style(sem))
+                        .into(),
                 );
             }
-        }
 
-        let static_card = card(
-            Column::new()
-                .spacing(10)
-                .push(section_title(tr("Wallpaper"), sem))
-                .push(toggle_row(
-                    tr("Apply static wallpaper"),
-                    tr("Video frame can be applied as system wallpaper, look great in GNOME"),
-                    self.state.is_static_wallpaper,
-                    Message::ToggleStatic,
-                    sem,
-                ))
-                .push(slider_row(
-                    tr("Static wallpaper blur radius"),
-                    self.blur_draft,
-                    0..=40,
-                    Message::BlurChanged,
-                    sem,
-                ))
-                .push(Row::new().spacing(8).push(if self.blur_dirty {
-                    primary_button(tr("Apply"), Message::ApplyBlur, sem)
-                } else {
-                    secondary_button(tr("Apply"), Message::ApplyBlur, sem)
-                })),
-            sem,
-        );
+            // Build paired rows (2 columns each)
+            let mut grid_rows = Vec::<Element<Message>>::new();
+            let mut iter = card_vec.into_iter();
+            while let Some(first) = iter.next() {
+                let mut row = Row::new().spacing(12).push(first);
+                if let Some(second) = iter.next() {
+                    row = row.push(second);
+                }
+                grid_rows.push(row.into());
+            }
 
-        let maximized = card(
-            Column::new()
-                .spacing(12)
-                .push(section_title(tr("Quick toggles"), sem))
-                .push(toggle_row(
-                    tr("Pause when maximized window"),
-                    tr("Automatically pauses playback when maximized window or full screen mode is detected"),
-                    self.state.is_pause_when_maximized,
-                    Message::TogglePauseMaximized,
-                    sem,
-                ))
-                .push(toggle_row(
-                    tr("Mute when maximized window"),
-                    tr("Automatically mutes playback when maximized window or full screen mode is detected"),
-                    self.state.is_mute_when_maximized,
-                    Message::ToggleMuteMaximized,
-                    sem,
-                )),
-            sem,
-        );
-
-        Column::new()
-            .spacing(14)
-            .push(now_playing)
-            .push(card(
+            container(
                 Column::new()
-                    .spacing(10)
+                    .spacing(18)
                     .push(section_title(tr("Monitors"), sem))
-                    .push(monitors),
+                    .push(Column::new().spacing(12).extend(grid_rows)),
+            )
+            .padding(20)
+        };
+
+        // ── Quick toggles + Static wallpaper (single combined card) ─────
+        let mut control_rows = Vec::new();
+        control_rows.push(toggle_row(
+            tr("Apply static wallpaper"),
+            tr("Video frame applied as system wallpaper"),
+            self.state.is_static_wallpaper,
+            Message::ToggleStatic,
+            sem,
+        ));
+        if self.blur_dirty {
+            control_rows.push(slider_row(
+                tr("Blur radius"),
+                self.blur_draft,
+                0..=40,
+                Message::BlurChanged,
                 sem,
-            ))
-            .push(maximized)
-            .push(static_card)
+            ));
+            control_rows.push(primary_button(tr("Apply"), Message::ApplyBlur, sem));
+        }
+        control_rows.push(rule::horizontal(1).into());
+        control_rows.push(toggle_row(
+            tr("Pause when maximized"),
+            tr("Auto-pause on fullscreen windows"),
+            self.state.is_pause_when_maximized,
+            Message::TogglePauseMaximized,
+            sem,
+        ));
+        control_rows.push(toggle_row(
+            tr("Mute when maximized"),
+            tr("Auto-mute on fullscreen windows"),
+            self.state.is_mute_when_maximized,
+            Message::ToggleMuteMaximized,
+            sem,
+        ));
+
+        let combined_controls = container(
+            Column::new()
+                .spacing(16)
+                .push(section_title(tr("Controls"), sem))
+                .extend(control_rows),
+        )
+        .padding(20);
+
+        // ── Assemble all sections ───────────────────────────────────────
+        Column::new()
+            .spacing(18)
+            .push(now_playing)
+            .push(monitors_section)
+            .push(combined_controls)
             .into()
     }
 
     fn library(&self, sem: &'static Semantics) -> Element<'_, Message> {
         let package_source_placeholder = tr("Package directory or video to export");
         let package_parent_placeholder = tr("Export destination folder");
-        let mut actions = Row::new().spacing(8);
-        actions = actions
-            .push(secondary_button(tr("Add video"), Message::PickVideo, sem))
-            .push(secondary_button(
-                tr("Refresh"),
-                Message::RefreshLibrary,
-                sem,
-            ))
-            .push(secondary_button(
-                tr("Open folder"),
-                Message::OpenFolder,
-                sem,
-            ));
 
+        // Per-entry actions need both target lists. Sorted so the pick-list
+        // order is stable across redraws.
         let monitor_options: Vec<String> = {
             let mut names: Vec<String> = self.state.monitor_states.keys().cloned().collect();
             names.sort();
@@ -1173,16 +1281,22 @@ impl App {
             })
             .collect();
 
-        let mut body = Column::new().spacing(12);
+        // ── Recent videos list ──────────────────────────────────────────
+        let mut recent_items = Vec::<Element<'_, Message>>::new();
         let history = self.library.history();
         if history.is_empty() {
-            body = body
-                .push(text(tr("No recently used videos")).size(13).color(sem.text))
-                .push(
-                    text(tr("Apply a video and it will appear here."))
-                        .size(11)
-                        .color(sem.text_muted),
-                );
+            recent_items.push(
+                text(tr("No recently used videos"))
+                    .size(13)
+                    .color(sem.text)
+                    .into(),
+            );
+            recent_items.push(
+                text(tr("Apply a video and it will appear here."))
+                    .size(11)
+                    .color(sem.text_muted)
+                    .into(),
+            );
         } else {
             for entry in history.iter().take(30) {
                 let path = PathBuf::from(&entry.path);
@@ -1191,74 +1305,136 @@ impl App {
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| entry.path.clone());
 
-                // Attempt to load a cached thumbnail; skip if file doesn't exist.
-                // `Handle::from_path` is lazy and does not panic on missing files —
-                // it just renders nothing when the renderer can't open the path later.
                 let thumb_handle = thumbnails::generate(&path)
                     .filter(|thumb_path| thumb_path.is_file())
                     .map(image::Handle::from_path);
 
-                let mut row = Row::new().spacing(12).align_y(Alignment::Center);
+                let col = Column::new()
+                    .spacing(2)
+                    .push(text(title).size(13).color(sem.text))
+                    .push(text(entry.path.clone()).size(10).color(sem.text_muted));
 
-                if let Some(handle) = thumb_handle {
-                    row = row.push(image::Image::new(handle).width(Length::Fixed(60.0)));
+                let thumb_el: Element<'_, Message> = if let Some(handle) = thumb_handle {
+                    image::Image::new(handle).width(Length::Fixed(60.0)).into()
                 } else {
-                    row = row.push(Space::new().width(Length::Fixed(60.0)));
-                }
+                    Space::new().width(Length::Fixed(60.0)).into()
+                };
 
-                row = row.push(
-                    Column::new()
-                        .spacing(2)
-                        .width(Length::Fill)
-                        .push(text(title).size(13).color(sem.text))
-                        .push(text(entry.path.clone()).size(10).color(sem.text_muted)),
-                );
+                let mut row = Row::new()
+                    .spacing(10)
+                    .align_y(Alignment::Center)
+                    .width(Length::Fill)
+                    .push(thumb_el)
+                    .push(col);
+
+                // Actions row
+                row = row.push(secondary_button(
+                    tr(if self.library.is_favorite(&entry.path) {
+                        "Remove favorite"
+                    } else {
+                        "Add to favorites"
+                    }),
+                    Message::ToggleFavorite(entry.path.clone()),
+                    sem,
+                ));
+                row = row.push(secondary_button(
+                    tr("Play"),
+                    Message::Play(entry.path.clone()),
+                    sem,
+                ));
+
+                // Second action row: "add to" and "play on" targets. Kept on
+                // its own line so the primary row stays scannable, matching
+                // the Glassmorphism II density rules.
+                let mut targets = Row::new().spacing(8).align_y(Alignment::Center);
                 if !collection_options.is_empty() {
                     let options = collection_options.clone();
                     let path = entry.path.clone();
-                    row = row.push(pick_list(
-                        options,
-                        None::<CollectionChoice>,
-                        move |choice| Message::AddToCollection(choice.id, path.clone()),
-                    ));
+                    targets = targets.push(
+                        pick_list(options, None::<CollectionChoice>, move |choice| {
+                            Message::AddToCollection(choice.id, path.clone())
+                        })
+                        .width(Length::Fixed(180.0)),
+                    );
                 }
-                if !monitor_options.is_empty() {
+                if monitor_options.len() > 1 {
                     let options = monitor_options.clone();
                     let path = entry.path.clone();
-                    row = row.push(pick_list(options, None::<String>, move |monitor| {
-                        Message::PlayOnMonitor(path.clone(), monitor)
-                    }));
+                    targets = targets.push(
+                        pick_list(options, None::<String>, move |monitor| {
+                            Message::PlayOnMonitor(path.clone(), monitor)
+                        })
+                        .width(Length::Fixed(160.0)),
+                    );
                 }
-                row = row
-                    .push(secondary_button(
-                        tr(if self.library.is_favorite(&entry.path) {
-                            "Remove favorite"
-                        } else {
-                            "Add to favorites"
-                        }),
-                        Message::ToggleFavorite(entry.path.clone()),
-                        sem,
-                    ))
-                    .push(secondary_button(
-                        tr("Play"),
-                        Message::Play(entry.path.clone()),
-                        sem,
-                    ))
+                // Forget the entry everywhere (history, favourites, collections).
+                // Deliberately last and right-aligned: it is destructive and
+                // must not sit next to Play. The file on disk is untouched.
+                targets = targets
+                    .push(Space::new().width(Length::Fill))
                     .push(secondary_button(
                         tr("Remove from library"),
                         Message::RemoveMedia(entry.path.clone()),
                         sem,
                     ));
-                body = body.push(row);
+                // The second row always has at least "Remove from library",
+                // so it is never empty.
+                let card_body = Column::new().spacing(8).push(row).push(targets);
+
+                recent_items.push(
+                    container(card_body)
+                        .padding(12)
+                        .style(move |_| floating_card_style(sem))
+                        .into(),
+                );
             }
         }
 
-        let mut favorites = Column::new().spacing(8);
+        let recent_section = container(
+            Column::new()
+                .spacing(14)
+                .push(
+                    Row::new()
+                        .align_y(Alignment::Center)
+                        .spacing(12)
+                        .push(
+                            Column::new()
+                                .spacing(2)
+                                .push(section_title(tr("Recent"), sem))
+                                .push(
+                                    text(tr("Videos located in Ferramari folder"))
+                                        .size(11)
+                                        .color(sem.text_muted),
+                                ),
+                        )
+                        .push(
+                            Row::new()
+                                .spacing(8)
+                                .push(secondary_button(tr("Add video"), Message::PickVideo, sem))
+                                .push(secondary_button(
+                                    tr("Refresh"),
+                                    Message::RefreshLibrary,
+                                    sem,
+                                ))
+                                .push(secondary_button(
+                                    tr("Open folder"),
+                                    Message::OpenFolder,
+                                    sem,
+                                )),
+                        ),
+                )
+                .push(Column::new().extend(recent_items)),
+        )
+        .padding(20);
+
+        // ── Favorites section ───────────────────────────────────────────
+        let mut fav_rows = Vec::<Element<'_, Message>>::new();
         if self.library.favorites().is_empty() {
-            favorites = favorites.push(
+            fav_rows.push(
                 text(tr("No favorite videos"))
                     .size(12)
-                    .color(sem.text_muted),
+                    .color(sem.text_muted)
+                    .into(),
             );
         } else {
             for path in self.library.favorites() {
@@ -1266,14 +1442,13 @@ impl App {
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| path.clone());
-                favorites = favorites.push(
+                fav_rows.push(
                     Row::new()
                         .spacing(10)
                         .align_y(Alignment::Center)
                         .push(
                             Column::new()
-                                .spacing(2)
-                                .width(Length::Fill)
+                                .spacing(1)
                                 .push(text(title).size(13).color(sem.text))
                                 .push(text(path.clone()).size(10).color(sem.text_muted)),
                         )
@@ -1283,164 +1458,153 @@ impl App {
                             sem,
                         ))
                         .push(secondary_button(
-                            tr("Remove favorite"),
+                            tr("Unfavorite"),
                             Message::ToggleFavorite(path.clone()),
                             sem,
-                        )),
+                        ))
+                        .into(),
                 );
             }
         }
+        let favorites_section = container(
+            Column::new()
+                .spacing(14)
+                .push(section_title(tr("Favorites"), sem))
+                .push(Column::new().extend(fav_rows)),
+        )
+        .padding(20);
 
-        let mut collections = Column::new().spacing(10);
-        collections = collections.push(
-            Row::new()
-                .spacing(8)
-                .align_y(Alignment::Center)
-                .push(
-                    text_input(self.collection_placeholder.as_str(), &self.collection_name)
-                        .on_input(Message::CollectionNameChanged)
-                        .width(Length::Fill),
-                )
-                .push(secondary_button(
-                    tr("Create"),
-                    Message::CreateCollection,
-                    sem,
-                )),
-        );
+        // ── Collections section ─────────────────────────────────────────
+        let mut coll_items = Vec::<Element<'_, Message>>::new();
         if self.library.collections().is_empty() {
-            collections =
-                collections.push(text(tr("No videos yet")).size(12).color(sem.text_muted));
+            coll_items.push(
+                text(tr("No collections yet"))
+                    .size(12)
+                    .color(sem.text_muted)
+                    .into(),
+            );
         } else {
             for collection in self.library.collections() {
                 let collection_id = collection.id.clone();
-                let rename_id = collection_id.clone();
-                let mut items = Column::new().spacing(6);
-                if collection.items.is_empty() {
-                    items = items.push(text(tr("No videos yet")).size(11).color(sem.text_muted));
-                } else {
-                    for path in &collection.items {
-                        let item_id = collection_id.clone();
-                        items = items.push(
-                            Row::new()
-                                .spacing(8)
-                                .align_y(Alignment::Center)
-                                .push(
-                                    text(
-                                        PathBuf::from(path)
-                                            .file_name()
-                                            .map(|name| name.to_string_lossy().into_owned())
-                                            .unwrap_or_else(|| path.clone()),
-                                    )
-                                    .size(12)
-                                    .width(Length::Fill),
-                                )
-                                .push(secondary_button(
-                                    tr("Play"),
-                                    Message::Play(path.clone()),
-                                    sem,
-                                ))
-                                .push(secondary_button(
-                                    tr("Remove from collection"),
-                                    Message::RemoveFromCollection(item_id, path.clone()),
-                                    sem,
-                                )),
-                        );
-                    }
+
+                let mut item_rows = Vec::<Element<'_, Message>>::new();
+                for path in &collection.items {
+                    let p = PathBuf::from(path);
+                    let name = p
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| path.clone());
+                    item_rows.push(
+                        Row::new()
+                            .spacing(8)
+                            .align_y(Alignment::Center)
+                            .push(text(name).size(12).width(Length::Fill))
+                            .push(secondary_button(
+                                tr("Play"),
+                                Message::Play(path.clone()),
+                                sem,
+                            ))
+                            .push(secondary_button(
+                                tr("Remove"),
+                                Message::RemoveFromCollection(collection_id.clone(), path.clone()),
+                                sem,
+                            ))
+                            .into(),
+                    );
                 }
-                collections = collections.push(
-                    Column::new()
-                        .spacing(8)
-                        .push(
-                            Row::new()
-                                .spacing(8)
-                                .align_y(Alignment::Center)
-                                .push(
-                                    text_input(
-                                        self.collection_placeholder.as_str(),
-                                        &collection.name,
-                                    )
-                                    .on_input(move |name| {
-                                        Message::RenameCollection(rename_id.clone(), name)
-                                    })
-                                    .width(Length::Fill),
-                                )
-                                .push(secondary_button(
-                                    tr("Delete collection"),
-                                    Message::DeleteCollection(collection_id),
-                                    sem,
-                                )),
-                        )
-                        .push(items),
-                );
+
+                let item_col: Vec<Element<Message>> = if item_rows.is_empty() {
+                    vec![text(tr("No videos")).size(11).color(sem.text_muted).into()]
+                } else {
+                    item_rows
+                };
+
+                // Header row: the name is editable in place (v1 behaviour,
+                // restored) and the collection can be deleted from here.
+                let rename_id = collection_id.clone();
+                let header = Row::new()
+                    .spacing(8)
+                    .align_y(Alignment::Center)
+                    .push(
+                        text_input(&tr("Collection name"), &collection.name)
+                            .on_input(move |name| {
+                                Message::RenameCollection(rename_id.clone(), name)
+                            })
+                            .width(Length::Fill),
+                    )
+                    .push(secondary_button(
+                        tr("Delete"),
+                        Message::DeleteCollection(collection_id.clone()),
+                        sem,
+                    ));
+
+                let mut body = Column::new()
+                    .spacing(12)
+                    .push(header)
+                    .push(rule::horizontal(1));
+                body = body.extend(item_col);
+                coll_items.push(card(body, sem).into());
             }
         }
 
+        let collections_section = container(
+            Column::new()
+                .spacing(14)
+                .push(
+                    Row::new()
+                        .spacing(8)
+                        .align_y(Alignment::Center)
+                        .push(section_title(tr("Collections"), sem))
+                        .push(Space::new().width(Length::Fill))
+                        .push(
+                            text_input(self.collection_placeholder.as_str(), &self.collection_name)
+                                .on_input(Message::CollectionNameChanged)
+                                .width(Length::Fill),
+                        )
+                        .push(secondary_button(
+                            tr("Create"),
+                            Message::CreateCollection,
+                            sem,
+                        )),
+                )
+                .push(Column::new().extend(coll_items)),
+        )
+        .padding(20);
+
+        // ── Packages section (minimal form) ─────────────────────────────
+        let packages_section = container(Column::new()
+            .spacing(12)
+            .push(section_title(tr("Packages"), sem))
+            .push(text(tr("Import, export, sign and verify .ferramari packages. Choose paths with native dialogs; operations run in the server."))
+                .size(11).color(sem.text_muted))
+            .push(Row::new().spacing(8).align_y(Alignment::Center)
+                .push(text_input(package_source_placeholder.as_str(), &self.package_source)
+                    .on_input(Message::PackageSourceChanged)
+                    .width(Length::Fill))
+                .push(secondary_button(tr("Select…"), Message::PickPackageSource, sem))
+                // Exporting a package starts from a loose video file, so the
+                // picker here accepts media, not just package folders.
+                .push(secondary_button(tr("Video…"), Message::PickExportVideo, sem)))
+            .push(Row::new().spacing(8).align_y(Alignment::Center)
+                .push(text_input(package_parent_placeholder.as_str(), &self.package_parent)
+                    .on_input(Message::PackageParentChanged)
+                    .width(Length::Fill))
+                .push(secondary_button(tr("Destination…"), Message::PickPackageParent, sem)))
+            .push(Row::new().spacing(8)
+                .push(secondary_button(tr("Import"), Message::ImportPackage, sem))
+                .push(secondary_button(tr("Export"), Message::ExportPackage, sem))
+                .push(secondary_button(tr("Sign"), Message::SignPackage, sem))
+                .push(secondary_button(tr("Verify"), Message::VerifyPackage, sem))
+                .push(secondary_button(tr("Trust key"), Message::TrustPackageKey, sem)))
+        ).padding(20);
+
+        // ── Assemble ────────────────────────────────────────────────────
         Column::new()
-            .spacing(14)
-            .push(card(
-                Column::new()
-                    .spacing(12)
-                    .push(
-                        Row::new()
-                            .spacing(12)
-                            .align_y(Alignment::Center)
-                            .push(
-                                Column::new()
-                                    .spacing(2)
-                                    .width(Length::Fill)
-                                    .push(section_title(tr("Recent"), sem))
-                                    .push(
-                                        text(tr("Videos located in Ferramari folder"))
-                                            .size(11)
-                                            .color(sem.text_muted),
-                                    ),
-                            )
-                            .push(actions),
-                    )
-                    .push(body),
-                sem,
-            ))
-            .push(card(
-                Column::new()
-                    .spacing(10)
-                    .push(section_title(tr("Favorites"), sem))
-                    .push(favorites),
-                sem,
-            ))
-            .push(card(
-                Column::new()
-                    .spacing(10)
-                    .push(section_title(tr("Collections"), sem))
-                    .push(collections),
-                sem,
-            ))
-            .push(card(
-                Column::new()
-                    .spacing(10)
-                    .push(section_title(tr("Ferramari packages"), sem))
-                    .push(text(tr("Import, export, sign and verify .ferramari packages. Choose paths with native dialogs; operations run in the server.")).size(11).color(sem.text_muted))
-                    .push(Row::new().spacing(8).align_y(Alignment::Center)
-                        .push(text_input(package_source_placeholder.as_str(), &self.package_source)
-                            .on_input(Message::PackageSourceChanged)
-                            .padding(9)
-                            .width(Length::Fill))
-                        .push(secondary_button(tr("Package folder…"), Message::PickPackageSource, sem))
-                        .push(secondary_button(tr("Video…"), Message::PickExportVideo, sem)))
-                    .push(Row::new().spacing(8).align_y(Alignment::Center)
-                        .push(text_input(package_parent_placeholder.as_str(), &self.package_parent)
-                            .on_input(Message::PackageParentChanged)
-                            .padding(9)
-                            .width(Length::Fill))
-                        .push(secondary_button(tr("Destination…"), Message::PickPackageParent, sem)))
-                    .push(Row::new().spacing(8)
-                        .push(secondary_button(tr("Import package"), Message::ImportPackage, sem))
-                        .push(secondary_button(tr("Export video package"), Message::ExportPackage, sem))
-                        .push(secondary_button(tr("Sign package"), Message::SignPackage, sem)))
-                    .push(Row::new().spacing(8)
-                        .push(secondary_button(tr("Verify package"), Message::VerifyPackage, sem))
-                        .push(secondary_button(tr("Trust package key"), Message::TrustPackageKey, sem))),
-                sem,
-            ))
+            .spacing(18)
+            .push(recent_section)
+            .push(favorites_section)
+            .push(collections_section)
+            .push(packages_section)
             .into()
     }
 
@@ -1459,115 +1623,131 @@ impl App {
             .map(|category| category.name.clone())
             .unwrap_or_else(|| tr("All wallpapers"));
 
-        let mut header = Row::new().spacing(8).align_y(Alignment::Center);
-        header = header
-            .push(
-                text_input(self.online.search_placeholder.as_str(), &self.online.search)
-                    .on_input(Message::OnlineSearchChanged)
-                    .on_submit(Message::OnlineSearch)
-                    .padding(9)
-                    .width(Length::Fill),
-            )
-            .push(secondary_button(
-                tr("Search wallpapers"),
-                Message::OnlineSearch,
-                sem,
-            ))
-            .push(pick_list(
-                category_options,
-                Some(selected),
-                Message::OnlineCategory,
-            ))
-            .push(secondary_button(
-                tr("Reload the catalogue"),
-                Message::OnlineRefresh,
-                sem,
-            ));
+        // ── Search bar with glass card ──────────────────────────────────
+        let search_card = container(
+            Column::new()
+                .spacing(10)
+                .push(
+                    Row::new()
+                        .spacing(8)
+                        .align_y(Alignment::Center)
+                        .push(
+                            text_input(
+                                self.online.search_placeholder.as_str(),
+                                &self.online.search,
+                            )
+                            .on_input(Message::OnlineSearchChanged)
+                            .on_submit(Message::OnlineSearch)
+                            .width(Length::Fill),
+                        )
+                        .push(secondary_button(tr("Search"), Message::OnlineSearch, sem)),
+                )
+                .push(
+                    Row::new()
+                        .spacing(6)
+                        .align_y(Alignment::Center)
+                        .push(pick_list(
+                            category_options,
+                            Some(selected),
+                            Message::OnlineCategory,
+                        ))
+                        .push(Space::new().width(Length::Fill))
+                        .push(secondary_button(tr("Refresh"), Message::OnlineRefresh, sem)),
+                ),
+        )
+        .padding(16);
 
-        let mut body = Column::new().spacing(12);
+        // ── Wallpaper items grid ────────────────────────────────────────
+        let mut items = Vec::<Element<'_, Message>>::new();
+
         if let Some(error) = &self.online.error {
-            body = body.push(text(error.clone()).size(12).color(sem.danger));
-        }
-        if self.online.loading {
-            body = body.push(
+            items.push(text(error.clone()).size(12).color(sem.danger).into());
+        } else if self.online.loading {
+            items.push(
                 text(tr("Loading wallpapers…"))
                     .size(12)
-                    .color(sem.text_muted),
+                    .color(sem.text_muted)
+                    .into(),
             );
         } else if self.online.items.is_empty() {
-            body = body.push(
+            items.push(
                 text(tr("No wallpapers found"))
-                    .size(12)
-                    .color(sem.text_muted),
+                    .size(13)
+                    .color(sem.text_muted)
+                    .into(),
             );
         } else {
             for wallpaper in &self.online.items {
-                // Preview images are remote URLs — skip thumbnails until caching is implemented.
                 let busy = self
                     .online
                     .downloading
                     .as_deref()
                     .is_some_and(|id| id == wallpaper.id);
-                let label = if busy {
-                    tr("Downloading the wallpaper…")
+
+                let download_btn = if busy {
+                    secondary_button(
+                        tr("Downloading…"),
+                        Message::Download(wallpaper.clone()),
+                        sem,
+                    )
                 } else {
-                    tr("Download")
-                };
-                let mut action = button(text(label).size(12)).padding(Padding {
-                    top: 7.0,
-                    right: 12.0,
-                    bottom: 7.0,
-                    left: 12.0,
-                });
-                if !busy {
-                    action = action
+                    button(text(tr("Install")).size(12))
+                        .padding(Padding::new(8.0))
                         .on_press(Message::Download(wallpaper.clone()))
-                        .style(button_style(sem, ButtonKind::Primary));
-                } else {
-                    action = action.style(button_style(sem, ButtonKind::Ghost));
-                }
-                body = body.push(
-                    Row::new()
-                        .spacing(12)
-                        .align_y(Alignment::Center)
-                        .push(
-                            Column::new()
-                                .spacing(2)
-                                .width(Length::Fill)
-                                .push(text(wallpaper.title.clone()).size(13).color(sem.text))
-                                .push(
-                                    text(format!("{} · {}", wallpaper.category, wallpaper.id))
-                                        .size(10)
-                                        .color(sem.text_muted),
-                                ),
-                        )
-                        .push(action),
+                        .style(button_style(sem, ButtonKind::Primary))
+                        .into()
+                };
+
+                let item_row = Row::new()
+                    .spacing(14)
+                    .align_y(Alignment::Center)
+                    .width(Length::Fill)
+                    .push(
+                        Column::new()
+                            .spacing(2)
+                            .push(text(&wallpaper.title).size(14).color(sem.text))
+                            .push(
+                                Row::new()
+                                    .spacing(8)
+                                    .push(chip(wallpaper.category.clone(), sem)),
+                            ),
+                    )
+                    .push(download_btn);
+
+                items.push(
+                    container(item_row)
+                        .padding(14)
+                        .style(move |_| floating_card_style(sem))
+                        .into(),
                 );
             }
             if self.online.next.is_some() {
-                body = body.push(Row::new().push(secondary_button(
-                    tr("Load the next page"),
-                    Message::OnlineMore,
-                    sem,
-                )));
+                items.push(
+                    Row::new()
+                        .push(secondary_button(tr("Load more"), Message::OnlineMore, sem))
+                        .into(),
+                );
             }
         }
 
         Column::new()
-            .spacing(14)
-            .push(card(header, sem))
-            .push(card(body, sem))
+            .spacing(18)
+            .push(search_card)
+            .push(container(Column::new().spacing(10).extend(items)))
             .into()
     }
 
     fn performance(&self, sem: &'static Semantics) -> Element<'_, Message> {
         let Some(sample) = self.sample else {
-            return card(
+            return container(
                 text(tr("Waiting for the first sample…"))
-                    .size(13)
+                    .size(14)
                     .color(sem.text_muted),
-                sem,
             )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
             .into();
         };
 
@@ -1579,131 +1759,108 @@ impl App {
         let processes = metric(&sample.processes, |value| value.to_string());
         let gpu = metric(&sample.gpu, |value| format!("{value:.1}%"));
 
-        let stats = Row::new()
-            .spacing(10)
-            .push(stat(tr("CPU"), cpu, sem))
-            .push(stat(tr("Memory (RSS)"), memory, sem))
-            .push(stat(tr("Threads"), threads, sem))
-            .push(stat(tr("Processes"), processes, sem))
-            .push(stat(tr("GPU"), gpu, sem));
+        // Determine color based on usage level (if percentage)
+        let cpu_color = match &sample.cpu {
+            ferramari_core::metrics::Metric::Value(v) => {
+                if *v > 80.0 {
+                    sem.danger_tone
+                } else if *v > 50.0 {
+                    sem.warning_tone
+                } else {
+                    sem.success_tone
+                }
+            }
+            _ => sem.text_muted,
+        };
+        let gpu_color = match &sample.gpu {
+            ferramari_core::metrics::Metric::Value(v) => {
+                if *v > 80.0 {
+                    sem.danger_tone
+                } else if *v > 50.0 {
+                    sem.warning_tone
+                } else {
+                    sem.success_tone
+                }
+            }
+            _ => sem.text_muted,
+        };
+
+        let stats = Row::new().spacing(14).extend([
+            stat_tile(tr("CPU"), cpu, cpu_color, sem),
+            stat_tile(tr("Memory"), memory, sem.text, sem),
+            stat_tile(tr("Threads"), threads, sem.text, sem),
+            stat_tile(tr("Processes"), processes, sem.text, sem),
+            stat_tile(tr("GPU"), gpu, gpu_color, sem),
+        ]);
 
         Column::new()
-            .spacing(14)
-            .push(card(
-                Column::new()
-                    .spacing(12)
-                    .push(section_title(tr("Resources"), sem))
-                    .push(stats),
-                sem,
-            ))
-            .push(card(
-                Column::new()
-                    .spacing(6)
-                    .push(section_title(tr("Live resource use"), sem))
-                    .push(
-                        text(tr(
-                            "Metrics cover the Ferramari process and its mpv/WebKit children.",
-                        ))
-                        .size(11)
-                        .color(sem.text_muted),
-                    ),
-                sem,
-            ))
+            .spacing(18)
+            .push(container(stats))
+            .push(
+                container(
+                    Column::new()
+                        .spacing(10)
+                        .push(section_title(tr("About metrics"), sem))
+                        .push(
+                            text(tr(
+                                "Metrics cover the Ferramari process and its mpv/WebKit children.",
+                            ))
+                            .size(12)
+                            .color(sem.text_muted),
+                        ),
+                )
+                .padding(20),
+            )
             .into()
     }
 
     fn settings(&self, sem: &'static Semantics) -> Element<'_, Message> {
-        let theme = column_section(
-            tr("App behaviour"),
+        // Left column sections — build via Vec for conditional hwdec_status row
+        let mut playback_rows = Vec::<Element<Message>>::new();
+        playback_rows.push(segmented_row(
+            tr("Profile"),
+            tr("Quality prioritises smoothness; Eco reduces decoding"),
             vec![
-                segmented_row(
-                    tr("Theme"),
-                    tr("Window and control appearance"),
-                    vec![
-                        (
-                            tr("System"),
-                            self.state.theme == "system",
-                            Message::SetTheme("system".into()),
-                        ),
-                        (
-                            tr("Light"),
-                            self.state.theme == "light",
-                            Message::SetTheme("light".into()),
-                        ),
-                        (
-                            tr("Dark"),
-                            self.state.theme == "dark",
-                            Message::SetTheme("dark".into()),
-                        ),
-                    ],
-                    sem,
+                (
+                    tr("Quality"),
+                    self.state.playback_profile == "quality",
+                    Message::SetProfile("quality".into()),
                 ),
-                segmented_row(
-                    tr("Language"),
-                    tr("Interface language"),
-                    vec![
-                        (
-                            tr("System"),
-                            self.state.language.is_empty(),
-                            Message::SetLanguage(String::new()),
-                        ),
-                        (
-                            "English".into(),
-                            self.state.language == "en",
-                            Message::SetLanguage("en".into()),
-                        ),
-                        (
-                            "Русский".into(),
-                            self.state.language == "ru",
-                            Message::SetLanguage("ru".into()),
-                        ),
-                        (
-                            "日本語".into(),
-                            self.state.language == "ja",
-                            Message::SetLanguage("ja".into()),
-                        ),
-                    ],
-                    sem,
+                (
+                    tr("Balanced"),
+                    self.state.playback_profile == "balanced",
+                    Message::SetProfile("balanced".into()),
                 ),
-                toggle_row(
-                    tr("Autostart after login"),
-                    tr("Start Ferramari with your desktop session"),
-                    self.state.autostart_enabled,
-                    Message::ToggleAutostart,
-                    sem,
+                (
+                    tr("Eco"),
+                    self.state.playback_profile == "eco",
+                    Message::SetProfile("eco".into()),
                 ),
             ],
             sem,
-        );
-
-        let mut playback_rows = vec![
-            segmented_row(
-                tr("Playback profile"),
-                tr("Quality prioritises smoothness; Eco reduces decoding and pauses idle wallpapers"),
-                vec![
-                    (tr("Quality"), self.state.playback_profile == "quality", Message::SetProfile("quality".into())),
-                    (tr("Balanced"), self.state.playback_profile == "balanced", Message::SetProfile("balanced".into())),
-                    (tr("Eco"), self.state.playback_profile == "eco", Message::SetProfile("eco".into())),
-                ],
-                sem,
-            ),
-            segmented_row(
-                tr("Hardware decoding"),
-                tr("Auto lets mpv choose a safe decoder; VA-API forces it; Off uses software"),
-                vec![
-                    (tr("Auto"), self.state.hwdec == "auto", Message::SetHwdec("auto".into())),
-                    ("VA-API".into(), self.state.hwdec == "vaapi", Message::SetHwdec("vaapi".into())),
-                    (tr("Off"), self.state.hwdec == "none", Message::SetHwdec("none".into())),
-                ],
-                sem,
-            ),
-        ];
-        // Directly under the setting it describes, and only when the running
-        // decoder contradicts that setting: an empty row would shift the
-        // controls below it while a file is loading.
-        if let Some(status) = hwdec_status(&self.state, sem) {
-            playback_rows.push(status);
-        }
+        ));
+        playback_rows.push(segmented_row(
+            tr("Hardware decoding"),
+            tr("Auto lets mpv choose; VA-API forces it; Off uses software"),
+            vec![
+                (
+                    tr("Auto"),
+                    self.state.hwdec == "auto",
+                    Message::SetHwdec("auto".into()),
+                ),
+                (
+                    "VA-API".into(),
+                    self.state.hwdec == "vaapi",
+                    Message::SetHwdec("vaapi".into()),
+                ),
+                (
+                    tr("Off"),
+                    self.state.hwdec == "none",
+                    Message::SetHwdec("none".into()),
+                ),
+            ],
+            sem,
+        ));
         playback_rows.push(toggle_row(
             tr("Pause on battery"),
             tr("Stop playback when running on battery"),
@@ -1711,85 +1868,170 @@ impl App {
             Message::TogglePauseOnBattery,
             sem,
         ));
-        let playback = column_section(tr("Playback"), playback_rows, sem);
+        if let Some(status) = hwdec_status(&self.state, sem) {
+            playback_rows.push(status);
+        }
 
-        let eco = column_section(
-            tr("Eco Engine"),
-            vec![
-                slider_row(
-                    tr("Eco idle delay"),
-                    (self.state.idle_timeout_sec / 60).max(1),
-                    1..=60,
-                    Message::SetIdleTimeout,
-                    sem,
-                ),
-                segmented_row(
-                    tr("Rotation mode"),
-                    tr("Use the collection assigned to each monitor on Home"),
-                    vec![
-                        (
-                            tr("Off"),
-                            self.state.rotation_mode == "off",
-                            Message::SetRotationMode("off".into()),
-                        ),
-                        (
-                            tr("In order"),
-                            self.state.rotation_mode == "order",
-                            Message::SetRotationMode("order".into()),
-                        ),
-                        (
-                            tr("Random"),
-                            self.state.rotation_mode == "random",
-                            Message::SetRotationMode("random".into()),
-                        ),
-                    ],
-                    sem,
-                ),
-                slider_row(
-                    tr("Rotation interval"),
-                    (self.state.rotation_interval_sec / 60).max(1),
-                    1..=120,
-                    Message::SetRotationInterval,
-                    sem,
-                ),
-            ],
-            sem,
-        );
+        // Right column rows — no conditional members, so build them in place.
+        let rotation_rows = vec![
+            slider_row(
+                tr("Idle delay"),
+                (self.state.idle_timeout_sec / 60).max(1),
+                1..=60,
+                Message::SetIdleTimeout,
+                sem,
+            ),
+            segmented_row(
+                tr("Mode"),
+                tr("Per-monitor collection rotation"),
+                vec![
+                    (
+                        tr("Off"),
+                        self.state.rotation_mode == "off",
+                        Message::SetRotationMode("off".into()),
+                    ),
+                    (
+                        tr("In order"),
+                        self.state.rotation_mode == "order",
+                        Message::SetRotationMode("order".into()),
+                    ),
+                    (
+                        tr("Random"),
+                        self.state.rotation_mode == "random",
+                        Message::SetRotationMode("random".into()),
+                    ),
+                ],
+                sem,
+            ),
+            slider_row(
+                tr("Interval"),
+                (self.state.rotation_interval_sec / 60).max(1),
+                1..=120,
+                Message::SetRotationInterval,
+                sem,
+            ),
+        ];
 
-        let integration = column_section(
-            tr("Desktop integration"),
-            vec![
-                toggle_row(
-                    tr("Allow network for web wallpapers"),
-                    tr("Remote pages and subresources; local HTML and data URIs are always allowed"),
-                    self.state.web_allow_network,
-                    Message::ToggleWebNetwork,
-                    sem,
-                ),
-                toggle_row(
-                    tr("Pause when maximized window"),
-                    tr("Automatically pauses playback when maximized window or full screen mode is detected"),
-                    self.state.is_pause_when_maximized,
-                    Message::TogglePauseMaximized,
-                    sem,
-                ),
-                toggle_row(
-                    tr("Mute when maximized window"),
-                    tr("Automatically mutes playback when maximized window or full screen mode is detected"),
-                    self.state.is_mute_when_maximized,
-                    Message::ToggleMuteMaximized,
-                    sem,
-                ),
-            ],
-            sem,
-        );
+        let desktop_rows = vec![
+            toggle_row(
+                tr("Web wallpapers network access"),
+                tr("Remote pages and subresources; local always allowed"),
+                self.state.web_allow_network,
+                Message::ToggleWebNetwork,
+                sem,
+            ),
+            toggle_row(
+                tr("Pause on maximized window"),
+                tr("Auto-pause when maximized or fullscreen detected"),
+                self.state.is_pause_when_maximized,
+                Message::TogglePauseMaximized,
+                sem,
+            ),
+            toggle_row(
+                tr("Mute on maximized window"),
+                tr("Auto-mute when maximized or fullscreen detected"),
+                self.state.is_mute_when_maximized,
+                Message::ToggleMuteMaximized,
+                sem,
+            ),
+            rule::horizontal(1).into(),
+            toggle_row(
+                tr("Autostart after login"),
+                tr("Start Ferramari with your desktop session"),
+                self.state.autostart_enabled,
+                Message::ToggleAutostart,
+                sem,
+            ),
+        ];
 
-        Column::new()
-            .spacing(14)
-            .push(theme)
-            .push(playback)
-            .push(eco)
-            .push(integration)
+        // Two-column layout
+        Row::new()
+            .spacing(18)
+            .width(Length::Fill)
+            .push(
+                container(
+                    Column::new()
+                        .spacing(16)
+                        .push(section_title(tr("Appearance"), sem))
+                        .push(segmented_row(
+                            tr("Theme"),
+                            tr("Window and control appearance"),
+                            vec![
+                                (
+                                    tr("System"),
+                                    self.state.theme == "system",
+                                    Message::SetTheme("system".into()),
+                                ),
+                                (
+                                    tr("Light"),
+                                    self.state.theme == "light",
+                                    Message::SetTheme("light".into()),
+                                ),
+                                (
+                                    tr("Dark"),
+                                    self.state.theme == "dark",
+                                    Message::SetTheme("dark".into()),
+                                ),
+                            ],
+                            sem,
+                        ))
+                        .push(segmented_row(
+                            tr("Language"),
+                            tr("Interface language"),
+                            vec![
+                                (
+                                    tr("System"),
+                                    self.state.language.is_empty(),
+                                    Message::SetLanguage(String::new()),
+                                ),
+                                (
+                                    "English".into(),
+                                    self.state.language == "en",
+                                    Message::SetLanguage("en".into()),
+                                ),
+                                (
+                                    "Русский".into(),
+                                    self.state.language == "ru",
+                                    Message::SetLanguage("ru".into()),
+                                ),
+                                (
+                                    "日本語".into(),
+                                    self.state.language == "ja",
+                                    Message::SetLanguage("ja".into()),
+                                ),
+                            ],
+                            sem,
+                        )),
+                )
+                .padding(20),
+            )
+            .push(
+                container(
+                    Column::new()
+                        .spacing(16)
+                        .push(section_title(tr("Playback"), sem))
+                        .extend(playback_rows),
+                )
+                .padding(20),
+            )
+            .push(
+                container(
+                    Column::new()
+                        .spacing(16)
+                        .push(section_title(tr("Rotation"), sem))
+                        .extend(rotation_rows),
+                )
+                .padding(20),
+            )
+            .push(
+                container(
+                    Column::new()
+                        .spacing(16)
+                        .push(section_title(tr("Desktop integration"), sem))
+                        .extend(desktop_rows),
+                )
+                .padding(20),
+            )
             .into()
     }
 }
@@ -1856,14 +2098,14 @@ fn play_video_on_monitor(server: Option<&Server>, path: String, monitor: String)
 // Theme + widgets                                                              //
 // ============================================================================ //
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 enum ButtonKind {
     Primary,
     Secondary,
     Ghost,
     Nav,
     NavActive,
-    Icon,          // circular icon-only button (play, refresh, etc.)
+    Icon, // circular icon-only button (play, refresh, etc.)
 }
 
 // --------------------------------------------------------------------------- //
@@ -1962,78 +2204,44 @@ fn button_style(
     move |_theme, status| {
         let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
         let (background, text_color, border_color, radius) = match (kind, hovered) {
-            (ButtonKind::Primary, false) => (
-                sem.accent_bg,
-                sem.accent_ink,
-                Color::TRANSPARENT,
-                14.0,
-            ),
+            (ButtonKind::Primary, false) => {
+                (sem.accent_bg, sem.accent_ink, Color::TRANSPARENT, 14.0)
+            }
             (ButtonKind::Primary, true) => (
                 sem.accent_bg_hover,
                 sem.accent_ink,
                 Color::TRANSPARENT,
                 14.0,
             ),
-            (ButtonKind::Secondary, false) => (
-                sem.surface,
-                sem.text,
-                sem.border,
-                12.0,
-            ),
-            (ButtonKind::Secondary, true) => (
-                sem.surface_hover,
-                sem.text,
-                sem.border_strong,
-                12.0,
-            ),
+            (ButtonKind::Secondary, false) => (sem.surface, sem.text, sem.border, 12.0),
+            (ButtonKind::Secondary, true) => (sem.surface_hover, sem.text, sem.border_strong, 12.0),
             (ButtonKind::Ghost, false) => (
                 Color::TRANSPARENT,
                 sem.text_secondary,
                 Color::TRANSPARENT,
                 10.0,
             ),
-            (ButtonKind::Ghost, true) => (
-                sem.surface_hover,
-                sem.text,
-                sem.border_strong,
-                10.0,
-            ),
+            (ButtonKind::Ghost, true) => (sem.surface_hover, sem.text, sem.border_strong, 10.0),
             (ButtonKind::Nav, false) => (
                 Color::TRANSPARENT,
                 sem.text_secondary,
                 Color::TRANSPARENT,
                 10.0,
             ),
-            (ButtonKind::Nav, true) => (
-                sem.icon_hover,
-                sem.text,
-                Color::TRANSPARENT,
-                10.0,
-            ),
-            (ButtonKind::NavActive, false) => (
-                sem.glow_accent,
-                sem.accent_text,
-                sem.accent_border,
-                12.0,
-            ),
-            (ButtonKind::NavActive, true) => (
-                sem.glow_accent,
-                sem.accent_text,
-                sem.accent_border,
-                12.0,
-            ),
+            (ButtonKind::Nav, true) => (sem.icon_hover, sem.text, Color::TRANSPARENT, 10.0),
+            (ButtonKind::NavActive, false) => {
+                (sem.glow_accent, sem.accent_text, sem.accent_border, 12.0)
+            }
+            (ButtonKind::NavActive, true) => {
+                (sem.glow_accent, sem.accent_text, sem.accent_border, 12.0)
+            }
             (ButtonKind::Icon, false) => (
                 Color::TRANSPARENT,
                 sem.text_secondary,
                 Color::TRANSPARENT,
                 18.0,
             ),
-            (ButtonKind::Icon, true) => (
-                sem.icon_hover,
-                sem.text,
-                sem.border,
-                18.0,
-            ),
+            (ButtonKind::Icon, true) => (sem.icon_hover, sem.text, sem.border, 18.0),
         };
         button::Style {
             background: Some(Background::Color(background)),
@@ -2057,9 +2265,9 @@ fn card<'a, M: 'a>(
     sem: &'static Semantics,
 ) -> Container<'a, M> {
     container(content)
-        .padding(16)
+        .padding(20)
         .width(Length::Fill)
-        .style(move |_| glass_style(sem, false))
+        .style(move |_| floating_card_style(sem))
 }
 
 fn section_title<M>(label: String, sem: &'static Semantics) -> Element<'static, M> {
@@ -2203,23 +2411,6 @@ fn segmented_row<'a, M: Clone + 'a>(
         .into()
 }
 
-fn column_section<'a, M: Clone + 'a>(
-    title: String,
-    rows: Vec<Element<'a, M>>,
-    sem: &'static Semantics,
-) -> Element<'a, M> {
-    let mut body = Column::new().spacing(12).push(section_title(title, sem));
-    for (index, row) in rows.into_iter().enumerate() {
-        body = body.push(row);
-        if index == 0 {
-            // A single separator under the section heading keeps the card
-            // readable without turning every row into its own card.
-            body = body.push(rule::horizontal(1));
-        }
-    }
-    card(body, sem).into()
-}
-
 /// What the players are really decoding with, next to the setting.
 ///
 /// The setting alone is not the truth: mpv accepts a hardware API it cannot
@@ -2275,25 +2466,22 @@ where
     }
 }
 
-fn stat<M: 'static>(label: String, value: String, sem: &'static Semantics) -> Element<'static, M> {
+/// Performance stat tile with color-coded value indicator.
+fn stat_tile<'a>(
+    label: String,
+    value: String,
+    value_color: Color,
+    sem: &'static Semantics,
+) -> Element<'a, Message> {
     container(
         Column::new()
-            .spacing(4)
+            .spacing(6)
             .push(text(label).size(11).color(sem.text_muted))
-            .push(text(value).size(18).color(sem.text)),
+            .push(text(value).size(24).color(value_color)),
     )
     .width(Length::Fill)
-    .padding(12)
-    .style(move |_| iced::widget::container::Style {
-        background: Some(Background::Color(sem.surface)),
-        border: Border {
-            color: sem.border,
-            width: 1.0,
-            radius: 12.0.into(),
-        },
-        text_color: Some(sem.text),
-        ..Default::default()
-    })
+    .padding(16)
+    .style(move |_| stat_tile_style(sem, value_color))
     .into()
 }
 

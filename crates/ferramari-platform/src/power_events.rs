@@ -219,9 +219,7 @@ fn run_watcher(target_path: PathBuf, state: Arc<Mutex<Option<WatcherData>>>, tx:
                         }
                         log::debug!("[Power] Charger {}", event.as_str());
                         if tx.send(Command::PowerEvent(event)).is_err() {
-                            log::debug!(
-                                "[Power] Command bus closed; charger watcher stopping"
-                            );
+                            log::debug!("[Power] Command bus closed; charger watcher stopping");
                             return;
                         }
                     } else {
@@ -231,10 +229,7 @@ fn run_watcher(target_path: PathBuf, state: Arc<Mutex<Option<WatcherData>>>, tx:
                 // Unreadable attribute: keep the last known value, the next
                 // event or recheck may bring it back.
                 None => {
-                    log::trace!(
-                        "[Power] {} unreadable",
-                        target_path.display()
-                    );
+                    log::trace!("[Power] {} unreadable", target_path.display());
                 }
             }
         }
@@ -262,10 +257,8 @@ mod tests {
     /// supply whose `online` starts unplugged. Returns the root and the path
     /// of the online attribute.
     fn fake_supply_root(name: &str) -> (PathBuf, PathBuf) {
-        let root = std::env::temp_dir().join(format!(
-            "ferramari-power-events-{}-{name}",
-            unique_tag()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("ferramari-power-events-{}-{name}", unique_tag()));
         let battery = root.join("BAT0");
         fs::create_dir_all(&battery).unwrap();
         fs::write(battery.join("type"), "Battery\n").unwrap();
@@ -288,10 +281,7 @@ mod tests {
 
     #[test]
     fn a_supply_without_an_online_attribute_is_not_a_watch_target() {
-        let root = std::env::temp_dir().join(format!(
-            "ferramari-power-events-{}",
-            unique_tag()
-        ));
+        let root = std::env::temp_dir().join(format!("ferramari-power-events-{}", unique_tag()));
         let ac = root.join("ADP0");
         fs::create_dir_all(&ac).unwrap();
         fs::write(ac.join("type"), "Mains\n").unwrap();
@@ -352,8 +342,7 @@ mod tests {
         // With the fake supply present, the watcher starts and seeds from it.
         let (root, online) = fake_supply_root("running");
         let (command_tx, _rx) = std::sync::mpsc::channel::<Command>();
-        let watcher =
-            InotifyPowerWatcher::start_from(&root, CommandSender::new(command_tx));
+        let watcher = InotifyPowerWatcher::start_from(&root, CommandSender::new(command_tx));
         assert!(watcher.is_running());
         assert_eq!(watcher.last_online(), Some(false));
         let _ = fs::remove_file(&online);
@@ -366,8 +355,7 @@ mod tests {
         // well before the 30 s status poll would notice.
         let (root, online) = fake_supply_root("toggle");
         let (command_tx, command_rx) = std::sync::mpsc::channel::<Command>();
-        let watcher =
-            InotifyPowerWatcher::start_from(&root, CommandSender::new(command_tx));
+        let watcher = InotifyPowerWatcher::start_from(&root, CommandSender::new(command_tx));
         assert!(watcher.is_running());
 
         // Give the watcher thread time to open inotify and enter its loop.

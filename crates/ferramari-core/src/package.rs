@@ -1159,18 +1159,22 @@ mod tests {
         // First package — base slug.
         let s1 = src_base.join("one");
         fs::create_dir_all(&s1).unwrap();
-        fs::write(s1.join("manifest.json"),
-            r#"{"name":"Test","author":"A","type":"video"}"#
-        ).unwrap();
+        fs::write(
+            s1.join("manifest.json"),
+            r#"{"name":"Test","author":"A","type":"video"}"#,
+        )
+        .unwrap();
         fs::write(s1.join("wallpaper.mp4"), b"v1").unwrap();
         import(&s1, &dst).unwrap();
 
         // Second package — same name should become -2.
         let s2 = src_base.join("two");
         fs::create_dir_all(&s2).unwrap();
-        fs::write(s2.join("manifest.json"),
-            r#"{"name":"Test","author":"A","type":"video"}"#
-        ).unwrap();
+        fs::write(
+            s2.join("manifest.json"),
+            r#"{"name":"Test","author":"A","type":"video"}"#,
+        )
+        .unwrap();
         fs::write(s2.join("wallpaper.mp4"), b"v2").unwrap();
         let imported = import(&s2, &dst).unwrap();
         assert!(imported.package_dir.ends_with("test-2"));
@@ -1183,9 +1187,11 @@ mod tests {
     #[test]
     fn missing_video_file_causes_load_failure_and_import_forwarding() {
         let dir = temp_dir("missing-entry");
-        fs::write(dir.join("manifest.json"),
-            r#"{"name":"No Vid","author":"A","type":"video","entry":"gone.mp4"}"#
-        ).unwrap();
+        fs::write(
+            dir.join("manifest.json"),
+            r#"{"name":"No Vid","author":"A","type":"video","entry":"gone.mp4"}"#,
+        )
+        .unwrap();
         // No wallpaper.mp4 or gone.mp4 present.
         assert!(load(&dir).unwrap_err().contains("entry"));
         let _ = fs::remove_dir_all(dir);
@@ -1199,7 +1205,10 @@ mod tests {
         let dir = temp_dir("large-desc");
         write_package(
             &dir,
-            &format!(r#"{{"name":"Big Desc","author":"A","type":"video","description":"{}"}}"#, long_desc),
+            &format!(
+                r#"{{"name":"Big Desc","author":"A","type":"video","description":"{}"}}"#,
+                long_desc
+            ),
             "wallpaper.mp4",
             b"x",
         );
@@ -1261,7 +1270,8 @@ mod tests {
     #[test]
     fn bad_resolution_strings_are_rejected() {
         for res in &["abc", "x1080", "1920x", "-1x-1", "1920x1080x2"] {
-            let json = format!(r#"{{"name":"R","author":"A","type":"video","resolution":"{res}"}}"#);
+            let json =
+                format!(r#"{{"name":"R","author":"A","type":"video","resolution":"{res}"}}"#);
             let dir = temp_dir(&format!("bad-res-{res}"));
             fs::write(dir.join("manifest.json"), &json).unwrap();
             fs::write(dir.join("wallpaper.mp4"), b"x").unwrap();
@@ -1275,7 +1285,8 @@ mod tests {
     #[test]
     fn valid_resolution_strings_are_accepted() {
         for res in &["1920x1080", "3840x2160", "1x1"] {
-            let json = format!(r#"{{"name":"R","author":"A","type":"video","resolution":"{res}"}}"#);
+            let json =
+                format!(r#"{{"name":"R","author":"A","type":"video","resolution":"{res}"}}"#);
             let dir = temp_dir(&format!("ok-res-{res}"));
             fs::write(dir.join("manifest.json"), &json).unwrap();
             fs::write(dir.join("wallpaper.mp4"), b"x").unwrap();
@@ -1354,7 +1365,7 @@ mod tests {
             "wallpaper.mp4",
             b"x",
         );
-        assert_eq!(verify_checksums(&dir).unwrap(), false);
+        assert!(!verify_checksums(&dir).unwrap());
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -1402,9 +1413,11 @@ mod tests {
             path = path.join("level");
             fs::create_dir_all(&path).unwrap();
         }
-        fs::write(dir.join("manifest.json"),
-            r#"{"name":"Deep","author":"A","type":"video"}"#
-        ).unwrap();
+        fs::write(
+            dir.join("manifest.json"),
+            r#"{"name":"Deep","author":"A","type":"video"}"#,
+        )
+        .unwrap();
         fs::write(dir.join("wallpaper.mp4"), b"x").unwrap();
         assert!(load(&dir).unwrap_err().contains("too deep"));
         let _ = fs::remove_dir_all(dir);
@@ -1414,9 +1427,11 @@ mod tests {
     #[test]
     fn package_with_too_many_files_is_rejected() {
         let dir = temp_dir("many-files");
-        fs::write(dir.join("manifest.json"),
-            r#"{"name":"Fat","author":"A","type":"video"}"#
-        ).unwrap();
+        fs::write(
+            dir.join("manifest.json"),
+            r#"{"name":"Fat","author":"A","type":"video"}"#,
+        )
+        .unwrap();
         fs::write(dir.join("wallpaper.mp4"), b"x").unwrap();
         // Add enough dummy files to exceed MAX_FILES.
         for i in 0..MAX_FILES + 10 {
@@ -1430,9 +1445,11 @@ mod tests {
     #[test]
     fn symlink_inside_package_is_rejected_by_walk() {
         let dir = temp_dir("symlink-in-tree");
-        fs::write(dir.join("manifest.json"),
-            r#"{"name":"Symlink","author":"A","type":"video"}"#
-        ).unwrap();
+        fs::write(
+            dir.join("manifest.json"),
+            r#"{"name":"Symlink","author":"A","type":"video"}"#,
+        )
+        .unwrap();
         fs::write(dir.join("wallpaper.mp4"), b"x").unwrap();
         // Create a symlink — walk detects it.
         std::os::unix::fs::symlink("wallpaper.mp4", dir.join("link.txt")).ok();
@@ -1480,7 +1497,10 @@ mod tests {
         );
         let entry = dir.join("wallpaper.mp4");
         let root = package_dir_for_entry(&entry).unwrap();
-        assert_eq!(root.canonicalize().ok().as_deref(), fs::canonicalize(&dir).ok().as_deref());
+        assert_eq!(
+            root.canonicalize().ok().as_deref(),
+            fs::canonicalize(&dir).ok().as_deref()
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -1493,9 +1513,11 @@ mod tests {
         // We can't change paths::packages_dir() easily, so skip this
         // test — it depends on filesystem layout. Instead test the logic:
         let non_video = temp_dir("non-video-dir");
-        fs::write(non_video.join("manifest.json"),
-            r#"{"name":"Not Video","type":"web"}"#
-        ).unwrap();
+        fs::write(
+            non_video.join("manifest.json"),
+            r#"{"name":"Not Video","type":"web"}"#,
+        )
+        .unwrap();
         assert!(!non_video.join("wallpaper.mp4").exists());
         let _ = fs::remove_dir_all(non_video);
         let _ = fs::remove_dir_all(dir);

@@ -21,12 +21,12 @@ const fn argb(r: u8, g: u8, b: u8, a: f32) -> Color {
 }
 
 /// Translucent white overlay — hover, shine, border highlight tokens.
-const fn white_a(a: f32) -> Color {
+pub const fn white_a(a: f32) -> Color {
     Color::from_rgba(1.0, 1.0, 1.0, a)
 }
 
 /// Translucent black overlay — shadow tokens.
-const fn black_a(a: f32) -> Color {
+pub const fn black_a(a: f32) -> Color {
     Color::from_rgba(0.0, 0.0, 0.0, a)
 }
 

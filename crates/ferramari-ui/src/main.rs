@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
+use iced::border::Radius as BorderRadius;
 use iced::widget::{
     button, container, image, pick_list, rule, scrollable, slider, text, text_input, toggler,
     Column, Container, Row, Space,
@@ -25,7 +26,6 @@ use iced::{
     Alignment, Background, Border, Color, ContentFit, Element, Length, Padding, Shadow, Size,
     Subscription, Task, Theme, Vector,
 };
-use iced::border::Radius as BorderRadius;
 
 use ferramari_core::catalogue::{self, Category, Listing, Wallpaper};
 use ferramari_core::config::Config;
@@ -865,11 +865,9 @@ impl App {
             let url = wallpaper.thumb_url.clone();
             tasks.push(Task::perform(
                 async move {
-                    tokio::task::spawn_blocking(move || {
-                        catalogue::ensure_preview(&url).ok()
-                    })
-                    .await
-                    .unwrap_or(None)
+                    tokio::task::spawn_blocking(move || catalogue::ensure_preview(&url).ok())
+                        .await
+                        .unwrap_or(None)
                 },
                 move |path| Message::PreviewLoaded(id.clone(), path),
             ));
@@ -1743,7 +1741,10 @@ impl App {
                             ),
                     )
                     .push(Space::new().width(Length::Fill))
-                    .push(preview_el.unwrap_or_else(|| Space::new().width(Length::Fixed(120.0)).into()))
+                    .push(
+                        preview_el
+                            .unwrap_or_else(|| Space::new().width(Length::Fixed(120.0)).into()),
+                    )
                     .push(download_btn);
 
                 items.push(
@@ -2022,20 +2023,28 @@ impl App {
                             self.state.language.is_empty(),
                             Message::SetLanguage(String::new()),
                         ),
-                        ("English".into(), self.state.language == "en", Message::SetLanguage("en".into())),
-                        ("Русский".into(), self.state.language == "ru", Message::SetLanguage("ru".into())),
-                        ("日本語".into(), self.state.language == "ja", Message::SetLanguage("ja".into())),
+                        (
+                            "English".into(),
+                            self.state.language == "en",
+                            Message::SetLanguage("en".into()),
+                        ),
+                        (
+                            "Русский".into(),
+                            self.state.language == "ru",
+                            Message::SetLanguage("ru".into()),
+                        ),
+                        (
+                            "日本語".into(),
+                            self.state.language == "ja",
+                            Message::SetLanguage("ja".into()),
+                        ),
                     ],
                     sem,
                 ),
             ],
             sem,
         );
-        let playback = settings_card(
-            tr("Playback"),
-            playback_rows,
-            sem,
-        );
+        let playback = settings_card(tr("Playback"), playback_rows, sem);
         let rotation = settings_card(tr("Rotation"), rotation_rows, sem);
         let desktop = settings_card(tr("Desktop integration"), desktop_rows, sem);
 
@@ -2296,7 +2305,8 @@ fn card<'a, M: 'a>(
 }
 
 /// A Settings section: title plus its rows, as a glass card that shares half
-/// of a `Row` with its sibling.
+/// of a `Row` with its sibling. The card stretches to the row height so the
+/// two cards in a line end at the same edge instead of stepping down.
 fn settings_card<'a, M: 'a>(
     title: String,
     rows: Vec<Element<'a, M>>,
@@ -2306,10 +2316,12 @@ fn settings_card<'a, M: 'a>(
         Column::new()
             .spacing(16)
             .push(section_title(title, sem))
-            .extend(rows),
+            .extend(rows)
+            .push(Space::new().height(Length::Fill)),
     )
     .padding(20)
     .width(Length::Fill)
+    .height(Length::Fill)
     .style(move |_| floating_card_style(sem))
     .into()
 }

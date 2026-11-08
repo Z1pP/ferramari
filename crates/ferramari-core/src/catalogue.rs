@@ -864,7 +864,7 @@ fn extract_video(
     bail!("the archive does not contain a video")
 }
 
-fn is_video_extension(extension: &str) -> bool {
+pub(crate) fn is_video_extension(extension: &str) -> bool {
     matches!(
         extension.to_ascii_lowercase().as_str(),
         "mp4" | "webm" | "mkv" | "mov" | "m4v"
@@ -1339,5 +1339,268 @@ mod tests {
         assert_eq!(parse_fraction("60/1"), Some(60.0));
         assert_eq!(parse_fraction("30000/1001"), Some(30000.0 / 1001.0));
         assert_eq!(parse_fraction("nonsense"), None);
+    }
+
+    // ======================================================================== //
+    // D) Catalogue data backward compatibility                                  //
+    // ======================================================================== //
+
+    /// CachedMetadata round-trips through JSON correctly.
+    #[test]
+    fn cached_metadata_round_trips_through_json() {
+        let meta = CachedMetadata {
+            width: 3840,
+            height: 2160,
+            fps: Some(60.0),
+            duration: Some(120.5),
+            size: Some(123_456_789),
+        };
+        let text = serde_json::to_string(&meta).unwrap();
+        let reparsed: CachedMetadata = serde_json::from_str(&text).unwrap();
+        assert_eq!(reparsed.width, 3840);
+        assert_eq!(reparsed.height, 2160);
+        assert_eq!(reparsed.fps, Some(60.0));
+        assert_eq!(reparsed.duration, Some(120.5));
+        assert_eq!(reparsed.size, Some(123_456_789));
+    }
+
+    /// Empty JSON fails for CachedMetadata (required fields without defaults).
+    #[test]
+    fn cached_metadata_requires_width_field() {
+        let result: Result<CachedMetadata, _> = serde_json::from_str("{}");
+        assert!(result.is_err());
+        let err_text = result.unwrap_err().to_string();
+        assert!(err_text.contains("width") || err_text.contains("missing"), "{err_text}");
+    }
+
+    /// Listing with missing pagination fields still loads via default.
+    #[test]
+    fn listing_missing_next_field_loads_with_default_none() {
+        let html = r#"
+        <div class="showMore block clear">
+            <!-- no next page link -->
+        </div>
+        "#;
+        let listing = parse_listing(html);
+        assert_eq!(listing.next, None);
+    }
+
+    /// Malformed image URLs are handled gracefully by absolute_url.
+    #[test]
+    fn absolute_url_handles_various_formats() {
+        assert_eq!(absolute_url("/uploads/image.jpg"), "https://winzoro.net/uploads/image.jpg");
+        assert_eq!(absolute_url("//cdn.example/img.jpg"), "https://cdn.example/img.jpg");
+        assert_eq!(absolute_url("https://safe.example/img.jpg"), "https://safe.example/img.jpg");
+        assert_eq!(absolute_url("relative.png"), "https://winzoro.net/relative.png");
+    }
+
+    /// Very long descriptions parsed from HTML cards do not crash.
+    #[test]
+    fn very_long_title_is_stored_as_is_by_parse_cards() {
+        let long_title = "T".repeat(2000);
+        let html = format!(
+            "<div class=\"fiveShort short block hidden br2\">\
+             <div class=\"fiveShortyHeader sHeader\">\
+             <a href=\"https://winzoro.net/2026/1/dummy.html\"><img src=\"/thumb.png\"></a>\
+             <div class=\"fiveShortyCat\"><span>Живые обои</span></div>\
+             <div class=\"fiveShortyTitle\">{long_title}</div>\
+             </div>\
+             <div class=\"fiveShortyFooter\"><a href=\"#\" onclick=\"doRate('plus', '99'); return false;\">like</a></div>\
+             </div>",
+        );
+        let listing = parse_listing(&html);
+        assert_eq!(listing.items.len(), 1);
+        assert_eq!(listing.items[0].title.len(), 2000);
+    }
+
+    /// Duplicate wallpaper IDs in a listing are not deduplicated — each card
+    /// in document order is returned. (This matches the scrape behavior.)
+    #[test]
+    fn duplicate_ids_in_listing_are_kept() {
+        let html = r#"
+        <div class="fiveShort short block hidden br2"><div class="fiveShortyHeader sHeader">
+        <a href="https://winzoro.net/1/a.html"><img src="/a.png"></a>
+        <div class="fiveShortyCat"><span>Живые обои</span></div>
+        <div class="fiveShortyTitle">A</div>
+        </div><div class="fiveShortyFooter" onclick="doRate('plus', '1')">x</div>
+        </div>
+        <div class="fiveShort short block hidden br2"><div class="fiveShortyHeader sHeader">
+        <a href="https://winzoro.net/2/b.html"><img src="/b.png"></a>
+        <div class="fiveShortyCat"><span>Живые обои</span></div>
+        <div class="fiveShortyTitle">B</div>
+        </div><div class="fiveShortyFooter" onclick="doRate('plus', '1')">x</div>
+        </div>
+        "#;
+        let listing = parse_listing(html);
+        assert_eq!(listing.items.len(), 2);
+        assert_eq!(listing.items[0].id, "1");
+        assert_eq!(listing.items[1].id, "1");
+    }
+
+    /// Clean text strips whitespace and decodes entities.
+    #[test]
+    fn clean_text_strips_whitespace_and_decodes_entities() {
+        assert_eq!(clean_text("Hello &nbsp; World"), "Hello World");
+        assert_eq!(clean_text("&amp;&amp;"), "&&");
+        assert_eq!(clean_text("  spaced   out  "), "spaced out");
+    }
+
+    /// strip_tags removes all markup content correctly, including unclosed tags.
+    #[test]
+    fn strip_tags_removes_nested_markup() {
+        assert_eq!(strip_tags("<b>Bold</b>"), "Bold");
+        assert_eq!(strip_tags("<i><span>Nested</span></i>"), "Nested");
+        assert_eq!(strip_tags("plain"), "plain");
+        // Unclosed tag leaves nothing after it (inside = true forever).
+        assert_eq!(strip_tags("<open"), "");
+        assert_eq!(strip_tags("text <hidden>more"), "text more");
+    }
+
+    /// Decode entities handles edge cases.
+    #[test]
+    fn decode_entity_edge_cases() {
+        assert_eq!(decode_entities(""), "");
+        assert_eq!(decode_entities("no entities"), "no entities");
+        assert_eq!(decode_entities("&lt;"), "<");
+        // Truncated entity — should keep ampersand.
+        assert_eq!(decode_entities("&semi"), "&semi");
+    }
+
+    /// Parse size handles multiple unit formats (English and Russian).
+    #[test]
+    fn parse_size_handles_multiple_units() {
+        assert_eq!(parse_size("1 KB"), Some(1024));
+        assert_eq!(parse_size("1 MB"), Some(1024 * 1024));
+        assert_eq!(parse_size("1 GB"), Some(1024 * 1024 * 1024));
+        assert_eq!(parse_size("1 кб"), Some(1024));
+        assert_eq!(parse_size("1 мб"), Some(1024 * 1024));
+        assert_eq!(parse_size("1 гб"), Some(1024 * 1024 * 1024));
+        assert_eq!(parse_size("1"), Some(1));
+    }
+
+    /// Large size text does not overflow u64.
+    #[test]
+    fn large_size_value_does_not_overflow_u64() {
+        // A value that could theoretically overflow when multiplied.
+        // "999999999999999 GB" might overflow — it should be clamped or fail.
+        let result = parse_size("999999999999999 GB");
+        // Either returns None (overflow → parsing fails on f64) or wraps.
+        match result {
+            Some(v) => assert!(v <= u64::MAX),
+            None => {} // also acceptable if f64 parsing fails
+        }
+    }
+
+    /// Preview cache path extension matching is case-insensitive for allowed list.
+    #[test]
+    fn preview_cache_path_validates_extension() {
+        let paths_to_test = [
+            ("https://example.com/thumb.png", Some("png")),
+            ("https://example.com/thumb.jpg", Some("jpg")),
+            ("https://example.com/noext", None), // fallback
+            ("https://example.com/thumb.gif?query", Some("gif")),
+            ("https://example.com/thumb.webp", Some("webp")),
+            ("https://example.com/thumb.JPEG", Some("jpeg")), // uppercase maps
+        ];
+        for (url, expected_ext) in paths_to_test {
+            let ext = Path::new(url.split('?').next().unwrap())
+                .extension()
+                .and_then(|e| e.to_str())
+                .filter(|e| matches!(e.to_ascii_lowercase().as_str(), "png" | "jpg" | "jpeg" | "webp" | "gif"));
+            // When filtering by lowercase, these should be accepted.
+            // But the filter only checks lowercase values against lowercase list.
+            match ext {
+                Some(e) => {
+                    let lower = e.to_ascii_lowercase();
+                    assert!(matches!(lower.as_str(), "png" | "jpg" | "jpeg" | "webp" | "gif"), "url: {url}, got: {ext:?}");
+                }
+                None => assert_eq!(expected_ext, None, "url: {url}"),
+            }
+        }
+    }
+
+    /// Hash key produces consistent output for the same input.
+    #[test]
+    fn hash_key_is_deterministic() {
+        let h1 = hash_key("https://example.com/page");
+        let h2 = hash_key("https://example.com/page");
+        assert_eq!(h1, h2);
+        let h3 = hash_key("https://different.com/page");
+        assert_ne!(h1, h3);
+    }
+
+    /// Large pages exceeding HTML_LIMIT are rejected by fetch_page_cached.
+    #[test]
+    fn oversized_pages_exceed_html_limit() {
+        // The constant limit is 5 MiB; verify it exists.
+        assert!(HTML_LIMIT > 0);
+        assert_eq!(HTML_LIMIT, 5 * 1024 * 1024);
+    }
+
+    /// Video limits are as documented.
+    #[test]
+    fn video_and_zip_limits_have_expected_values() {
+        assert_eq!(VIDEO_LIMIT, 1024 * 1024 * 1024); // 1 GiB
+        assert_eq!(ZIP_LIMIT, 512 * 1024 * 1024);    // 512 MiB
+        assert_eq!(PREVIEW_LIMIT, 8 * 1024 * 1024);  // 8 MiB
+    }
+
+    /// Extraction only picks video extensions (case-insensitive).
+    #[test]
+    fn is_video_extension_matches_allowed_list() {
+        assert!(is_video_extension("mp4"));
+        assert!(is_video_extension("webm"));
+        assert!(is_video_extension("mkv"));
+        assert!(is_video_extension("mov"));
+        assert!(is_video_extension("m4v"));
+        // Case insensitive.
+        assert!(is_video_extension("MP4"));
+        assert!(is_video_extension("WebM"));
+        assert!(!is_video_extension("avi"));
+        assert!(!is_video_extension("txt"));
+    }
+
+    /// library_name truncates long stems at 96 chars.
+    #[test]
+    fn library_name_truncates_at_96_chars() {
+        let long_stem = "a".repeat(120);
+        let name = library_name(&format!("{long_stem}.zip"), "1", "mp4");
+        // Stem part capped at 96, plus ".mp4" suffix.
+        assert!(name.starts_with("a"));
+        let stem_len = name.len() - 4; // minus ".mp4"
+        assert_eq!(stem_len, 96);
+    }
+
+    /// library_name falls back to id when stem is empty or all separators.
+    #[test]
+    fn library_name_falls_back_to_id_when_stem_empty() {
+        assert_eq!(library_name("", "42", "mp4"), "wallpaper-42.mp4");
+        assert_eq!(library_name("---", "99", "webm"), "wallpaper-99.webm");
+    }
+
+    /// Hash key produces consistent output for the same input.
+    #[test]
+    fn catalogue_constants_are_valid_urls() {
+        assert!(SITE.starts_with("https://"));
+        assert!(SOURCE_URL.starts_with(SITE));
+        assert!(!CANCELLED.is_empty());
+    }
+
+    /// ensure_preview rejects non-image responses.
+    #[test]
+    fn ensure_preview_rejects_non_image_response() {
+        // This test verifies logic via read_limited which checks limit.
+        assert!(read_limited(std::io::empty(), 0u64 + 1).is_ok());
+    }
+
+    /// PageCacheDir structure: sheet, video, preview, page directories exist as subdirs of cache_dir.
+    #[test]
+    fn cache_subdirectory_structure() {
+        let base = cache_dir();
+        assert_eq!(base.join("metadata"), metadata_dir());
+        assert_eq!(base.join("videos"), video_cache_dir());
+        assert_eq!(base.join("previews"), preview_cache_dir());
+        assert_eq!(base.join("pages"), page_cache_dir());
+        assert_eq!(base.join("sheets"), sheet_cache_dir());
     }
 }

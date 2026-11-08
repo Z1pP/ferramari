@@ -497,6 +497,16 @@ impl App {
                     self.apply_playback_states();
                 }
             }
+            Command::PowerEvent(event) => {
+                log::info!("[Power] event: {}", event.as_str());
+                // Refresh the full status snapshot so battery percent is up to date.
+                let status = self.power_provider.status();
+                self.on_battery = status.on_battery;
+                self.battery_percent = status.percent;
+                if self.config.pause_on_battery {
+                    self.apply_playback_states();
+                }
+            }
             Command::LibraryChanged => {
                 *self.library.borrow_mut() = Library::load();
                 self.last_rotation.clear();

@@ -9,12 +9,13 @@ use std::sync::Arc;
 use ferramari_core::platform::{PlatformEventSource, PlatformWatchers};
 use ferramari_core::CommandSender;
 
-use crate::{handlers, monitors, x11};
+use crate::{handlers, monitors, power_events, x11};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct LinuxPlatformEventSource;
 
 struct LinuxWatchers {
+    _power: Option<power_events::InotifyPowerWatcher>,
     _window: Option<x11::Watcher>,
     _monitors: Option<monitors::Watcher>,
 }
@@ -32,8 +33,11 @@ impl PlatformEventSource for LinuxPlatformEventSource {
         handlers::start_sleep_watcher(tx.clone());
         handlers::start_logind_lock_watcher(tx.clone());
         handlers::start_idle_watcher(tx.clone(), idle_threshold);
+        // Real-time charger detection (inotify on /sys/class/power_supply).
+        let _power = power_events::InotifyPowerWatcher::start(tx.clone());
 
         Box::new(LinuxWatchers {
+            _power: Some(_power),
             _window: x11::start(tx.clone()),
             _monitors: monitors::start(tx),
         })

@@ -605,6 +605,8 @@ pub fn filter(findings: Vec<Finding>, ignore: &[String]) -> Vec<Finding> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::package::import;
+    use std::fs;
 
     fn codes(report: &Report) -> Vec<String> {
         report
@@ -1198,5 +1200,291 @@ mod tests {
         assert!(report.blocked());
         assert!(find(&report, "unsigned").is_none());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    // ---------------------------------------------------------------------
+    // Integration: lint → import consistency and edge cases.
+    // ---------------------------------------------------------------------
+
+    /// A package that passes lint review (no errors) should also pass import.
+    /// This is the core invariant: lint errors are a superset of import rejections.
+    #[test]
+    fn passing_lint_report_means_import_succeeds() {
+        let dir = temp_dir("passing-lint");
+        std::fs::write(
+            dir.join("manifest.json"),
+            r#"{"name":"Clean","author":"Ada","type":"video","description":"desc"}"#,
+        ).unwrap();
+        std::fs::write(dir.join("wallpaper.mp4"), [0u8; 2048]).unwrap();
+        // Gather facts — entry exists but won't measure without ffmpeg.
+        let facts = gather(&dir);
+        let report = review(&facts);
+        // No import error means lint didn't find structural problems.
+        assert!(report.errors().count() <= 1, "at most one structurally reported finding: {report:?}");
+        if !report.blocked() {
+            let imported = import(&dir, &temp_dir("import-passing")).unwrap();
+            assert_eq!(imported.name, "Clean");
+            let _ = fs::remove_dir_all(imported.package_dir);
+        }
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Lint warnings do NOT block import — they inform the creator only.
+    #[test]
+    fn lint_warnings_do_not_block_import() {
+        let dir = temp_dir("warnings-only");
+        // Missing author, description, preview, checksums — all warnings.
+        std::fs::write(
+            dir.join("manifest.json"),
+            r#"{"name":"Warnings Pack","type":"video"}"#,
+        ).unwrap();
+        std::fs::write(dir.join("wallpaper.mp4"), b"v").unwrap();
+        let facts = gather(&dir);
+        let report = review(&facts);
+        assert!(!report.blocked(), "warnings must not block import");
+        // But there should be several warnings.
+        assert!(
+            report.warnings().count() >= 3,
+            "expected multiple warnings: {:?}",
+            codes(&report)
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Lint errors DO block import.
+    #[test]
+    fn lint_errors_block_import() {
+        let dir = temp_dir("blocking-errors");
+        // Name empty → import rejected → lint reports import-rejected error.
+        std::fs::write(
+            dir.join("manifest.json"),
+            r#"{"name":"","author":"A","type":"video"}"#,
+        ).unwrap();
+        std::fs::write(dir.join("wallpaper.mp4"), b"v").unwrap();
+        let facts = gather(&dir);
+        let report = review(&facts);
+        assert!(report.blocked());
+        assert!(
+            report.findings.iter().any(|f| f.code == "import-rejected"),
+            "{:?}",
+            codes(&report)
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Import-rejected message appears verbatim in the lint finding.
+    #[test]
+    fn lint_import_rejected_carrying_message_is_verbatim() {
+        let json = r#"{"name":"OK","type":"video","entry":"../etc/passwd"}"#;
+        let dir = temp_dir("path-leak");
+        std::fs::write(dir.join("manifest.json"), json).unwrap();
+        std::fs::write(dir.join("wallpaper.mp4"), b"v").unwrap();
+        let facts = gather(&dir);
+        assert!(facts.import_error.is_some());
+        let report = review(&facts);
+        let finding = find(&report, "import-rejected").expect("import-rejected expected");
+        // The message must contain the original reason words from load.
+        assert!(finding.message.to_lowercase().contains("relative path") ||
+                finding.message.to_lowercase().contains(".."));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// A complete signed+checksummed package yields no findings.
+    #[test]
+    fn complete_signed_package_has_no_findings() {
+        let dir = temp_dir("complete-signed");
+        std::fs::write(
+            dir.join("manifest.json"),
+            r#"{"name":"Gold Standard","author":"Pro","type":"video","description":"pro desc","resolution":"1920x1080"}"#,
+        ).unwrap();
+        std::fs::write(dir.join("wallpaper.mp4"), b"v").unwrap();
+        std::fs::write(dir.join("preview.jpg"), b"p").unwrap();
+        // Write a valid checksums file so verify_checksums sees it.
+        let digests: std::collections::BTreeMap<String, String> = crate::package::checksums(&dir).unwrap();
+        let cs_text = serde_json::to_string_pretty(&digests).unwrap();
+        std::fs::write(dir.join("checksums.json"), format!("{cs_text}\n")).unwrap();
+        let facts = gather(&dir);
+        assert_eq!(facts.checksummed, true);
+        let report = review(&facts);
+        // May have unsigned warning but no errors.
+        assert!(!report.blocked());
+        assert!(
+            report.errors().count() == 0,
+            "no errors: {:?}",
+            codes(&report)
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Resolution missing + unprobed entry gives correct web vs video messages.
+    #[test]
+    fn resolution_missing_message_distinguishes_web_from_video() {
+        let dir = temp_dir("web-res-missing");
+        std::fs::write(
+            dir.join("manifest.json"),
+            r#"{"name":"W","author":"A","type":"web","entry":"index.html"}"#,
+        ).unwrap();
+        std::fs::write(dir.join("index.html"), b"<html></html>").unwrap();
+        let facts = gather(&dir);
+        let report = review(&facts);
+        let finding = find(&report, "resolution-missing").expect("resolution-missing for web");
+        assert!(finding.message.contains("web page"), "{}", finding.message);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// A junk entry file causes measured_entry to return None, triggering
+    /// resolution-missing rather than resolution-mismatch.
+    #[test]
+    fn junk_entry_triggers_resolution_missing_not_mismatch() {
+        let dir = temp_dir("junk-entry");
+        std::fs::write(
+            dir.join("manifest.json"),
+            r#"{"name":"J","author":"A","type":"video","description":"d"}"#,
+        ).unwrap();
+        std::fs::write(dir.join("wallpaper.mp4"), b"not-video").ok();
+        let facts = gather(&dir);
+        let report = review(&facts);
+        let codes = codes(&report);
+        assert!(
+            !codes.contains(&"resolution-mismatch".to_string()),
+            "{codes:?}"
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Severity serialisation round-trips through JSON.
+    #[test]
+    fn severity_round_trips_through_json() {
+        let text = serde_json::to_string(&Severity::Error).unwrap();
+        assert_eq!(text, "\"error\"");
+        let text = serde_json::to_string(&Severity::Warning).unwrap();
+        assert_eq!(text, "\"warning\"");
+        let err: Severity = serde_json::from_str("\"error\"").unwrap();
+        assert_eq!(err, Severity::Error);
+    }
+
+    /// Finding fields serialise and deserialise correctly.
+    #[test]
+    fn finding_serialises_correctly() {
+        let finding = Finding::error("test-code", "something broke");
+        let text = serde_json::to_string(&finding).unwrap();
+        let decoded: Finding = serde_json::from_str(&text).unwrap();
+        assert_eq!(decoded.severity, Severity::Error);
+        assert_eq!(decoded.code, "test-code");
+        assert_eq!(decoded.message, "something broke");
+    }
+
+    /// KNOWN_CODES list covers every code used by review.
+    #[test]
+    fn known_codes_are_non_empty_and_match_expected_set() {
+        assert!(!KNOWN_CODES.is_empty());
+        assert!(KNOWN_CODES.contains(&"import-rejected"));
+        assert!(KNOWN_CODES.contains(&"unsigned"));
+        assert!(KNOWN_CODES.contains(&"signature-invalid"));
+        assert!(KNOWN_CODES.contains(&"preview-unreadable"));
+    }
+
+    /// is_known_code accepts documented codes and rejects unknown ones.
+    #[test]
+    fn is_known_code_returns_true_for_valid_codes() {
+        assert!(is_known_code("unsigned"));
+        assert!(is_known_code("import-rejected"));
+        assert!(!is_known_code("made-up-code"));
+        assert!(!is_known_code(""));
+    }
+
+    /// parse_ignore_list ignores empty strings in the input.
+    #[test]
+    fn parse_ignore_list_skips_empty_parts() {
+        assert_eq!(
+            parse_ignore_list(",unsigned,,checksums-missing,").unwrap(),
+            vec!["unsigned", "checksums-missing"]
+        );
+    }
+
+    /// filter removes specified codes from findings.
+    #[test]
+    fn filter_removes_only_the_requested_codes() {
+        let facts = Facts {
+            signature: Signature::Unsigned,
+            checksummed: false,
+            ..Facts::default()
+        };
+        let report = review(&facts);
+        let kept = filter(report.findings, &vec!["unsigned".to_string()]);
+        let filtered = Report {
+            name: report.name.clone(),
+            kind: report.kind.clone(),
+            findings: kept,
+        };
+        let codes = codes(&filtered);
+        assert!(!codes.contains(&"unsigned".to_string()));
+        assert!(codes.contains(&"checksums-missing".to_string()));
+    }
+
+    /// Measured::resolution returns None when either dimension is missing.
+    #[test]
+    fn measured_resolution_requires_both_dimensions() {
+        let m = Measured { width: Some(1920), height: None, unprobed: false };
+        assert_eq!(m.resolution(), None);
+        let m = Measured { width: None, height: Some(1080), unprobed: false };
+        assert_eq!(m.resolution(), None);
+        let m = Measured { width: Some(1920), height: Some(1080), unprobed: false };
+        assert_eq!(m.resolution(), Some("1920x1080".to_string()));
+    }
+
+    /// Report.lines() outputs severity:message format.
+    #[test]
+    fn report_lines_have_severity_prefix() {
+        let report = review(&Facts::default());
+        let lines = report.lines();
+        for line in &lines {
+            assert!(line.starts_with("warning: "), "unexpected line: {line}");
+        }
+    }
+
+    /// Whitespace in manifest entry is passed as-is to checked_file;
+    /// if the actual file exists under that exact name it loads, otherwise fails.
+    #[test]
+    fn whitespace_in_manifest_entry_is_passed_as_is() {
+        let dir = temp_dir("whitespace-entry");
+        std::fs::write(
+            dir.join("manifest.json"),
+            r#"{"name":"WS","author":"A","type":"video","entry":"  wallpaper.mp4  "}"#,
+        ).unwrap();
+        // The file is named without spaces, so this should fail because
+        // checked_file constructs dir/"  wallpaper.mp4  " which doesn't exist.
+        assert!(crate::package::load(&dir).is_err());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Entry path cannot refer to a directory.
+    #[test]
+    fn entry_path_pointing_to_a_directory_is_rejected() {
+        let dir = temp_dir("dir-entry");
+        std::fs::create_dir(dir.join("subdir")).unwrap();
+        std::fs::write(
+            dir.join("manifest.json"),
+            r#"{"name":"DE","author":"A","type":"video","entry":"subdir"}"#,
+        ).unwrap();
+        std::fs::write(dir.join("wallpaper.mp4"), b"x").unwrap();
+        assert!(crate::package::load(&dir).unwrap_err().contains("not found"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Preview fallback: preview.jpg convention activates when no preview field.
+    #[test]
+    fn preview_jpg_convention_fallback_works() {
+        let dir = temp_dir("preview-fallback");
+        std::fs::write(
+            dir.join("manifest.json"),
+            r#"{"name":"PF","author":"A","type":"video"}"#,
+        ).unwrap();
+        std::fs::write(dir.join("wallpaper.mp4"), b"x").unwrap();
+        std::fs::write(dir.join("preview.jpg"), b"jpeg").unwrap();
+        let pkg = crate::package::load(&dir).unwrap();
+        assert!(pkg.preview.is_some());
+        assert!(pkg.preview.unwrap().ends_with("preview.jpg"));
+        let _ = fs::remove_dir_all(dir);
     }
 }

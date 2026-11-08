@@ -44,6 +44,27 @@ pub trait DisplayProvider {
 /// Reads the current power-supply state from the operating system.
 pub trait PowerProvider {
     fn status(&self) -> PowerStatus;
+
+    /// Subscribe to real-time charger plug/unplug events.
+    ///
+    /// Returns `Some` when the backend can deliver live `PowerEventType`
+    /// events (typically via sysfs inotify or D-Bus).  `None` means only
+    /// polling is available.
+    fn subscribe(&self) -> Option<Box<dyn PowerWatcher>> {
+        None
+    }
+}
+
+/// Receives live charger plug / unplug notifications.
+///
+/// Implementations typically run their own watch thread; `poll` exists so
+/// `--doctor` can query the last known state without duplicating sysfs logic.
+pub trait PowerWatcher {
+    /// Drain pending events, sending each one to `tx`.
+    /// Returns `true` while the watcher should keep being polled.
+    fn poll(&mut self, _tx: &CommandSender) -> bool {
+        true // most implementations run independent threads
+    }
 }
 
 /// Owns the lifetime of platform event subscriptions and watcher threads.

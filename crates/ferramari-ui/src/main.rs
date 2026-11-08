@@ -800,10 +800,14 @@ impl App {
                         }
                         self.online.next = listing.next;
                         self.online.error = None;
+                        // Fetch the thumbnails of the items that just arrived.
+                        self.load_previews()
                     }
-                    Err(error) => self.online.error = Some(error),
+                    Err(error) => {
+                        self.online.error = Some(error);
+                        Task::none()
+                    }
                 }
-                self.load_previews()
             }
             Message::Download(wallpaper) => {
                 self.online.downloading = Some(wallpaper.id.clone());
@@ -1716,7 +1720,7 @@ impl App {
                     .previews
                     .get(&wallpaper.id)
                     .and_then(|path| path.as_ref())
-                    .map(|path| image::Handle::from_path(path))
+                    .map(image::Handle::from_path)
                     .map(|handle| {
                         image::Image::new(handle)
                             .width(Length::Fixed(120.0))

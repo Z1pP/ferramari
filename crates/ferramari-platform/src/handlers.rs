@@ -254,7 +254,8 @@ pub fn start_logind_lock_watcher(tx: CommandSender) {
 /// before sleep and `false` after resume.
 ///
 /// The system-bus connection is created on the worker: D-Bus can block for
-/// seconds when the bus is slow or absent, and startup runs on the GTK thread.
+/// seconds when the bus is slow or absent, and startup must not stall on
+/// it.
 pub fn start_sleep_watcher(tx: CommandSender) {
     std::thread::Builder::new()
         .name("ferramari-sleep".to_string())
@@ -289,7 +290,7 @@ pub fn start_sleep_watcher(tx: CommandSender) {
 pub fn start_end_session_watcher(tx: CommandSender) {
     let gnome = paths::is_gnome();
     // Both venders register clients and query the session bus; do that off the
-    // GTK thread so a missing/slow bus cannot delay the first frame.
+    // command loop so a missing/slow bus cannot delay the first frame.
     std::thread::Builder::new()
         .name("ferramari-session".to_string())
         .spawn(move || {

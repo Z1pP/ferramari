@@ -1,7 +1,7 @@
 //! Video thumbnails for the control window.
 //!
-//! Rendering happens on a worker thread; the resulting file is loaded into a
-//! `gdk_pixbuf::Pixbuf` on the GTK thread. Frames are cached per (path, mtime).
+//! Rendering happens on a worker thread; the resulting file is loaded into an
+//! `iced::image::Handle`. Frames are cached per (path, mtime).
 
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};

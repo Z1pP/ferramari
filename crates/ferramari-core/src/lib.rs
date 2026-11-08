@@ -1,9 +1,9 @@
 //! Ferramari core: toolkit-independent business logic, the command bus, and
 //! the data models shared across the platform, media and UI layers.
 //!
-//! This crate must never depend on GTK/GDK, Iced, or any windowing backend.
-//! It is compiled on every target and is the layer that stays put through the
-//! GTK → Iced migration.
+//! This crate must never depend on GTK/GDK, Iced, WebKitGTK, or any windowing
+//! backend. It is compiled on every target and was kept intact through the GTK
+//! removal — now it is the only layer that matters.
 
 pub mod bus;
 pub mod catalog_api;

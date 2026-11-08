@@ -1,6 +1,6 @@
 //! Restart policy for external players.
 //!
-//! mpv and WebKitGTK can die independently of the GTK process. Restarting them
+//! mpv can die independently of the Ferramari process. Restarting it
 //! immediately on every exit turns a broken file or driver into a busy loop, so
 //! failures are spaced out and eventually given up on. The policy is pure and
 //! time-injected, which keeps it testable without spawning processes.

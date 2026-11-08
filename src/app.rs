@@ -7,8 +7,8 @@
 //!
 //! The loop is a plain `recv_timeout` over the command channel plus deadline
 //! bookkeeping for what used to be GLib timeouts. Periodic work therefore runs
-//! on the same thread that owns the players, exactly like the previous GTK
-//! main loop, without a second event loop in the process.
+//! on the same thread that owns the players, replicating the old GTK event-loop
+//! behaviour without adding a second event loop.
 
 use std::cell::RefCell;
 use std::collections::HashMap;

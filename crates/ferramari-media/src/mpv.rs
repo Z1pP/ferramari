@@ -21,7 +21,7 @@ static SOCKET_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// How long a single command may wait for mpv to answer. Commands only set
 /// properties, so a healthy mpv replies immediately. The wait happens on the
-/// IPC worker thread, never on the GTK main thread.
+/// IPC worker thread, never on the main application event loop.
 const IPC_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// How long to wait for the `--input-ipc-server` socket to appear. mpv usually
@@ -91,7 +91,7 @@ pub struct Mpv {
     worker: Option<JoinHandle<()>>,
 }
 
-/// State readable from the GTK thread without touching the IPC socket.
+/// State readable from the command-loop thread without touching the IPC socket.
 struct Shared {
     volume: AtomicI64,
     muted: AtomicBool,
@@ -113,7 +113,8 @@ struct Shared {
 }
 
 /// Commands for the dedicated IPC thread. Keeping them here means a wedged
-/// mpv can never stall the GTK main loop: the UI only enqueues work.
+/// mpv can never stall the application event loop: the caller only enqueues
+/// work.
 enum Request {
     Execute(Value),
     /// Read `hwdec-current` into the shared slot. The property only exists
@@ -162,8 +163,8 @@ impl Mpv {
             .arg("--really-quiet")
             .arg("--no-config")
             .arg("--no-input-default-bindings")
-            // Let the GTK window receive clicks, disabling mpv's own
-            // mouse/key input disabled, so the right-click menu works.
+            // Let the wallpaper window receive clicks, disabling mpv's own
+            // mouse/key input, so the right-click menu works.
             .arg("--input-cursor=no")
             .arg("--input-vo-keyboard=no")
             .arg("--no-osc")
@@ -221,7 +222,7 @@ impl Mpv {
 
         // Connecting to the socket and every later command happen on this
         // worker. `spawn` returns as soon as the child process exists, which
-        // keeps a broken or slow mpv away from the GTK thread.
+        // keeps a broken or slow mpv away from the command-loop thread.
         let shared = Arc::new(Shared {
             volume: AtomicI64::new(options.volume.clamp(0, 100)),
             muted: AtomicBool::new(options.muted),
@@ -336,9 +337,9 @@ impl Mpv {
     /// Replace the current file without restarting mpv. Used when a monitor
     /// switches to another local video.
     ///
-    /// The request is queued; the worker waits for mpv's reply off the GTK
-    /// thread. This keeps the UI responsive even when the decoder needs a
-    /// moment to open the new file.
+    /// The request is queued; the worker waits for mpv's reply off the
+    /// command loop. This keeps the UI responsive even when the decoder needs
+    /// a moment to open the new file.
     pub fn load_file(&mut self, source: &str) -> anyhow::Result<()> {
         self.shared.parked.store(false, Ordering::Relaxed);
         if let Ok(mut position) = self.shared.parked_position.lock() {
@@ -384,7 +385,7 @@ impl Drop for Mpv {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
         // Ask mpv to quit, then give it a short grace period. A wedged
-        // decoder must not keep the GTK process (or the session) alive.
+        // decoder must not keep the Ferramari process (or the session) alive.
         // Always wake the IPC worker, even when the child already exited:
         // otherwise it would stay blocked in `recv()` and `join()` below would
         // deadlock (the request sender is only dropped after this function).
@@ -414,7 +415,7 @@ impl Drop for Mpv {
 }
 
 /// Wait for mpv's IPC socket, then serve requests until the channel closes or
-/// a fatal I/O error occurs. Runs off the GTK thread.
+/// a fatal I/O error occurs. Runs on its own worker thread.
 fn run_ipc_worker(
     socket: &std::path::Path,
     receiver: Receiver<Request>,

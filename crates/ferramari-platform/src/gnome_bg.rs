@@ -21,7 +21,7 @@ const FRAME_TIMEOUT: Duration = Duration::from_secs(60);
 const STATIC_CACHE_LIMIT: usize = 12;
 
 /// Extract a frame at the golden-ratio point of the video, blur it and return
-/// the generated file. This is CPU/GPU work and must run off the GTK thread.
+/// the generated file. This is CPU/GPU work and must run off the command loop.
 /// Results are cached by `(path, mtime, blur)` so restarts and source switches
 /// do not decode the video again.
 pub fn render_static_frame(video: &Path, blur_radius: u32) -> Option<PathBuf> {

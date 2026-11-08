@@ -379,15 +379,19 @@ impl App {
                 if !self.blur_dirty {
                     self.blur_draft = new_state.blur_radius;
                 }
-                // Apply language from server only if it differs from what we
-                // already applied. This prevents the undo-loop when the user
-                // changes the language locally: the server persists async and
-                // on the first tick returns the old file value ("en"), which
-                // would trigger apply again and overwrite the user's choice.
-                if new_state.language != self.applied_language && !self.applied_language.is_empty()
-                {
-                    apply_language(&new_state.language);
-                    self.applied_language = new_state.language.clone();
+                // Apply the server's language whenever it differs from what
+                // this window last applied. Both `""` and `"system"` mean
+                // "follow the desktop locale", so they are normalised before
+                // comparing — otherwise a value the server persists would
+                // never match and every poll would re-apply (undo-loop),
+                // while an external change would be ignored on first sight.
+                let want = match new_state.language.as_str() {
+                    "" => "system".to_string(),
+                    other => other.to_string(),
+                };
+                if want != self.applied_language {
+                    apply_language(&want);
+                    self.applied_language = want;
                     self.online.search_placeholder = tr("Search wallpapers…");
                     self.collection_placeholder = tr("New collection");
                 }
@@ -432,19 +436,20 @@ impl App {
 
             // --- Playback --------------------------------------------------- //
             Message::TogglePlay => {
-                let method = if self.state.is_playing {
-                    "pause_playback"
-                } else {
-                    "start_playback"
-                };
-                // Optimistic update: flip the state immediately so the UI
-                // reflects the change right away, before the server confirms.
-                self.state.is_playing = !self.state.is_playing;
-                // Track the pending action to ignore stale snapshots that
-                // contradict the user's intent (e.g. user clicked Resume but
-                // server hasn't started playback yet).
-                self.pending_play = Some(self.state.is_playing);
-                call(self.server.as_ref(), method)
+                // `pause_playback`/`start_playback` only touch the players; the
+                // Eco plan recomputes them as `Active` on the next signal, so
+                // the button would flip itself back. `is_paused_by_user` is the
+                // state the policy honours, so the button writes that. The
+                // intent comes from what is on screen, not from the flag: the
+                // wallpaper can be paused by the Eco Engine while the user has
+                // not paused anything, and then "Play" must clear the flag.
+                let resume = !self.state.is_playing;
+                self.state.is_playing = resume;
+                self.state.is_paused_by_user = !resume;
+                // Hold the expected value so the chip does not contradict the
+                // button while the server catches up.
+                self.pending_play = Some(resume);
+                set_bool(self.server.as_ref(), "is_paused_by_user", !resume)
             }
             Message::ToggleMute => {
                 let muted = !self.state.is_mute;
@@ -486,8 +491,15 @@ impl App {
                 set_string(self.server.as_ref(), "theme", theme)
             }
             Message::SetLanguage(language) => {
-                apply_language(&language);
-                self.applied_language = language.clone();
+                // Store the same normalised form the poll compares against, so
+                // the user's choice is not immediately re-applied by `Tick`.
+                let normalised = if language.is_empty() {
+                    "system".to_string()
+                } else {
+                    language.clone()
+                };
+                apply_language(&normalised);
+                self.applied_language = normalised;
                 self.state.language = language.clone();
                 self.online.search_placeholder = tr("Search wallpapers…");
                 self.collection_placeholder = tr("New collection");
@@ -1084,53 +1096,6 @@ impl App {
         let mut names: Vec<&String> = self.state.monitor_states.keys().collect();
         names.sort();
 
-        let mut monitor_cards = Vec::new();
-        for name in &names {
-            let state = self
-                .state
-                .monitor_states
-                .get(*name)
-                .cloned()
-                .unwrap_or_default();
-            let source = self
-                .state
-                .data_source
-                .get(*name)
-                .or_else(|| self.state.data_source.get("Default"))
-                .cloned()
-                .unwrap_or_default();
-            let file = PathBuf::from(source)
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| tr("No wallpaper"));
-            let selected_rotation = self.state.rotations.get(*name).cloned().unwrap_or_default();
-            let selected_choice = rotation_options
-                .iter()
-                .find(|choice| choice.id == selected_rotation)
-                .cloned();
-            let monitor_name = (*name).clone();
-
-            let card_content = Column::new()
-                .spacing(8)
-                .align_x(Alignment::Center)
-                .push(text(*name).size(14).color(sem.text))
-                .push(text(file).size(11).color(sem.text_muted))
-                .push(chip(state, sem))
-                .push(
-                    pick_list(rotation_options.clone(), selected_choice, move |choice| {
-                        Message::SetMonitorRotation(monitor_name.clone(), choice.id)
-                    })
-                    .width(Length::Fill),
-                );
-
-            monitor_cards.push(
-                container(card_content)
-                    .padding(16)
-                    .width(Length::Fill)
-                    .style(move |_| floating_card_style(sem)),
-            );
-        }
-
         let monitors_section = if names.is_empty() {
             card(
                 text(tr("No displays detected"))
@@ -1684,12 +1649,15 @@ impl App {
                     .as_deref()
                     .is_some_and(|id| id == wallpaper.id);
 
-                let download_btn = if busy {
-                    secondary_button(
-                        tr("Downloading…"),
-                        Message::Download(wallpaper.clone()),
-                        sem,
-                    )
+                let download_btn: Element<'_, Message> = if busy {
+                    // Not pressable during download: a second click would race
+                    // on the same `.part` file.  We use `on_press_maybe(None)` so
+                    // the button renders disabled and no message fires.
+                    button(text(tr("Downloading…")).size(12))
+                        .padding(Padding::new(8.0))
+                        .on_press_maybe(None::<Message>)
+                        .style(button_style(sem, ButtonKind::Secondary))
+                        .into()
                 } else {
                     button(text(tr("Install")).size(12))
                         .padding(Padding::new(8.0))
@@ -1817,23 +1785,29 @@ impl App {
     fn settings(&self, sem: &'static Semantics) -> Element<'_, Message> {
         // Left column sections — build via Vec for conditional hwdec_status row
         let mut playback_rows = Vec::<Element<Message>>::new();
+        // The server keeps the legacy identifiers on disk (`performance`,
+        // `power`) so old versions can still read the config; the UI speaks the
+        // newer names. Normalise before comparing so the selected segment
+        // matches what the server actually reports.
+        let active_profile =
+            ferramari_core::eco::Profile::from_config(&self.state.playback_profile);
         playback_rows.push(segmented_row(
             tr("Profile"),
             tr("Quality prioritises smoothness; Eco reduces decoding"),
             vec![
                 (
                     tr("Quality"),
-                    self.state.playback_profile == "quality",
+                    active_profile == ferramari_core::eco::Profile::Quality,
                     Message::SetProfile("quality".into()),
                 ),
                 (
                     tr("Balanced"),
-                    self.state.playback_profile == "balanced",
+                    active_profile == ferramari_core::eco::Profile::Balanced,
                     Message::SetProfile("balanced".into()),
                 ),
                 (
                     tr("Eco"),
-                    self.state.playback_profile == "eco",
+                    active_profile == ferramari_core::eco::Profile::Eco,
                     Message::SetProfile("eco".into()),
                 ),
             ],

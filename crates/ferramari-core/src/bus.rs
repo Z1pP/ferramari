@@ -80,6 +80,10 @@ pub enum Command {
     SetIdleTimeout(i64),
     SetHardwareDecoding(String),
     SetWebNetwork(bool),
+    /// Show or hide the tray icon at runtime. Backs the "Run in background"
+    /// switch in the control surface; the daemon itself keeps running either
+    /// way, the tray is what makes it reachable without a window.
+    SetShowSystray(bool),
     PowerStatus {
         on_battery: bool,
         percent: Option<u8>,
@@ -137,6 +141,16 @@ pub struct Snapshot {
     /// Monitor name → Eco state label (`active`, `idle`, `occluded`,
     /// `suspended`). Useful to scripts and the Home cards.
     pub monitor_states: std::collections::HashMap<String, String>,
+    /// Monitor name → `1920 × 1080` as the layout reports it. A plain string
+    /// rather than a pair: the map travels over D-Bus, where a variant of two
+    /// integers would force every client to learn a new type for one label.
+    pub monitor_resolutions: std::collections::HashMap<String, String>,
+    /// Config key of the primary display, empty when the backend says nothing.
+    pub primary_monitor: String,
+    /// What the primary player's decoder reported at the last supervision
+    /// tick: frame rate, codec, geometry, dropped frames. Empty while nothing
+    /// is decoding.
+    pub player_stats: crate::stats::PlaybackStats,
     /// Settings the control surface edits, mirrored here so a bus client
     /// (the Iced UI) can read and change them without file access.
     pub language: String,
@@ -178,6 +192,9 @@ impl Default for Snapshot {
             theme: "system".to_string(),
             data_source: std::collections::HashMap::new(),
             monitor_states: std::collections::HashMap::new(),
+            monitor_resolutions: std::collections::HashMap::new(),
+            primary_monitor: String::new(),
+            player_stats: crate::stats::PlaybackStats::default(),
             language: String::new(),
             rotation_mode: "off".to_string(),
             rotation_interval_sec: 300,

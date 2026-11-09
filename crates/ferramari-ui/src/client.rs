@@ -46,6 +46,10 @@ pub struct ServerState {
     pub data_source: HashMap<String, String>,
     /// Monitor name → Eco state (`active`, `idle`, `occluded`, `suspended`).
     pub monitor_states: HashMap<String, String>,
+    /// Monitor name → `1920 × 1080` as the layout reports it.
+    pub monitor_resolutions: HashMap<String, String>,
+    /// Config key of the primary display, empty when the server says nothing.
+    pub primary_monitor: String,
     pub rotations: HashMap<String, String>,
     /// PID of the server process, for metrics of the real workload.
     pub server_pid: Option<u32>,
@@ -65,6 +69,9 @@ pub struct ServerState {
     /// Decoder reported by the players (`hwdec-current`): API name, `no` for
     /// software, empty while nothing has decoded.
     pub hwdec_running: String,
+    /// What the primary player's decoder reported: frame rate, codec,
+    /// geometry, dropped frames, position.
+    pub player_stats: ferramari_core::stats::PlaybackStats,
     pub web_allow_network: bool,
     pub autostart_enabled: bool,
     pub operation_status: String,
@@ -242,6 +249,9 @@ impl Server {
             state.idle_timeout_sec = int_of(&values, "idle_timeout_sec");
             state.hwdec = string_of(&values, "hwdec");
             state.hwdec_running = string_of(&values, "hwdec_running");
+            state.player_stats = ferramari_core::stats::PlaybackStats::from_bus_map(
+                &string_map_of(&values, "player_stats"),
+            );
             state.web_allow_network = bool_of(&values, "web_allow_network");
             state.autostart_enabled = bool_of(&values, "autostart_enabled");
             state.operation_status = string_of(&values, "operation_status");
@@ -250,6 +260,8 @@ impl Server {
         if let Some(values) = self.get_all(PLAYER_PATH, PLAYER_INTERFACE).await {
             state.data_source = string_map_of(&values, "data_source");
             state.monitor_states = string_map_of(&values, "monitor_states");
+            state.monitor_resolutions = string_map_of(&values, "monitor_resolutions");
+            state.primary_monitor = string_of(&values, "primary_monitor");
             state.rotations = string_map_of(&values, "rotations");
         }
         state

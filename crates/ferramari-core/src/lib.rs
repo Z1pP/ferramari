@@ -25,6 +25,7 @@ pub mod plugin;
 pub mod power;
 pub mod session;
 pub mod signing;
+pub mod stats;
 pub mod supervisor;
 pub mod thumbnails;
 pub mod util;

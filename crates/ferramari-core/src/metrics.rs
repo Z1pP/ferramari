@@ -54,6 +54,9 @@ pub struct Sample {
     /// CPU used by the process tree since the previous sample.
     pub cpu: Metric<f64>,
     pub memory: Metric<u64>,
+    /// Total physical memory, so the UI can show a share rather than a raw
+    /// RSS number. Read from `/proc/meminfo` (`MemTotal`).
+    pub memory_total: Metric<u64>,
     pub threads: Metric<u32>,
     pub processes: Metric<u32>,
     /// GPU utilisation, only available on drivers that expose
@@ -68,6 +71,7 @@ impl Sample {
         Self {
             cpu: Metric::Unsupported,
             memory: Metric::Unsupported,
+            memory_total: Metric::Unsupported,
             threads: Metric::Unsupported,
             processes: Metric::Unsupported,
             gpu: Metric::Unsupported,
@@ -99,12 +103,14 @@ impl Monitor {
     /// server's footprint (mpv children included) instead of its own.
     pub fn sample_of(&mut self, root: u32) -> Sample {
         let gpu = gpu_percent(Path::new("/sys/class/drm"));
+        let memory_total = mem_total(Path::new("/proc/meminfo"));
         let Some(tree) = read_tree(root) else {
             // Either this platform has no sampler, or the tree is gone. The
             // distinction belongs to the sampler, so ask it directly.
             return Sample {
                 cpu: Metric::Unsupported,
                 memory: Metric::Unsupported,
+                memory_total,
                 threads: Metric::Unsupported,
                 processes: Metric::Unsupported,
                 gpu,
@@ -117,6 +123,7 @@ impl Monitor {
             return Sample {
                 cpu: Metric::Unavailable,
                 memory: Metric::Unavailable,
+                memory_total,
                 threads: Metric::Unavailable,
                 processes: Metric::Unavailable,
                 gpu,
@@ -143,6 +150,7 @@ impl Monitor {
         Sample {
             cpu,
             memory: Metric::Value(tree.rss_bytes),
+            memory_total,
             threads: Metric::Value(tree.threads),
             processes: Metric::Value(tree.processes),
             gpu,
@@ -306,6 +314,25 @@ fn gpu_percent(root: &Path) -> Metric<f64> {
     busiest.map_or(Metric::Unsupported, Metric::Value)
 }
 
+/// Total physical memory in bytes, from `MemTotal` in `/proc/meminfo`. The
+/// Performance page shows Ferramari's share of it, which needs the whole.
+fn mem_total(path: &Path) -> Metric<u64> {
+    let Ok(text) = fs::read_to_string(path) else {
+        return Metric::Unsupported;
+    };
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("MemTotal:") {
+            return rest
+                .split_whitespace()
+                .next()
+                .and_then(|kib| kib.parse::<u64>().ok())
+                .map(|kib| kib.saturating_mul(1024))
+                .map_or(Metric::Unavailable, Metric::Value);
+        }
+    }
+    Metric::Unavailable
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -329,6 +356,21 @@ mod tests {
         let status = parse_status("Name:\tferramari\nVmRSS:\t  12345 kB\nThreads:\t7\n");
         assert_eq!(status.rss_kb, 12345);
         assert_eq!(status.threads, 7);
+    }
+
+    #[test]
+    fn mem_total_reads_kibibytes_as_bytes() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("ferramari-meminfo-{unique}"));
+        fs::write(&path, "MemTotal:       16384000 kB\nMemFree: 1 kB\n").unwrap();
+        assert_eq!(mem_total(&path), Metric::Value(16_384_000 * 1024));
+        fs::write(&path, "MemFree: 1 kB\n").unwrap();
+        assert_eq!(mem_total(&path), Metric::Unavailable);
+        let _ = std::fs::remove_file(path);
+        assert_eq!(mem_total(Path::new(&path)), Metric::Unsupported);
     }
 
     #[test]

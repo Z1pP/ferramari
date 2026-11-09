@@ -240,6 +240,19 @@ impl Engine {
         current
     }
 
+    /// What the decoder reported at the previous probe. Reading it also asks
+    /// the worker for a fresh round, so one supervision tick per second keeps
+    /// the Performance page current without ever blocking on mpv.
+    pub fn playback_stats(&mut self) -> mpv::PlaybackStats {
+        let Content::Video { mpv } = &self.content;
+        let Ok(mut mpv) = mpv.lock() else {
+            return mpv::PlaybackStats::default();
+        };
+        let stats = mpv.stats();
+        let _ = mpv.probe_hwdec();
+        stats
+    }
+
     /// True while the embedded player is alive.
     pub fn player_alive(&mut self) -> bool {
         match &mut self.content {

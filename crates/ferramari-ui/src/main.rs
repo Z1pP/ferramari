@@ -62,39 +62,40 @@ impl Page {
         Page::Settings,
     ];
 
+    /// Sidebar label. Short on purpose: the reference design keeps the rail
+    /// compact and puts the full name in the page header.
     fn title(self) -> String {
         match self {
             Page::Home => tr("Home"),
-            Page::Library => tr("Video library"),
-            Page::Online => tr("Wallpaper catalogue"),
+            Page::Library => tr("Library"),
+            Page::Online => tr("Online"),
             Page::Performance => tr("Performance"),
             Page::Settings => tr("Settings"),
         }
     }
 
-    /// Sidebar glyph. Plain Unicode symbols from the Miscellaneous Technical
-    /// and Geometric Shapes blocks: every Linux system ships a font covering
-    /// them (DejaVu Sans), and cosmic-text reaches it through font fallback.
-    /// The previous codepoints lived in the Private Use Area and assumed a
-    /// Material Symbols font that was never actually bundled — the icons
-    /// rendered as tofu boxes.
+    /// Sidebar glyph. Plain Unicode symbols: every Linux system ships a font
+    /// covering them (DejaVu Sans), and cosmic-text reaches it through font
+    /// fallback. The earlier codepoints lived in the Private Use Area and
+    /// assumed a Material Symbols font that was never bundled — they rendered
+    /// as tofu boxes.
     fn icon(self) -> char {
         match self {
-            Page::Home => '\u{2302}',        // ⌂ house
-            Page::Library => '\u{25A6}',     // ▦ filmstrip grid
-            Page::Online => '\u{25CD}',      // ◍ globe
-            Page::Performance => '\u{25A4}', // ▤ bar chart
-            Page::Settings => '\u{2699}',    // ⚙ gear
+            Page::Home => '\u{F015}',      // ⌂ house
+            Page::Library => '\u{F008}',   // filmstrip
+            Page::Online => '\u{F0AC}',    // globe
+            Page::Performance => '\u{F201}', // activity trace
+            Page::Settings => '\u{F013}',  // cog
         }
     }
 
     fn subtitle(self) -> String {
         match self {
-            Page::Home => tr("Your wallpapers at a glance"),
-            Page::Library => tr("Videos located in Ferramari folder"),
-            Page::Online => tr("Community sources"),
-            Page::Performance => tr("Live resource use of Ferramari and its media processes"),
-            Page::Settings => tr("Playback, wallpaper and system behaviour"),
+            Page::Home => tr("Your animated wallpaper engine"),
+            Page::Library => tr("Your local wallpapers"),
+            Page::Online => tr("Browse and download wallpapers"),
+            Page::Performance => tr("System monitoring and engine statistics"),
+            Page::Settings => tr("Configure Ferramari to your needs"),
         }
     }
 }
@@ -928,11 +929,16 @@ impl App {
                     Row::new()
                         .spacing(12)
                         .align_y(Alignment::Center)
-                        .push(text(page.icon()).size(17).color(if active {
-                            sem.accent_text
-                        } else {
-                            sem.text_secondary
-                        }))
+                        .push(
+                            text(page.icon())
+                                .size(17)
+                                .font(iced::Font::with_name("FontAwesome"))
+                                .color(if active {
+                                    sem.accent_text
+                                } else {
+                                    sem.text_secondary
+                                }),
+                        )
                         .push(text(page.title()).size(13).color(if active {
                             sem.accent_text
                         } else {

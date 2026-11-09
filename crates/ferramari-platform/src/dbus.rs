@@ -396,6 +396,14 @@ impl ServerInterface {
         self.snapshot().hwdec_running
     }
 
+    /// What the primary player's decoder reported: frame rate, codec,
+    /// geometry, dropped frames, position. A flat string map so clients need
+    /// no shared Rust types; an unknown number is an empty value, never zero.
+    #[zbus(property, name = "player_stats")]
+    fn player_stats(&self) -> HashMap<String, String> {
+        self.snapshot().player_stats.to_bus_map()
+    }
+
     #[zbus(property, name = "web_allow_network")]
     fn web_allow_network(&self) -> bool {
         self.snapshot().web_allow_network
@@ -512,6 +520,18 @@ impl PlayerInterface {
     #[zbus(property, name = "monitor_states")]
     fn monitor_states(&self) -> HashMap<String, String> {
         self.snapshot().monitor_states
+    }
+
+    /// Monitor name → `1920 × 1080`. Read-only, like the states above.
+    #[zbus(property, name = "monitor_resolutions")]
+    fn monitor_resolutions(&self) -> HashMap<String, String> {
+        self.snapshot().monitor_resolutions
+    }
+
+    /// Config key of the primary display; empty when nothing is primary.
+    #[zbus(property, name = "primary_monitor")]
+    fn primary_monitor(&self) -> String {
+        self.snapshot().primary_monitor
     }
 
     #[zbus(property, name = "rotations")]

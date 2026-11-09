@@ -121,6 +121,10 @@ pub struct App {
     /// supervision tick. Empty while nothing has decoded. The setting in the
     /// config is what the user asked for; this is what the machine does.
     hwdec_running: String,
+    /// What the primary player's decoder reported at the last tick: frame
+    /// rate, codec, geometry, dropped frames. Published to bus clients for
+    /// the Performance page; default while nothing is decoding.
+    player_stats: ferramari_core::stats::PlaybackStats,
 }
 
 impl App {
@@ -193,6 +197,7 @@ impl App {
             operation_status: String::new(),
             operation_error: false,
             hwdec_running: String::new(),
+            player_stats: ferramari_core::stats::PlaybackStats::default(),
         };
         app.sync_snapshot();
 
@@ -1336,17 +1341,42 @@ impl App {
     /// An empty result means nothing has decoded yet, and the UI stays quiet.
     fn poll_hwdec(&mut self) {
         let mut reports = Vec::new();
+        // The primary player's full reading feeds the Performance page; a
+        // machine with several monitors decodes the same file through the
+        // same options, so the primary is the representative one.
+        let mut primary_stats = ferramari_core::stats::PlaybackStats::default();
+        let mut saw_primary = false;
         for window in self.windows.iter_mut() {
             let report = window.hwdec_status().report();
             if !report.is_empty() && !reports.contains(&report) {
                 reports.push(report);
             }
+            if !saw_primary && window.is_primary() {
+                primary_stats = window.playback_stats();
+                saw_primary = true;
+            }
         }
+        if !saw_primary {
+            // No primary window at all (single monitor that is not flagged,
+            // or playback stopped): the first live player stands in.
+            for window in self.windows.iter_mut() {
+                let stats = window.playback_stats();
+                if stats.active {
+                    primary_stats = stats;
+                    break;
+                }
+            }
+        }
+        let stats_changed = primary_stats != self.player_stats;
+        if stats_changed {
+            self.player_stats = primary_stats;
+        }
+
         if reports.is_empty() {
             // Playback stopped, or every decoder is parked: the previous
             // reading describes a player that no longer exists, so it has to
             // be retracted from the snapshot as well, not only locally.
-            if !self.hwdec_running.is_empty() {
+            if !self.hwdec_running.is_empty() || stats_changed {
                 log::debug!("[HwDec] no player reporting a decoder any more");
                 self.hwdec_running = String::new();
                 self.sync_snapshot();
@@ -1354,24 +1384,27 @@ impl App {
             return;
         }
         let joined = reports.join(",");
-        if joined == self.hwdec_running {
+        if joined == self.hwdec_running && !stats_changed {
             return;
         }
-        // Log the raw facts rather than the user-facing sentence: the log is
-        // untranslated, and the verdict is derivable from these two values.
-        let verdict = self.hwdec_verdict(&joined);
-        if verdict.is_silent() {
-            log::debug!(
-                "[HwDec] requested {:?}, decoding as {joined}",
-                self.config.hwdec
-            );
-        } else {
-            log::warn!(
-                "[HwDec] requested {:?}, decoding as {joined}",
-                self.config.hwdec
-            );
+        if joined != self.hwdec_running {
+            // Log the raw facts rather than the user-facing sentence: the log
+            // is untranslated, and the verdict is derivable from these two
+            // values.
+            let verdict = self.hwdec_verdict(&joined);
+            if verdict.is_silent() {
+                log::debug!(
+                    "[HwDec] requested {:?}, decoding as {joined}",
+                    self.config.hwdec
+                );
+            } else {
+                log::warn!(
+                    "[HwDec] requested {:?}, decoding as {joined}",
+                    self.config.hwdec
+                );
+            }
+            self.hwdec_running = joined;
         }
-        self.hwdec_running = joined;
         // The reading is only useful if bus clients see it; publish it when it
         // changes rather than on every tick.
         self.sync_snapshot();
@@ -1755,6 +1788,24 @@ impl App {
                 .into_iter()
                 .map(|(monitor, state)| (monitor, state.as_str().to_string()))
                 .collect(),
+            monitor_resolutions: self
+                .monitors
+                .iter()
+                .map(|monitor| {
+                    let text = if monitor.width > 0 && monitor.height > 0 {
+                        format!("{} × {}", monitor.width, monitor.height)
+                    } else {
+                        String::new()
+                    };
+                    (monitor.name.clone(), text)
+                })
+                .collect(),
+            primary_monitor: self
+                .monitors
+                .iter()
+                .find(|monitor| monitor.is_primary)
+                .map(|monitor| monitor.name.clone())
+                .unwrap_or_default(),
             language: self.config.language.clone(),
             rotation_mode: self.config.rotation_mode.clone(),
             rotation_interval_sec: self.config.rotation_interval_sec,
@@ -1763,6 +1814,7 @@ impl App {
             idle_timeout_sec: self.config.idle_timeout_sec,
             hwdec: self.config.hwdec.clone(),
             hwdec_running: self.hwdec_running.clone(),
+            player_stats: self.player_stats.clone(),
             web_allow_network: self.config.web_allow_network,
             fade_duration_sec: self.config.fade_duration_sec,
             fade_interval: self.config.fade_interval,

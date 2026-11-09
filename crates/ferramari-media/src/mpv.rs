@@ -91,6 +91,8 @@ pub struct Mpv {
     worker: Option<JoinHandle<()>>,
 }
 
+pub use ferramari_core::stats::PlaybackStats;
+
 /// State readable from the command-loop thread without touching the IPC socket.
 struct Shared {
     volume: AtomicI64,
@@ -110,6 +112,9 @@ struct Shared {
     /// Last `hwdec-current` reading, so the owning thread can validate the
     /// hardware decoding request without waiting on the IPC socket.
     hwdec_current: Mutex<Option<String>>,
+    /// Last full statistics probe, written by the IPC worker and read by the
+    /// command loop once a second.
+    stats: Mutex<PlaybackStats>,
 }
 
 /// Commands for the dedicated IPC thread. Keeping them here means a wedged
@@ -117,10 +122,12 @@ struct Shared {
 /// work.
 enum Request {
     Execute(Value),
-    /// Read `hwdec-current` into the shared slot. The property only exists
-    /// once a file is being decoded, so a missing reply simply leaves the
-    /// previous reading in place and the caller probes again next tick.
-    ProbeHwdec,
+    /// Read the decoder facts the control surface shows: the hardware API in
+    /// use, the reported frame rate, codec, geometry, dropped frames and the
+    /// position. The properties only exist once a file is being decoded, so a
+    /// missing reply simply leaves the previous reading in place and the
+    /// caller probes again next tick.
+    ProbeStats,
     LoadFile(String),
     /// Remember `time-pos`, switch mpv to idle and unload the file. This frees
     /// the decoder and its buffers while keeping the process and IPC socket.
@@ -232,6 +239,7 @@ impl Mpv {
             parked_position: Mutex::new(None),
             parked: AtomicBool::new(false),
             hwdec_current: Mutex::new(None),
+            stats: Mutex::new(PlaybackStats::default()),
         });
         let stop = Arc::new(AtomicBool::new(false));
         let (requests, receiver) = mpsc::channel();
@@ -300,10 +308,11 @@ impl Mpv {
         self.set_property("vf", json!(filter))
     }
 
-    /// Ask the worker to read `hwdec-current`. Queued, never blocking: the
-    /// result appears in [`Mpv::hwdec_current`] on a later supervision tick.
+    /// Ask the worker to read the decoder properties. Queued, never blocking:
+    /// the results appear in [`Mpv::hwdec_current`] and [`Mpv::stats`] on a
+    /// later supervision tick.
     pub fn probe_hwdec(&mut self) -> anyhow::Result<()> {
-        self.enqueue(Request::ProbeHwdec)
+        self.enqueue(Request::ProbeStats)
     }
 
     /// The decoder mpv is actually using, from the last successful probe.
@@ -316,6 +325,16 @@ impl Mpv {
             .ok()
             .and_then(|current| current.clone());
         HwDec::from_report(value.as_deref())
+    }
+
+    /// Everything the last probe learned about the running decoder. Reads a
+    /// mutex written by the IPC worker, so the command loop never waits on mpv.
+    pub fn stats(&self) -> PlaybackStats {
+        self.shared
+            .stats
+            .lock()
+            .map(|stats| stats.clone())
+            .unwrap_or_default()
     }
 
     /// The volume last applied to mpv. Reads an atomic, so fade steps never
@@ -439,27 +458,15 @@ fn serve_ipc(mut ipc: Ipc, receiver: Receiver<Request>, shared: &Shared, _stop: 
                     }
                 }
             }
-            Request::ProbeHwdec => {
-                match exchange(&mut ipc, json!(["get_property", "hwdec-current"])) {
-                    Ok(reply) => {
-                        let value = reply
-                            .get("data")
-                            .and_then(Value::as_str)
-                            .map(str::to_string)
-                            .filter(|value| !value.is_empty());
-                        if let Ok(mut current) = shared.hwdec_current.lock() {
-                            *current = value;
+            Request::ProbeStats => {
+                match probe_stats(&mut ipc, shared) {
+                    Ok(()) => {}
+                    Err(err) => {
+                        record_failure(&err, false, shared);
+                        if is_fatal(&err) {
+                            break;
                         }
                     }
-                    // `hwdec-current` is *unavailable* until a file is being
-                    // decoded, so a rejection here is the normal answer during
-                    // startup and while a decoder is parked. Only a transport
-                    // failure deserves the usual error path.
-                    Err(err) if is_fatal(&err) => {
-                        record_failure(&err, false, shared);
-                        break;
-                    }
-                    Err(_) => {}
                 }
             }
             Request::LoadFile(source) => {
@@ -561,6 +568,70 @@ fn serve_ipc(mut ipc: Ipc, receiver: Receiver<Request>, shared: &Shared, _stop: 
             }
         }
     }
+}
+
+/// One `get_property` round-trip. `Ok(None)` means mpv declined to answer
+/// (the usual reply before a file is decoded); an `Err` is a transport
+/// failure and the caller must stop using the socket.
+fn read_property(ipc: &mut Ipc, name: &str) -> anyhow::Result<Option<Value>> {
+    match exchange(ipc, json!(["get_property", name])) {
+        Ok(reply) => Ok(reply.get("data").cloned()),
+        Err(err) if is_fatal(&err) => Err(err),
+        Err(_) => Ok(None),
+    }
+}
+
+/// Read the decoder properties one at a time and publish them.
+///
+/// mpv's batched `get` form is rejected by the builds this project targets,
+/// and a list would lose every value when one property is unavailable — which
+/// is the normal answer before the first frame. Property-level rejections are
+/// therefore skipped; only a transport error is returned, and then whatever
+/// was read up to that point is still published.
+fn probe_stats(ipc: &mut Ipc, shared: &Shared) -> anyhow::Result<()> {
+    let mut stats = PlaybackStats::default();
+    let transport_result = (|| -> anyhow::Result<()> {
+        if let Some(value) = read_property(ipc, "hwdec-current")? {
+            stats.hwdec = value.as_str().unwrap_or_default().to_string();
+        }
+        if let Some(value) = read_property(ipc, "container-fps")? {
+            stats.fps = value.as_f64().filter(|value| *value > 0.0);
+        }
+        if let Some(value) = read_property(ipc, "video-codec")? {
+            stats.codec = value.as_str().unwrap_or_default().to_string();
+        }
+        if let Some(value) = read_property(ipc, "width")? {
+            stats.width = value.as_u64().map(|value| value as u32);
+        }
+        if let Some(value) = read_property(ipc, "height")? {
+            stats.height = value.as_u64().map(|value| value as u32);
+        }
+        if let Some(value) = read_property(ipc, "frame-drop-count")? {
+            stats.dropped = value.as_u64();
+        }
+        if let Some(value) = read_property(ipc, "duration")? {
+            stats.duration = value.as_f64().filter(|value| value.is_finite() && *value > 0.0);
+        }
+        if let Some(value) = read_property(ipc, "time-pos")? {
+            stats.position = value.as_f64().filter(|value| value.is_finite() && *value >= 0.0);
+        }
+        Ok(())
+    })();
+
+    // Something decoded is what makes the rest of the card honest: a frame
+    // rate or a geometry is only a fact when a file is actually running.
+    stats.active = stats.fps.is_some() || stats.width.is_some();
+    if let Ok(mut slot) = shared.stats.lock() {
+        *slot = stats.clone();
+    }
+    if let Ok(mut current) = shared.hwdec_current.lock() {
+        // Keep the previous reading while nothing answers, so a parked
+        // decoder does not look like it fell back to software.
+        if stats.active || !stats.hwdec.is_empty() {
+            *current = Some(stats.hwdec.clone());
+        }
+    }
+    transport_result
 }
 
 /// Log a command failure and update the shared error slot. Returns true when
@@ -774,6 +845,7 @@ mod tests {
             parked_position: Mutex::new(None),
             parked: AtomicBool::new(false),
             hwdec_current: Mutex::new(None),
+            stats: Mutex::new(PlaybackStats::default()),
         }
     }
 
@@ -935,7 +1007,7 @@ mod tests {
             std::thread::spawn(move || serve_ipc(ipc, receiver, &shared, &stop))
         };
 
-        requests.send(Request::ProbeHwdec).unwrap();
+        requests.send(Request::ProbeStats).unwrap();
         let deadline = Instant::now() + Duration::from_secs(2);
         while shared.hwdec_current.lock().unwrap().as_deref() != Some("vulkan")
             && Instant::now() < deadline
@@ -948,7 +1020,7 @@ mod tests {
         );
 
         // `no` is mpv's way of saying the requested API is not in use.
-        requests.send(Request::ProbeHwdec).unwrap();
+        requests.send(Request::ProbeStats).unwrap();
         let deadline = Instant::now() + Duration::from_secs(2);
         while shared.hwdec_current.lock().unwrap().as_deref() != Some("no")
             && Instant::now() < deadline
@@ -1011,11 +1083,11 @@ mod tests {
 
         // A rejected probe followed by a live command proves the worker kept
         // the connection, and no user-facing error was recorded.
-        requests.send(Request::ProbeHwdec).unwrap();
+        requests.send(Request::ProbeStats).unwrap();
         requests
             .send(Request::Execute(json!(["set_property", "volume", 20])))
             .unwrap();
-        requests.send(Request::ProbeHwdec).unwrap();
+        requests.send(Request::ProbeStats).unwrap();
         requests.send(Request::Quit).unwrap();
         drop(requests);
         // Joining drains the queue, so every request above has been answered.

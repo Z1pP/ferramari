@@ -48,6 +48,10 @@ pub struct ServerState {
     pub monitor_states: HashMap<String, String>,
     /// Monitor name → `1920 × 1080` as the layout reports it.
     pub monitor_resolutions: HashMap<String, String>,
+    /// Monitor name → vertical refresh in hertz. Absent when the backend
+    /// could not measure it, which the UI shows as no rate at all rather than
+    /// as a guessed 60.
+    pub monitor_refresh: HashMap<String, u32>,
     /// Config key of the primary display, empty when the server says nothing.
     pub primary_monitor: String,
     pub rotations: HashMap<String, String>,
@@ -74,6 +78,9 @@ pub struct ServerState {
     pub player_stats: ferramari_core::stats::PlaybackStats,
     pub web_allow_network: bool,
     pub autostart_enabled: bool,
+    /// Whether the tray item is registered, which is what "run in background"
+    /// means to the user: close the window and the daemon stays reachable.
+    pub is_show_systray: bool,
     pub operation_status: String,
     pub operation_error: bool,
 }
@@ -254,6 +261,7 @@ impl Server {
             );
             state.web_allow_network = bool_of(&values, "web_allow_network");
             state.autostart_enabled = bool_of(&values, "autostart_enabled");
+            state.is_show_systray = bool_of(&values, "is_show_systray");
             state.operation_status = string_of(&values, "operation_status");
             state.operation_error = bool_of(&values, "operation_error");
         }
@@ -261,6 +269,7 @@ impl Server {
             state.data_source = string_map_of(&values, "data_source");
             state.monitor_states = string_map_of(&values, "monitor_states");
             state.monitor_resolutions = string_map_of(&values, "monitor_resolutions");
+            state.monitor_refresh = int_map_of(&values, "monitor_refresh");
             state.primary_monitor = string_of(&values, "primary_monitor");
             state.rotations = string_map_of(&values, "rotations");
         }
@@ -311,6 +320,15 @@ fn string_map_of(values: &HashMap<String, OwnedValue>, key: &str) -> HashMap<Str
         .get(key)
         .and_then(|value| value.try_clone().ok())
         .and_then(|value| HashMap::<String, String>::try_from(value).ok())
+        .unwrap_or_default()
+}
+
+/// A map of small integers, the shape `monitor_refresh` arrives as.
+fn int_map_of(values: &HashMap<String, OwnedValue>, key: &str) -> HashMap<String, u32> {
+    values
+        .get(key)
+        .and_then(|value| value.try_clone().ok())
+        .and_then(|value| HashMap::<String, u32>::try_from(value).ok())
         .unwrap_or_default()
 }
 

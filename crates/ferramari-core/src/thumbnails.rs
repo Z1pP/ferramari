@@ -77,9 +77,7 @@ fn run_ffmpeg(video: &Path, output: &Path, seek: bool, width: u32, height: u32) 
     let filter = format!(
         "scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}"
     );
-    command
-        .args(["-vf", &filter, "-frames:v", "1"])
-        .arg(output);
+    command.args(["-vf", &filter, "-frames:v", "1"]).arg(output);
     util::run_with_timeout(&mut command, Duration::from_secs(20))
 }
 

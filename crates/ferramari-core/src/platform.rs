@@ -135,6 +135,7 @@ mod tests {
             width: 1920,
             height: 1080,
             scale_factor: 1,
+            refresh_hz: None,
             is_primary: true,
             identity: DisplayIdentity::default(),
         }

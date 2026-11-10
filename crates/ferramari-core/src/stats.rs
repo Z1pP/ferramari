@@ -18,6 +18,15 @@ pub struct PlaybackStats {
     pub hwdec: String,
     /// `container-fps`, the rate the file was authored at.
     pub fps: Option<f64>,
+    /// `estimated-vf-fps`: the rate the decoder is actually producing. It is
+    /// not the same number as `fps` — a 60 FPS file capped to 30 by the Eco
+    /// Engine, or one the CPU cannot keep up with, decodes slower than it was
+    /// authored — and the frame-rate tile is about what is on screen now.
+    pub decoded_fps: Option<f64>,
+    /// `display-fps`: the rate the window is being refreshed at. `None` until
+    /// mpv has a video output to measure, which is why the tile prefers the
+    /// decoded rate and falls back to the authored one.
+    pub display_fps: Option<f64>,
     /// `video-codec`, mpv's long description.
     pub codec: String,
     pub width: Option<u32>,
@@ -84,11 +93,14 @@ impl PlaybackStats {
             _ => String::new(),
         };
         let integer = |value: Option<u64>| value.map(|value| value.to_string()).unwrap_or_default();
-        let dimension = |value: Option<u32>| value.map(|value| value.to_string()).unwrap_or_default();
+        let dimension =
+            |value: Option<u32>| value.map(|value| value.to_string()).unwrap_or_default();
         [
             ("hwdec".to_string(), self.hwdec.clone()),
             ("codec".to_string(), self.codec.clone()),
             ("fps".to_string(), number(self.fps)),
+            ("decoded_fps".to_string(), number(self.decoded_fps)),
+            ("display_fps".to_string(), number(self.display_fps)),
             ("dropped".to_string(), integer(self.dropped)),
             ("width".to_string(), dimension(self.width)),
             ("height".to_string(), dimension(self.height)),
@@ -122,6 +134,8 @@ impl PlaybackStats {
                 .map(|value| value == "true")
                 .unwrap_or(false),
             fps: number("fps"),
+            decoded_fps: number("decoded_fps"),
+            display_fps: number("display_fps"),
             dropped: unsigned("dropped"),
             codec: values.get("codec").cloned().unwrap_or_default(),
             width: dimension("width"),
@@ -216,6 +230,8 @@ mod tests {
             hwdec: "vaapi".into(),
             codec: "H.264 / AVC".into(),
             fps: Some(59.94),
+            decoded_fps: Some(58.71),
+            display_fps: Some(119.88),
             dropped: Some(12),
             width: Some(3840),
             height: Some(2160),

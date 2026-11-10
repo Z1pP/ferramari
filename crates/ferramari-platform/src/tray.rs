@@ -2,7 +2,7 @@
 //! KDE, and any other SNI host). No GTK dependency, so it is safe to spawn
 //! from the main process.
 
-use ksni::blocking::{Handle, TrayMethods};
+use ksni::blocking::TrayMethods;
 
 use ferramari_core::util::tr;
 use ksni::menu::StandardItem;
@@ -72,9 +72,13 @@ where
     })
 }
 
+/// The live tray item. `App` holds one so the "Run in background" switch can
+/// withdraw and re-register the icon at runtime.
+pub type Handle = ksni::blocking::Handle<Tray>;
+
 /// Spawn the tray. Returns a handle so the caller can keep it alive; `None`
 /// when the desktop has no StatusNotifierWatcher.
-pub fn spawn(tx: CommandSender) -> Option<Handle<Tray>> {
+pub fn spawn(tx: CommandSender) -> Option<Handle> {
     // The SNI spec name is `org.kde.StatusNotifierItem-<pid>-<n>`, which a
     // sandboxed app may not own: the bus policy only grants names under the
     // app's own id. ksni would fail the spawn outright, so inside Flatpak the

@@ -44,6 +44,10 @@ const fn tint(r: u8, g: u8, b: u8, a: f32) -> Color {
 /// mirroring how the GTK stylesheet substituted `@@TOKEN@@` placeholders.
 #[derive(Debug, Clone, Copy)]
 pub struct Semantics {
+    /// Which palette this is. A style that has to lean harder on black over a
+    /// light surface — the hero scrim is the one — reads this instead of
+    /// comparing colours to guess.
+    pub dark: bool,
     pub bg_bottom: Color,
     pub header_top: Color,
     pub header_bottom: Color,
@@ -105,6 +109,64 @@ pub struct Semantics {
     pub icon_hover: Color,
     /// Subtle radial gradient overlay for sidebar brand area.
     pub brand_glow: Color,
+
+    // --- Shell v4: the cinematic surface the reference design is drawn on --- //
+    // The reference is not a flat dark panel: it is a night sky with a cold
+    // blue light coming from the top-right, and every card is a piece of that
+    // same sky, edged in faint daylight. These tokens carry that; the older
+    // `surface`/`tile_bg` pair stays for widgets that want the flat material.
+    /// Top stop of the page backdrop gradient (cold, near the light source).
+    pub bg_glow: Color,
+    /// Middle stop: where the glow has faded into the base tone.
+    pub bg_mid: Color,
+    /// Bottom stop of the page backdrop gradient.
+    pub bg_deep: Color,
+    /// The rail's own pane, a shade deeper than a card so it reads as the
+    /// fixed layer the content slides over.
+    pub rail_bg: Color,
+    /// The strip the window's own title bar is painted on. The decorations
+    /// are off, so this is the topmost thing in the window.
+    pub title_bg: Color,
+    /// Text drawn on top of a wallpaper frame.
+    ///
+    /// Deliberately the same in both palettes. The scrim under it is black
+    /// with alpha, so it darkens whatever the video shows in either theme,
+    /// and a light-theme token here would put near-black text on a
+    /// near-black plate. The surface is the artwork, not the app, so the
+    /// app's theme does not get to choose the ink.
+    pub on_artwork: Color,
+    /// The quieter second line on that same plate.
+    pub on_artwork_soft: Color,
+    /// The plate a status badge sits on when it floats over artwork.
+    pub badge_artwork: Color,
+    /// The green that means "this is running", drawn on a wallpaper frame.
+    ///
+    /// Fixed across themes like `on_artwork`: the light theme's `success_tone`
+    /// is a dark green chosen to read on paper, and on the dark scrim over a
+    /// frame it is the least legible thing on the plate.
+    pub live_artwork: Color,
+    /// Card fill: translucent so the backdrop reads through it.
+    pub card_bg: Color,
+    /// Hairline edge of a card, brighter than `border`.
+    pub card_edge: Color,
+    /// Fill of the inner rows inside a card (list rows, tiles).
+    pub row_bg: Color,
+    /// Fill of the compact pills and chips.
+    pub pill_bg: Color,
+    /// Edge of the compact pills and chips.
+    pub pill_edge: Color,
+    /// Sparkline / progress stroke for the CPU series.
+    pub series_cpu: Color,
+    /// Sparkline stroke for the memory series.
+    pub series_ram: Color,
+    /// Sparkline stroke for the GPU series.
+    pub series_gpu: Color,
+    /// Sparkline stroke for the frame-rate series.
+    pub series_fps: Color,
+    /// Sparkline stroke for the frame-time series.
+    pub series_frame: Color,
+    /// The dark ink the amber buttons write their label in.
+    pub on_accent: Color,
 }
 
 impl Semantics {
@@ -114,6 +176,7 @@ impl Semantics {
     // root gradient fades from; cards stay translucent so the glow reads
     // through them.
     pub const DARK: Self = Self {
+        dark: true,
         bg_bottom: rgb(0x05, 0x08, 0x0E),
         header_top: rgb(0x0A, 0x12, 0x1E),
         header_bottom: rgb(0x07, 0x0B, 0x14),
@@ -163,10 +226,33 @@ impl Semantics {
         danger_tone: rgb(0xFF, 0x6B, 0x6B),
         icon_hover: white_a(0.08),
         brand_glow: tint(0xF9, 0x73, 0x16, 0.10),
+        // Shell v4 — Dark. The light source is the cold blue in the top
+        // corner; cards are translucent so it reads through them.
+        bg_glow: rgb(0x10, 0x24, 0x3A),
+        bg_mid: rgb(0x0A, 0x14, 0x22),
+        bg_deep: rgb(0x04, 0x07, 0x0C),
+        rail_bg: argb(0x0B, 0x12, 0x1E, 0.88),
+        title_bg: argb(0x07, 0x0C, 0x14, 0.92),
+        on_artwork: rgb(0xF5, 0xF7, 0xFA),
+        on_artwork_soft: rgb(0xC3, 0xCB, 0xD9),
+        badge_artwork: argb(0x0A, 0x10, 0x1A, 0.72),
+        live_artwork: rgb(0x34, 0xD3, 0x99),
+        card_bg: argb(0x0E, 0x16, 0x22, 0.78),
+        card_edge: white_a(0.09),
+        row_bg: white_a(0.04),
+        pill_bg: white_a(0.07),
+        pill_edge: white_a(0.12),
+        series_cpu: rgb(0x34, 0xD3, 0x99),
+        series_ram: rgb(0x60, 0xA5, 0xFA),
+        series_gpu: rgb(0xA7, 0x8B, 0xFA),
+        series_fps: rgb(0xFB, 0x92, 0x3C),
+        series_frame: rgb(0xF5, 0x9E, 0x0B),
+        on_accent: rgb(0x1A, 0x0D, 0x02),
     };
 
     // --- Light theme (v3: same orange accent, cool paper surface) ----------- //
     pub const LIGHT: Self = Self {
+        dark: false,
         bg_bottom: rgb(0xEE, 0xF1, 0xF6),
         header_top: rgb(0xFB, 0xFC, 0xFE),
         header_bottom: rgb(0xF1, 0xF4, 0xF9),
@@ -216,7 +302,41 @@ impl Semantics {
         danger_tone: rgb(0xC9, 0x2A, 0x2A),
         icon_hover: white_a(0.72),
         brand_glow: tint(0xF9, 0x73, 0x16, 0.07),
+        // Shell v4 — Light. Same structure, no night glow: the backdrop is
+        // paper lit from the top, cards are near-white panes.
+        bg_glow: rgb(0xF7, 0xFA, 0xFE),
+        bg_mid: rgb(0xEE, 0xF2, 0xF8),
+        bg_deep: rgb(0xE3, 0xE8, 0xF1),
+        rail_bg: white_a(0.90),
+        title_bg: white_a(0.55),
+        // Same ink as the dark palette: the scrim is black with alpha in both
+        // themes, so the text over a wallpaper frame is light in both.
+        on_artwork: rgb(0xF5, 0xF7, 0xFA),
+        on_artwork_soft: rgb(0xC3, 0xCB, 0xD9),
+        badge_artwork: argb(0x0A, 0x10, 0x1A, 0.72),
+        live_artwork: rgb(0x34, 0xD3, 0x99),
+        card_bg: white_a(0.82),
+        card_edge: tint(0x14, 0x17, 0x1E, 0.10),
+        row_bg: tint(0x14, 0x17, 0x1E, 0.04),
+        pill_bg: tint(0x14, 0x17, 0x1E, 0.06),
+        pill_edge: tint(0x14, 0x17, 0x1E, 0.12),
+        series_cpu: rgb(0x0F, 0x9E, 0x67),
+        series_ram: rgb(0x25, 0x63, 0xEB),
+        series_gpu: rgb(0x7C, 0x3A, 0xED),
+        series_fps: rgb(0xEA, 0x58, 0x0C),
+        series_frame: rgb(0xB4, 0x69, 0x0E),
+        on_accent: rgb(0xFF, 0xFF, 0xFF),
     };
+
+    /// The same colour at a fraction of its alpha, for the translucent fill
+    /// under a sparkline. Series colours are opaque tokens; a fill has to be
+    /// derived, not added, or the two drift apart when the palette changes.
+    pub fn fade(color: Color, alpha: f32) -> Color {
+        Color {
+            a: color.a * alpha,
+            ..color
+        }
+    }
 
     /// Resolve a theme mode string plus the desktop preference to a palette.
     /// `"dark"`, `"light"`, anything else means "follow system".

@@ -4,7 +4,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: ferramari\n"
-"Report-Msgid-Bugs-To: \n"
+"Report-Msgid-Bugs-To: https://github.com/Z1pP/ferramari/issues\n"
 "POT-Creation-Date: 2026-07-10 02:19+0900\n"
 "PO-Revision-Date: 2026-07-10 01:30+0900\n"
 "Last-Translator: Ferramari contributors\n"
@@ -15,759 +15,1193 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/ui/control.rs
-#, python-brace-format
-msgid "Set For {monitor}"
-msgstr "{monitor} に設定"
-
-#. add all option
-#: src/ui/control.rs
-msgid "Set For All"
-msgstr "すべてに設定"
-
-#: src/ui/control.rs
-msgid "Couldn't connect to server"
-msgstr "サーバーに接続できませんでした"
-
-#: src/ui/control.rs
-msgid "Welcome to Ferramari 🤗"
-msgstr "Ferramari へようこそ 🤗"
-
-#: src/ui/control.rs
-msgid ""
-"Quickstart for adding local videos:\n"
-" ・Click the folder icon to open the Ferramari folder\n"
-" ・Put your videos there\n"
-" ・Click the refresh button"
-msgstr ""
-"ローカル動画を追加するクイックスタート:\n"
-" ・フォルダーアイコンをクリックして Ferramari フォルダーを開きます\n"
-" ・動画をそこに入れます\n"
-" ・更新ボタンをクリックします"
-
-#: src/ui/control.rs
-msgid "Oops!"
-msgstr "おっと！"
-
-#: src/ui/control.rs
-msgid "No Video Selected"
-msgstr "動画が選択されていません"
-
-#: src/ui/control.rs
-msgid ""
-"There are no video selected.\n"
-"Please choose one first."
-msgstr ""
-"動画が選択されていません。\n"
-"まず動画を1つ選択してください。"
-
-#: src/ui/control.rs
-msgid "Please choose a HTML file"
-msgstr "HTML ファイルを選択してください"
-
-#: src/ui/control.rs
-#, python-brace-format
-msgid ""
-"Failed to access {url}. Error:\n"
-"{error}"
-msgstr ""
-"{url} にアクセスできませんでした。エラー:\n"
-"{error}"
-
-#: src/ui/control.rs
-#, python-brace-format
-msgid "Failed to access {url}. Error code: {code}"
-msgstr "{url} にアクセスできませんでした。エラーコード: {code}"
-
-#: src/ui/control.rs
-#, python-brace-format
-msgid ""
-"Failed to stream {url}. Error:\n"
-"{error}"
-msgstr ""
-"{url} のストリーミングに失敗しました。エラー:\n"
-"{error}"
-
-#.
-#: src/ui/menu.rs
-msgid "Show Ferramari"
-msgstr "Ferramari を表示"
-
-#.
-#: src/ui/menu.rs
-msgid "Toggle Mute Audio"
-msgstr "音声ミュートの切り替え"
-
-#.
-#: src/ui/menu.rs
-msgid "Toggle Play/Pause"
-msgstr "再生 / 一時停止の切り替え"
-
-#.
-#: src/ui/menu.rs
-msgid "Reload"
-msgstr "再読み込み"
-
-#.
-#: src/ui/menu.rs
-msgid "I'm Feeling Lucky"
-msgstr "おまかせ再生"
-
-#.
-#: src/ui/menu.rs
-msgid "Quit Ferramari"
-msgstr "Ferramari を終了"
-
-#: src/ui/control.rs
-msgid "Video wallpaper for Linux. Written in Rust. 🦀"
-msgstr "Linux 向けの動画ウォールペーパー。Rust で書かれています。🦀"
-
-#: src/ui/control.rs
-msgid "Quick toggles"
-msgstr "クイック切り替え"
-
-#: src/ui/control.rs
-msgid "Autostart after login"
-msgstr "ログイン後に自動起動"
-
-#: src/ui/control.rs
-msgid "Video frame can be applied as system wallpaper, look great in GNOME"
-msgstr "動画のフレームをシステム壁紙として適用でき、GNOME で美しく表示されます"
-
-#: src/ui/control.rs
-msgid "Apply static wallpaper"
-msgstr "静止画壁紙を適用"
-
-#: src/ui/control.rs
-msgid ""
-"Automatically pauses playback when maximized window or full screen mode is "
-"detected"
-msgstr ""
-"ウィンドウの最大化やフルスクリーンを検出すると自動的に再生を一時停止します"
-
-#: src/ui/control.rs
-msgid "Pause when maximized window"
-msgstr "ウィンドウ最大化時に一時停止"
-
-#: src/ui/control.rs
-msgid ""
-"Automatically mutes playback when maximized window or full screen mode is "
-"detected"
-msgstr "ウィンドウの最大化やフルスクリーンを検出すると自動的にミュートします"
-
-#: src/ui/control.rs
-msgid "Mute when maximized window"
-msgstr "ウィンドウ最大化時にミュート"
-
-#: src/ui/control.rs
-msgid "Volume control"
-msgstr "音量調整"
-
-#: src/ui/control.rs
-msgid "Static wallpaper blur radius"
-msgstr "静止画壁紙のぼかし半径"
-
-#: src/ui/control.rs
-msgid "Open config file"
-msgstr "設定ファイルを開く"
-
-#: src/ui/control.rs
-msgid "About Ferramari"
-msgstr "Ferramari について"
-
-#: src/ui/control.rs
-msgid ""
-"<span size=\"x-large\"><b>Local Video</b></span>\n"
-"Videos located in Ferramari folder"
-msgstr ""
-"<span size=\"x-large\"><b>ローカル動画</b></span>\n"
-"Ferramari フォルダー内の動画"
-
-#: src/ui/control.rs
-msgid "Refresh"
-msgstr "更新"
-
-#: src/ui/control.rs
-msgid "Open Ferramari folder"
-msgstr "Ferramari フォルダーを開く"
-
-#: src/ui/control.rs
-msgid "Apply"
-msgstr "適用"
-
-#: src/ui/control.rs
-msgid "Local Video"
-msgstr "ローカル動画"
-
-#: src/ui/control.rs
-msgid ""
-"<span size=\"x-large\"><b>Streaming</b></span>\n"
-"Videos from streaming services"
-msgstr ""
-"<span size=\"x-large\"><b>ストリーミング</b></span>\n"
-"ストリーミングサービスの動画"
-
-#: src/ui/control.rs
-msgid "<b>Streaming URL</b>"
-msgstr "<b>ストリーミング URL</b>"
-
-#: src/ui/control.rs
-msgid "💡\tThis feature uses <i>yt-dlp</i> as backend"
-msgstr "💡\tこの機能はバックエンドに <i>yt-dlp</i> を使用します"
-
-#: src/ui/control.rs
-msgid ""
-"😉\tTry playing any YouTube video! <a href=\"https://github.com/yt-dlp/yt-"
-"dlp/blob/master/supportedsites.md\">Supported sites (yt-dlp)</a>"
-msgstr ""
-"😉\tYouTube の動画を再生してみましょう！<a href=\"https://github.com/yt-dlp/"
-"yt-dlp/blob/master/supportedsites.md\">対応サイト (yt-dlp)</a>"
-
-#: src/ui/control.rs
-msgid "Hint"
-msgstr "ヒント"
-
-#: src/ui/control.rs
-msgid "Streaming"
-msgstr "ストリーミング"
-
-#: src/ui/control.rs
-msgid ""
-"<span size=\"x-large\"><b>Web Page</b></span>\n"
-"Set a web page as wallpaper"
-msgstr ""
-"<span size=\"x-large\"><b>ウェブページ</b></span>\n"
-"ウェブページを壁紙に設定"
-
-#: src/ui/control.rs
-msgid "<b>Web Page URL</b>"
-msgstr "<b>ウェブページ URL</b>"
-
-#: src/ui/control.rs
-msgid ""
-"💡\tCheck this website for some really amazing examples!\n"
-"\t<a href=\"https://alteredqualia.com/\">https://alteredqualia.com/</a>"
-msgstr ""
-"💡\tこのウェブサイトで素晴らしい例をチェックしてみましょう！\n"
-"\t<a href=\"https://alteredqualia.com/\">https://alteredqualia.com/</a>"
-
-#: src/ui/control.rs
-msgid "<b>Local Web Page</b>"
-msgstr "<b>ローカルウェブページ</b>"
-
-#: src/ui/control.rs
-msgid "Alternately, you can choose a HTML file on your PC"
-msgstr "または、PC 上の HTML ファイルを選択することもできます"
-
-#: src/ui/control.rs
-msgid "Web Page"
-msgstr "ウェブページ"
-
-#: src/ui/control.rs
-msgid "Project website"
-msgstr "プロジェクトのウェブサイト"
-
-#: src/ui/control.rs
-msgid "😉\tTry playing any YouTube video!"
-msgstr "😉	YouTube の動画を再生してみましょう！"
-
-#: src/ui/control.rs
-msgid "Check this website for some really amazing examples!"
-msgstr "このウェブサイトで素晴らしい例をチェックしてみましょう！"
-
-#: src/ui/control.rs
-msgid "Volume"
-msgstr "音量"
-
-#: src/ui/control.rs
-msgid "Mute"
-msgstr "ミュート"
-
-msgid "Theme"
-msgstr "テーマ"
-
-msgid "Window and control appearance"
-msgstr "ウィンドウとコントロールの外観"
-
-msgid "Light"
-msgstr "ライト"
-
-msgid "Dark"
-msgstr "ダーク"
-
-msgid "Language"
-msgstr "言語"
-
-msgid "Interface language"
-msgstr "表示言語"
-
-msgid "System default"
-msgstr "システム設定"
-
-msgid "Restart Ferramari to apply the language."
-msgstr "言語を適用するには Ferramari を再起動してください。"
-
-msgid "video"
-msgid_plural "videos"
-msgstr[0] "ビデオ"
-
-msgid "wallpaper"
-msgid_plural "wallpapers"
-msgstr[0] "壁紙"
-
-msgid "result"
-msgid_plural "results"
-msgstr[0] "結果"
-
-msgid "match"
-msgid_plural "matches"
-msgstr[0] "一致"
-
-msgid "Home"
-msgstr "ホーム"
-
-msgid "Overview"
-msgstr "概要"
-
-msgid "Your wallpapers at a glance"
-msgstr "壁紙とモニターの概要"
-
-msgid "Open library"
-msgstr "ライブラリを開く"
-
-msgid "Browse catalogue"
-msgstr "カタログを見る"
-
-msgid "Settings"
-msgstr "設定"
-
-msgid "Monitors"
-msgstr "モニター"
-
-msgid "Primary"
-msgstr "メイン"
-
-msgid "Choose video…"
-msgstr "ビデオを選択…"
-
-msgid "Playback, wallpaper and system behaviour"
-msgstr "再生・壁紙・システムの動作"
-
-msgid "App behaviour"
-msgstr "アプリの動作"
-
-msgid "New collection"
-msgstr "新しいコレクション"
-
-msgid "Create a collection"
-msgstr "コレクションを作成"
-
-msgid "All videos"
-msgstr "すべてのビデオ"
-
-msgid "Favorites"
-msgstr "お気に入り"
-
-msgid "Recent"
-msgstr "最近"
-
-msgid "Library view"
-msgstr "ライブラリ表示"
-
-msgid "Rename"
-msgstr "名前を変更"
-
-msgid "Delete"
-msgstr "削除"
-
-msgid "Add to collection"
-msgstr "コレクションに追加"
-
-msgid "Remove from collection"
-msgstr "コレクションから削除"
-
+#: crates/ferramari-ui/src/main.rs:412
+msgid "Active"
+msgstr "稼働中"
+
+#: crates/ferramari-ui/src/main.rs:2778
+msgid "Add"
+msgstr "追加"
+
+#: crates/ferramari-ui/src/main.rs:2875
+msgid "Add a video, or download one from Online."
+msgstr "動画を追加するか、オンラインからダウンロードしてください。"
+
+#: crates/ferramari-ui/src/main.rs:3114
+msgid "Add to"
+msgstr "追加先"
+
+#: crates/ferramari-ui/src/main.rs:3084
 msgid "Add to favorites"
 msgstr "お気に入りに追加"
 
-msgid "Remove from favorites"
-msgstr "お気に入りから削除"
+#: crates/ferramari-ui/src/main.rs:4541
+msgid "Add video"
+msgstr "動画を追加"
 
-msgid "Collection name"
-msgstr "コレクション名"
+#: crates/ferramari-ui/src/main.rs:2696
+msgid "Add Wallpaper"
+msgstr "壁紙を追加"
 
-msgid "Delete collection"
-msgstr "コレクションを削除"
+#: crates/ferramari-ui/src/main.rs:1389
+msgid "Added to library"
+msgstr "ライブラリに追加しました"
 
-msgid "New collection…"
-msgstr "新しいコレクション…"
+#: crates/ferramari-ui/src/main.rs:646
+msgid "Advanced"
+msgstr "詳細"
 
-msgid "No favorite videos"
-msgstr "お気に入りのビデオはありません"
+#: crates/ferramari-ui/src/main.rs:4773
+msgid "All"
+msgstr "すべて"
 
-msgid "Mark a video with the star to see it here."
-msgstr "スターを付けたビデオがここに表示されます。"
+#: crates/ferramari-ui/src/main.rs:1504
+msgid "All wallpapers"
+msgstr "すべての壁紙"
 
-msgid "No recently used videos"
-msgstr "最近使用したビデオはありません"
+#: crates/ferramari-ui/src/main.rs:642
+msgid "Appearance"
+msgstr "外観"
 
-msgid "Apply a video and it will appear here."
-msgstr "ビデオを適用するとここに表示されます。"
+#: crates/ferramari-ui/src/main.rs:4512
+msgid "Apply"
+msgstr "適用"
 
-msgid "Collection is empty"
-msgstr "コレクションは空です"
+#: crates/ferramari-ui/src/main.rs:2871
+msgid "Apply a wallpaper and it will show here."
+msgstr "壁紙を適用すると、ここに表示されます。"
 
-msgid "Add videos to this collection."
-msgstr "このコレクションにビデオを追加してください。"
+#: crates/ferramari-ui/src/main.rs:3073
+msgid "Apply as wallpaper"
+msgstr "壁紙として適用"
 
-msgid "Save"
-msgstr "保存"
+#: crates/ferramari-ui/src/main.rs:4484
+msgid "Apply static wallpaper"
+msgstr "静止画壁紙を適用"
 
-msgid "Default"
-msgstr "デフォルト"
+#: crates/ferramari-ui/src/main.rs:4083
+msgid "Ask GitHub for a new release when the window opens"
+msgstr "ウィンドウを開くとき GitHub に新しいリリースがあるか尋ねる"
 
-msgid "Title"
-msgstr "タイトル"
+#: crates/ferramari-ui/src/main.rs:4240
+msgid "Auto lets mpv choose; VA-API forces it; Off uses software"
+msgstr "「自動」は mpv に任せ、VA-API は強制し、「切」はソフトウェアで処理します"
+"「自動」は mpv に任せ、VA-API は強制し、「切」はソフトウェアで処理します自動"
+"では mpv が安全なデコーダーを選択し、VA-API は強制、オフはソフトウェアを使用"
+"します"
 
-msgid "Category"
-msgstr "カテゴリ"
+#: crates/ferramari-ui/src/main.rs:4473
+msgid "Auto-mute when maximized or fullscreen detected"
+msgstr "窓が最大化または全画面のときに自動で消音する"
 
-msgid "Size"
-msgstr "サイズ"
+#: crates/ferramari-ui/src/main.rs:4467
+msgid "Auto-pause when maximized or fullscreen detected"
+msgstr "窓が最大化または全画面のときに自動で一時停止する"
+"窓が最大化または全画面のときに自動で一時停止するウィンドウの最大化やフルスク"
+"リーンを検出すると自動的に再生を一時停止します"
 
-msgid "Duration"
-msgstr "再生時間"
+#: crates/ferramari-ui/src/main.rs:3914
+msgid "avg"
+msgstr "平均"
 
-msgid "Any resolution"
-msgstr "すべての解像度"
-
-msgid "Sort wallpapers"
-msgstr "壁紙を並べ替え"
-
-msgid "Resolution"
-msgstr "解像度"
-
-msgid "Resolution filters use metadata from downloaded previews"
-msgstr "解像度フィルターはダウンロード済みプレビューの情報を使用します"
-
-msgid "No wallpapers match these filters"
-msgstr "フィルターに一致する壁紙はありません"
-
-msgid "Try another resolution or reload the catalogue."
-msgstr "別の解像度を選ぶか、カタログを更新してください。"
-
-msgid "Rotation"
-msgstr "ローテーション"
-
-msgid "Rotate wallpapers"
-msgstr "壁紙を切り替える"
-
-msgid "Use the collection assigned to each monitor on Home"
-msgstr "ホームでモニターに割り当てたコレクションを使用します"
-
-msgid "Off"
-msgstr "オフ"
-
-msgid "In order"
-msgstr "順番"
-
-msgid "Random"
-msgstr "ランダム"
-
-msgid "Rotation mode"
-msgstr "ローテーション方式"
-
-msgid "Rotation interval"
-msgstr "ローテーション間隔"
-
-msgid "Minutes between changes"
-msgstr "変更間隔（分）"
-
-msgid "No rotation"
-msgstr "ローテーションなし"
-
-msgid "Rotate this collection on this monitor"
-msgstr "このモニターでこのコレクションを切り替える"
-
-msgid "Performance"
-msgstr "パフォーマンス"
-
-msgid "Playback profile"
-msgstr "再生プロファイル"
-
-msgid "Quality prioritises smoothness; Eco reduces decoding and pauses idle wallpapers"
-msgstr "品質は滑らかさを優先し、エコはデコードを減らしてアイドル時に壁紙を一時停止します"
-
-msgid "Quality"
-msgstr "品質"
-
+#: crates/ferramari-ui/src/main.rs:4217
 msgid "Balanced"
 msgstr "バランス"
 
-msgid "Eco"
-msgstr "エコ"
+#: crates/ferramari-ui/src/main.rs:4498
+msgid "Blur radius"
+msgstr "ぼかしの強さ"
 
-msgid "Pause on battery"
-msgstr "バッテリー時に一時停止"
+#: crates/ferramari-ui/src/main.rs:3425
+msgid "Browse"
+msgstr "見る"
 
-msgid "Stop playback when running on battery"
-msgstr "バッテリー駆動時は再生を停止します"
+#: crates/ferramari-ui/src/main.rs:120
+msgid "Browse and download wallpapers"
+msgstr "壁紙を検索してダウンロード"
 
-msgid "Battery"
-msgstr "バッテリー"
+#: crates/ferramari-ui/src/main.rs:2699
+msgid "Browse Online"
+msgstr "オンラインで探す"
 
-msgid "on battery"
-msgstr "バッテリー駆動"
+#: crates/ferramari-ui/src/main.rs:3593
+msgid "Categories"
+msgstr "カテゴリ"
 
-msgid "on AC power"
-msgstr "AC電源"
+#: crates/ferramari-ui/src/main.rs:4016
+msgid "Check for updates"
+msgstr "更新を確認"
 
-msgid "No battery detected"
-msgstr "バッテリーが見つかりません"
+#: crates/ferramari-ui/src/main.rs:4123
+msgid "Check now"
+msgstr "今すぐ確認"
 
-msgid "Eco idle delay"
-msgstr "エコのアイドル待機時間"
+#: crates/ferramari-ui/src/main.rs:1435
+msgid "Choose export destination"
+msgstr "書き出し先を選んでください"
 
-msgid "Minutes of desktop inactivity before Eco pauses playback"
-msgstr "エコが再生を一時停止するまでのデスクトップ無操作時間（分）"
+#: crates/ferramari-ui/src/main.rs:1404
+msgid "Choose package directory"
+msgstr "パッケージのフォルダを選んでください"
 
-msgid "Idle"
-msgstr "アイドル"
+#: crates/ferramari-ui/src/main.rs:1420
+msgid "Choose video to export"
+msgstr "書き出す動画を選んでください"
 
-msgid "Paused (covered)"
-msgstr "一時停止（ウィンドウに覆われています）"
+#: crates/ferramari-ui/src/main.rs:2692
+msgid "Choose Wallpaper"
+msgstr "壁紙を選ぶ"
 
-msgid "Hardware decoding"
-msgstr "ハードウェアデコード"
+#: crates/ferramari-ui/src/main.rs:4598
+msgid "Collection name"
+msgstr "コレクション名"
 
-msgid "Auto lets mpv choose a safe decoder; VA-API forces it; Off uses software"
-msgstr "自動では mpv が安全なデコーダーを選択し、VA-API は強制、オフはソフトウェアを使用します"
-msgid "Hardware decoding is not available here; decoding on the CPU."
-msgstr "ハードウェアデコードはこの環境では利用できません。CPUでデコードしています。"
-msgid "The selected decoder is not available here; decoding on the CPU instead."
-msgstr "選択したデコーダーは利用できないため、CPUでデコードしています。"
-msgid "The selected decoder is not available; a different hardware decoder is active."
-msgstr "選択したデコーダーは利用できません。代わりに別のハードウェアデコーダーが動作しています。"
-msgid "Hardware decoding is active although software decoding was selected."
-msgstr "ソフトウェアデコードが選択されているのにハードウェアデコードが有効です。"
+#: crates/ferramari-ui/src/main.rs:299
+msgid "Collections"
+msgstr "コレクション"
 
-msgid "Auto"
-msgstr "自動"
+#: crates/ferramari-ui/src/main.rs:122
+msgid "Configure Ferramari to your needs"
+msgstr "Ferramari を自分の使い方に合わせて設定"
 
-msgid "Allow network for web wallpapers"
-msgstr "Web 壁紙のネットワークを許可"
+#: crates/ferramari-core/src/update.rs:266
+#: crates/ferramari-core/src/update.rs:335
+msgid "Could not reach GitHub"
+msgstr "GitHub に接続できませんでした"
 
-msgid "Remote pages and subresources; local HTML and data URIs are always allowed"
-msgstr "リモートページとサブリソース。ローカル HTML と data URI は常に許可されます"
+#: crates/ferramari-core/src/update.rs:303
+msgid "Could not read the release listing"
+msgstr "リリース一覧を読めませんでした"
 
-msgid "Live resource use of Ferramari and its media processes"
-msgstr "Ferramari とメディアプロセスのリアルタイムリソース使用量"
+#: crates/ferramari-ui/src/main.rs:1021
+msgid "Could not save the update setting"
+msgstr "更新の設定を保存できませんでした"
 
-msgid "Resources"
-msgstr "リソース"
-
+#: crates/ferramari-ui/src/main.rs:2619
 msgid "CPU"
 msgstr "CPU"
 
-msgid "Memory (RSS)"
-msgstr "メモリ (RSS)"
-
-msgid "Threads"
-msgstr "スレッド"
-
-msgid "Processes"
-msgstr "プロセス"
-
-msgid "GPU"
-msgstr "GPU"
-
-msgid "Unavailable"
-msgstr "利用不可"
-
-msgid "Waiting for the first sample…"
-msgstr "最初のサンプルを待っています…"
-
-msgid "Metrics cover the Ferramari server and its mpv children."
-msgstr "計測対象は Ferramari サーバーとその mpv 子プロセスです。"
-
-msgid "Not measurable here"
-msgstr "この環境では計測不可"
-
-msgid "Measuring…"
-msgstr "計測中…"
-
-msgid "Live resource use"
-msgstr "リアルタイムのリソース使用量"
-
-msgid "Eco Engine"
-msgstr "Eco エンジン"
-
-msgid "Desktop integration"
-msgstr "デスクトップ統合"
-
-msgid "Native Wayland surfaces are not implemented; Ferramari uses X11/XWayland."
-msgstr "ネイティブ Wayland サーフェスは未実装です。Ferramari は X11/XWayland を使用します。"
-
-msgid "Import…"
-msgstr "インポート…"
-
-msgid "Import a .ferramari package"
-msgstr ".ferramari パッケージをインポート"
-
-msgid "Export .ferramari"
-msgstr ".ferramari にエクスポート"
-
-msgid "Export the selected video as a package"
-msgstr "選択した動画をパッケージとしてエクスポート"
-
-msgid "Choose a .ferramari package"
-msgstr ".ferramari パッケージを選択"
-
-msgid "Choose a folder for the package"
-msgstr "パッケージの保存先フォルダーを選択"
-
-msgid "Select"
-msgstr "選択"
-
-msgid "Done"
-msgstr "完了"
-
-msgid "Community sources"
-msgstr "コミュニティソース"
-
-msgid "No catalogue plugins installed"
-msgstr "カタログプラグインがインストールされていません"
-
-msgid "Sign"
-msgstr "署名"
-
-msgid "Verify"
-msgstr "検証"
-
-msgid "Sign package…"
-msgstr "パッケージに署名…"
-
-msgid "Verify package…"
-msgstr "パッケージを検証…"
-
-msgid "Checksum and sign this package with your key"
-msgstr "チェックサムを計算し、自分の鍵でパッケージに署名します"
-
-msgid "Check the package checksums and signature"
-msgstr "パッケージのチェックサムと署名を確認します"
-
-msgid "Sign this package?"
-msgstr "このパッケージに署名しますか?"
-
-msgid "Ferramari creates a signing key on first use and stores it in your config folder."
-msgstr "初回使用時に Ferramari が署名鍵を作成し、設定フォルダーに保存します。"
-
-msgid "Package integrity"
-msgstr "パッケージの完全性"
-
-msgid "All files match their recorded SHA-256"
-msgstr "すべてのファイルが記録された SHA-256 と一致します"
-
-msgid "The package carries no checksums"
-msgstr "パッケージにチェックサムがありません"
-
-msgid "Unsigned"
-msgstr "未署名"
-
-msgid "Signed by"
-msgstr "署名者:"
-
-msgid "The signature is not valid"
-msgstr "署名が不正です"
-
-msgid "Trust this author and remember the key for future packages?"
-msgstr "この作者を信頼し、今後のパッケージ用にこの鍵を記憶しますか?"
-
-msgid "Trusted key"
-msgstr "信頼する鍵"
-
-msgid "Signed"
-msgstr "署名済み"
-msgid "Package signing"
-msgstr "パッケージ署名"
-
-msgid "My key"
-msgstr "自分の鍵"
-
-msgid "No signing key yet"
-msgstr "署名鍵はまだありません"
-
-msgid "No trusted keys"
-msgstr "信頼する鍵はありません"
-
-msgid "Trusted keys"
-msgstr "信頼する鍵"
-
-msgid "Export my public key…"
-msgstr "公開鍵をエクスポート…"
-
-msgid "Share this file so others can trust your packages"
-msgstr "このファイルを共有すると他の人があなたのパッケージを信頼できます"
-
-msgid "Trust a key…"
-msgstr "鍵を信頼…"
-
-msgid "Open a public key file shared by another creator"
-msgstr "他の作者が共有した公開鍵ファイルを開きます"
-
-msgid "Save your public key"
-msgstr "公開鍵を保存"
-
-msgid "Choose a public key file"
-msgstr "公開鍵ファイルを選択"
-
-msgid "Could not export the key"
-msgstr "鍵をエクスポートできませんでした"
-msgid "Package…"
-msgstr "パッケージ…"
-
-msgid "Verify or sign this package"
-msgstr "パッケージを検証または署名"
-
-msgid "Remove favorite"
-msgstr "お気に入りから削除"
-
+#: crates/ferramari-ui/src/main.rs:4577
 msgid "Create"
 msgstr "作成"
 
-msgid "Collections"
-msgstr "コレクション"
-msgid "Ferramari packages"
-msgstr "Ferramari パッケージ"
+#: crates/ferramari-ui/src/main.rs:1915
+msgid "Daemon"
+msgstr "デーモン"
 
-msgid "Import, export, sign and verify .ferramari packages. Enter absolute paths; operations run in the server."
-msgstr ".ferramari パッケージのインポート、エクスポート、署名、検証を行います。絶対パスを入力してください。処理はサーバーで実行されます。"
+#: crates/ferramari-ui/src/main.rs:1917
+msgid "Daemon offline"
+msgstr "デーモン未接続"
 
-msgid "Package file or directory"
-msgstr "パッケージファイルまたはディレクトリ"
+#: crates/ferramari-ui/src/main.rs:4157 crates/ferramari-ui/src/main.rs:4177
+msgid "Dark"
+msgstr "ダーク"
 
-msgid "Export destination folder (for export)"
-msgstr "エクスポート先フォルダー"
+#: crates/ferramari-ui/src/main.rs:3798
+msgid "Decoder"
+msgstr "デコーダ"
 
-msgid "Import package"
-msgstr "パッケージをインポート"
+#: crates/ferramari-ui/src/main.rs:4169
+msgid "Desktop preference"
+msgstr "デスクトップの設定"
 
-msgid "Export video package"
-msgstr "動画パッケージをエクスポート"
+#: crates/ferramari-ui/src/main.rs:4671
+msgid "Destination…"
+msgstr "保存先…"
 
-msgid "Sign package"
-msgstr "パッケージに署名"
+#: crates/ferramari-ui/src/main.rs:2557
+msgid "display"
+msgid_plural "displays"
+msgstr[0] "台"
 
-msgid "Verify package"
-msgstr "パッケージを検証"
+#: crates/ferramari-ui/src/main.rs:1593 crates/ferramari-ui/src/main.rs:298
+msgid "Downloaded"
+msgstr "ダウンロード済み"
 
-msgid "Trust package key"
-msgstr "パッケージの鍵を信頼"
+#: crates/ferramari-ui/src/main.rs:3696
+msgid "Downloading…"
+msgstr "ダウンロード中…"
 
-msgid "Package request queued; processing continues in the server"
-msgstr "パッケージ処理をサーバーに送信しました"
+#: crates/ferramari-ui/src/main.rs:3823
+msgid "Dropped Frames"
+msgstr "破棄したフレーム"
 
+#: crates/ferramari-ui/src/main.rs:4222
+msgid "Eco"
+msgstr "エコ"
+
+#: crates/ferramari-ui/src/main.rs:877
 msgid "Enter the required package paths"
 msgstr "必要なパッケージパスを入力してください"
 
+#: crates/ferramari-ui/src/main.rs:4639
+msgid "Export"
+msgstr "書き出し"
+
+#: crates/ferramari-ui/src/main.rs:4689
+msgid "Export destination folder"
+msgstr "書き出し先のフォルダ"
+
+#: crates/ferramari-ui/src/main.rs:4777
+msgid "Favorites"
+msgstr "お気に入り"
+
+#: crates/ferramari-ui/src/main.rs:296
+msgid "Featured"
+msgstr "おすすめ"
+
+#: crates/ferramari-ui/src/main.rs:2655 crates/ferramari-ui/src/main.rs:3816
+msgid "FPS"
+msgstr "FPS"
+
+#: crates/ferramari-ui/src/main.rs:3911
+msgid "Frame Time"
+msgstr "フレーム時間"
+
+#: crates/ferramari-ui/src/main.rs:641
+msgid "General"
+msgstr "一般"
+
+#: crates/ferramari-core/src/update.rs:332
+msgid "GitHub rate limit reached; try again later"
+msgstr "GitHub の要求回数上限に達しました。あとでお試しください"
+
+#: crates/ferramari-ui/src/main.rs:2643
+msgid "GPU"
+msgstr "GPU"
+
+#: crates/ferramari-ui/src/main.rs:4562
+msgid "Groups of wallpapers a display can cycle through"
+msgstr "モニターが順繰りに表示できる壁紙の組"
+
+#: crates/ferramari-ui/src/main.rs:4238
+msgid "Hardware decoding"
+msgstr "ハードウェアデコード"
+
+#: crates/ferramari-ui/src/main.rs:83
+msgid "Home"
+msgstr "ホーム"
+
+#: crates/ferramari-ui/src/main.rs:2121 crates/ferramari-ui/src/main.rs:2658
+#: crates/ferramari-ui/src/main.rs:413
+msgid "Idle"
+msgstr "アイドル"
+
+#: crates/ferramari-ui/src/main.rs:4374
+msgid "Idle delay"
+msgstr "待機の猶予"
+
+#: crates/ferramari-ui/src/main.rs:4775
+msgid "Image"
+msgstr "画像"
+
+#: crates/ferramari-ui/src/main.rs:4634
+msgid "Import"
+msgstr "取り込み"
+
+#: crates/ferramari-ui/src/main.rs:4625
+msgid "Import, export, sign and verify .ferramari packages"
+msgstr ".ferramari パッケージの取り込み・書き出し・署名・検証"
+
+#: crates/ferramari-ui/src/main.rs:4444
+msgid "In order"
+msgstr "順番"
+
+#: crates/ferramari-ui/src/main.rs:3711
+msgid "Install"
+msgstr "インストール"
+
+#: crates/ferramari-ui/src/main.rs:4039
+msgid "Interface language"
+msgstr "表示言語"
+
+#: crates/ferramari-ui/src/main.rs:2765
+msgid "item"
+msgid_plural "items"
+msgstr[0] "件"
+
+#: crates/ferramari-ui/src/main.rs:4011
+msgid "Keep the daemon running when the window is closed"
+msgstr "ウィンドウを閉じてもデーモンを動かし続ける"
+
+#: crates/ferramari-ui/src/main.rs:4037
+msgid "Language"
+msgstr "言語"
+
+#: crates/ferramari-ui/src/main.rs:4080 crates/ferramari-ui/src/main.rs:4082
+msgid "Last checked"
+msgstr "最終確認"
+
+#: crates/ferramari-ui/src/main.rs:4005
+msgid "Launch Ferramari automatically on login"
+msgstr "ログイン時に Ferramari を自動的に起動する"
+
+#: crates/ferramari-ui/src/main.rs:84
+msgid "Library"
+msgstr "ライブラリ"
+
+#: crates/ferramari-ui/src/main.rs:4525
+msgid "Library folder"
+msgstr "ライブラリのフォルダ"
+
+#: crates/ferramari-ui/src/main.rs:4152 crates/ferramari-ui/src/main.rs:4179
+msgid "Light"
+msgstr "ライト"
+
+#: crates/ferramari-ui/src/main.rs:3243 crates/ferramari-ui/src/main.rs:4776
+msgid "Live"
+msgstr "再生中"
+
+#: crates/ferramari-ui/src/main.rs:3403
+msgid "Live wallpapers"
+msgstr "アニメーション壁紙"
+
+#: crates/ferramari-ui/src/main.rs:3326
+msgid "Load more"
+msgstr "もっと見る"
+
+#: crates/ferramari-ui/src/main.rs:3315
+msgid "Loading wallpapers…"
+msgstr "壁紙を読み込み中…"
+
+#: crates/ferramari-ui/src/main.rs:4404
+msgid "Minutes between wallpaper changes"
+msgstr "壁紙の切り替えの間隔(分)"
+
+#: crates/ferramari-ui/src/main.rs:4376
+msgid "Minutes of inactivity before the Eco Engine pauses"
+msgstr "操作がないまま何分でエコ機能が一時停止するか"
+
+#: crates/ferramari-ui/src/main.rs:2552 crates/ferramari-ui/src/main.rs:644
+msgid "Monitors"
+msgstr "モニター"
+
+#: crates/ferramari-ui/src/main.rs:2117
+msgid "MPV Engine"
+msgstr "MPV エンジン"
+
+#: crates/ferramari-ui/src/main.rs:3834
+msgid "MPV Statistics"
+msgstr "MPV の統計"
+
+#: crates/ferramari-ui/src/main.rs:4472
+msgid "Mute on maximized window"
+msgstr "最大化時に消音"
+
+#: crates/ferramari-ui/src/main.rs:428
+msgid "N/A"
+msgstr "計測不可"
+
+#: crates/ferramari-core/src/update.rs:68
+msgid "Never checked"
+msgstr "まだ確認していません"
+
+#: crates/ferramari-ui/src/main.rs:1149 crates/ferramari-ui/src/main.rs:1258
+#: crates/ferramari-ui/src/main.rs:834
+msgid "New collection"
+msgstr "新しいコレクション"
+
+#: crates/ferramari-ui/src/main.rs:4585
+msgid "No collections yet"
+msgstr "コレクションはまだありません"
+
+#: crates/ferramari-ui/src/main.rs:2447 crates/ferramari-ui/src/main.rs:4358
+msgid "No displays detected"
+msgstr "モニターが見つかりません"
+
+#: crates/ferramari-ui/src/main.rs:2866
+msgid "No favorites yet"
+msgstr "お気に入りはまだありません"
+
+#: crates/ferramari-ui/src/main.rs:2880
+msgid "No matches"
+msgstr "一致するものはありません"
+
+#: crates/ferramari-ui/src/main.rs:2493 crates/ferramari-ui/src/main.rs:4291
+msgid "No rotation"
+msgstr "ローテーションなし"
+
+#: crates/ferramari-ui/src/main.rs:2235 crates/ferramari-ui/src/main.rs:2476
+msgid "No wallpaper"
+msgstr "壁紙未設定"
+
+#: crates/ferramari-ui/src/main.rs:3318
+msgid "No wallpapers found"
+msgstr "壁紙が見つかりません"
+
+#: crates/ferramari-ui/src/main.rs:3405
+msgid "Nothing featured yet"
+msgstr "おすすめはまだありません"
+
+#: crates/ferramari-ui/src/main.rs:2881
+msgid "Nothing in the library matches that search."
+msgstr "検索に合う壁紙はライブラリにありません。"
+
+#: crates/ferramari-ui/src/main.rs:2275 crates/ferramari-ui/src/main.rs:2870
+msgid "Nothing is playing"
+msgstr "再生中のものはありません"
+
+#: crates/ferramari-ui/src/main.rs:2400
+msgid "Now Playing"
+msgstr "再生中"
+
+#: crates/ferramari-ui/src/main.rs:414
+msgid "Occluded"
+msgstr "窓で覆われています"
+
+#: crates/ferramari-ui/src/main.rs:4260 crates/ferramari-ui/src/main.rs:4439
+msgid "Off"
+msgstr "オフ"
+
+#: crates/ferramari-ui/src/main.rs:85
+msgid "Online"
+msgstr "オンライン"
+
+#: crates/ferramari-ui/src/main.rs:2772 crates/ferramari-ui/src/main.rs:4537
+msgid "Open folder"
+msgstr "フォルダを開く"
+
+#: crates/ferramari-ui/src/main.rs:2705
+msgid "Open Settings"
+msgstr "設定を開く"
+
+#: crates/ferramari-ui/src/main.rs:4681
+msgid "Package directory or video to export"
+msgstr "パッケージのフォルダ、または書き出す動画"
+
+#: crates/ferramari-ui/src/main.rs:1179
+msgid "Package request queued; processing continues in the server"
+msgstr "パッケージ処理をサーバーに送信しました"
+
+#: crates/ferramari-ui/src/main.rs:4623
+msgid "Packages"
+msgstr "パッケージ"
+
+#: crates/ferramari-ui/src/main.rs:4271
+msgid "Pause on battery"
+msgstr "バッテリー時に一時停止"
+
+#: crates/ferramari-ui/src/main.rs:4466
+msgid "Pause on maximized window"
+msgstr "最大化時に一時停止"
+
+#: crates/ferramari-ui/src/main.rs:645 crates/ferramari-ui/src/main.rs:86
+msgid "Performance"
+msgstr "パフォーマンス"
+
+#: crates/ferramari-ui/src/main.rs:3095
+msgid "Play on"
+msgstr "再生するモニター"
+
+#: crates/ferramari-ui/src/main.rs:643
+msgid "Playback"
+msgstr "再生"
+
+#: crates/ferramari-ui/src/main.rs:2529
+msgid "Primary"
+msgstr "メイン"
+
+#: crates/ferramari-ui/src/main.rs:4202
+msgid "Profile"
+msgstr "プロファイル"
+
+#: crates/ferramari-ui/src/main.rs:4212
+msgid "Quality"
+msgstr "品質"
+
+#: crates/ferramari-ui/src/main.rs:4204
+msgid "Quality prioritises smoothness; Eco reduces decoding"
+msgstr "「品質」は滑らかさを優先し、「エコ」はデコード量を減らします"
+"「品質」は滑らかさを優先し、「エコ」はデコード量を減らします品質は滑らかさを"
+"優先し、エコはデコードを減らしてアイドル時に壁紙を一時停止します"
+
+#: crates/ferramari-ui/src/main.rs:2631
+msgid "RAM"
+msgstr "メモリ"
+
+#: crates/ferramari-ui/src/main.rs:4449
+msgid "Random"
+msgstr "ランダム"
+
+#: crates/ferramari-ui/src/main.rs:2273
+msgid "Reading playback data…"
+msgstr "再生データを読み込み中…"
+
+#: crates/ferramari-ui/src/main.rs:2996
+msgid "Reading…"
+msgstr "読み込み中…"
+
+#: crates/ferramari-ui/src/main.rs:297
+msgid "Recent"
+msgstr "最近"
+
+#: crates/ferramari-ui/src/main.rs:4543
+msgid "Refresh"
+msgstr "更新"
+
+#: crates/ferramari-ui/src/main.rs:3129
+msgid "Reload"
+msgstr "再読み込み"
+
+#: crates/ferramari-ui/src/main.rs:4479
+msgid "Remote pages and subresources; local always allowed"
+msgstr "外部のページと素材を許可します。ローカルは常に許可されます"
+"外部のページと素材を許可します。ローカルは常に許可されますリモートページとサ"
+"ブリソース。ローカル HTML と data URI は常に許可されます"
+
+#: crates/ferramari-ui/src/main.rs:3112
+msgid "Remove from"
+msgstr "外す先"
+
+#: crates/ferramari-ui/src/main.rs:3082
+msgid "Remove from favorites"
+msgstr "お気に入りから削除"
+
+#: crates/ferramari-ui/src/main.rs:3136
+msgid "Remove from library"
+msgstr "ライブラリから外す"
+
+#: crates/ferramari-ui/src/main.rs:3807
+msgid "Resolution"
+msgstr "解像度"
+
+#: crates/ferramari-ui/src/main.rs:2082
+msgid "Restart"
+msgstr "再起動"
+
+#: crates/ferramari-ui/src/main.rs:4560
+msgid "Rotation collections"
+msgstr "ローテーション用コレクション"
+
+#: crates/ferramari-ui/src/main.rs:4402
+msgid "Rotation interval"
+msgstr "ローテーション間隔"
+
+#: crates/ferramari-ui/src/main.rs:4435
+msgid "Rotation mode"
+msgstr "ローテーション方式"
+
+#: crates/ferramari-ui/src/main.rs:4010
+msgid "Run in background"
+msgstr "背景で実行"
+
+#: crates/ferramari-ui/src/main.rs:2119
+msgid "Running"
+msgstr "稼働中"
+
+#: crates/ferramari-ui/src/main.rs:3405
+msgid "Search or pick a category"
+msgstr "検索するか、カテゴリを選んでください"
+
+#: crates/ferramari-ui/src/main.rs:1148 crates/ferramari-ui/src/main.rs:1257
+#: crates/ferramari-ui/src/main.rs:2145 crates/ferramari-ui/src/main.rs:840
+msgid "Search wallpapers…"
+msgstr "壁紙を検索…"
+
+#: crates/ferramari-ui/src/main.rs:868
 msgid "Server is unavailable"
 msgstr "サーバーに接続できません"
+
+#: crates/ferramari-ui/src/main.rs:87
+msgid "Settings"
+msgstr "設定"
+
+#: crates/ferramari-ui/src/main.rs:4643
+msgid "Sign"
+msgstr "署名"
+
+#: crates/ferramari-ui/src/main.rs:4661
+msgid "Source…"
+msgstr "ソース…"
+
+#: crates/ferramari-ui/src/main.rs:2867
+msgid "Star a wallpaper to keep it here."
+msgstr "壁紙に星を付けると、ここに表示されます。"
+
+#: crates/ferramari-ui/src/main.rs:2070
+msgid "Start"
+msgstr "開始"
+
+#: crates/ferramari-ui/src/main.rs:4004
+msgid "Start with system"
+msgstr "システム起動時に開始"
+
+#: crates/ferramari-ui/src/main.rs:2076
+msgid "Stop"
+msgstr "停止"
+
+#: crates/ferramari-ui/src/main.rs:4272
+msgid "Stop playback when running on battery"
+msgstr "バッテリー駆動時は再生を停止します"
+
+#: crates/ferramari-ui/src/main.rs:415
+msgid "Suspended"
+msgstr "一時停止"
+
+#: crates/ferramari-ui/src/main.rs:4047 crates/ferramari-ui/src/main.rs:4147
+msgid "System"
+msgstr "システム"
+
+#: crates/ferramari-ui/src/main.rs:121
+msgid "System monitoring and engine statistics"
+msgstr "システムとエンジンの統計"
+
+#: crates/ferramari-ui/src/main.rs:4171
+msgid "The desktop asks for a dark theme"
+msgstr "デスクトップはダークテーマを要求しています"
+
+#: crates/ferramari-ui/src/main.rs:4173
+msgid "The desktop asks for a light theme"
+msgstr "デスクトップはライトテーマを要求しています"
+
+#: crates/ferramari-ui/src/main.rs:2874
+msgid "The library is empty"
+msgstr "ライブラリは空です"
+
+#: crates/ferramari-core/src/update.rs:281
+msgid "The release listing had no version"
+msgstr "リリース一覧にバージョンがありませんでした"
+
+#: crates/ferramari-core/src/update.rs:334
+msgid ""
+"The release listing was not found (is the project still at the same address?)"
+msgstr "リリース一覧が見つかりません(プロジェクトの場所が変わった可能性があります)"
+"リリース一覧が見つかりません(プロジェクトの場所が変わった可能性があります)"
+
+#: crates/ferramari-core/src/update.rs:308
+msgid "The release listing was not valid JSON"
+msgstr "リリース一覧は有効な JSON ではありませんでした"
+
+#: crates/ferramari-core/src/update.rs:305
+msgid "The release listing was unexpectedly large"
+msgstr "リリース一覧が想定外に大きいサイズでした"
+
+#: crates/ferramari-ui/src/main.rs:4138
+msgid "Theme"
+msgstr "テーマ"
+
+#: crates/ferramari-ui/src/main.rs:4114
+msgid "This version"
+msgstr "現在のバージョン"
+
+#: crates/ferramari-ui/src/main.rs:4650
+msgid "Trust key"
+msgstr "鍵を信頼"
+
+#: crates/ferramari-ui/src/main.rs:417
+msgid "Unknown"
+msgstr "不明"
+
+#: crates/ferramari-ui/src/main.rs:3802 crates/ferramari-ui/src/main.rs:3810
+#: crates/ferramari-ui/src/main.rs:3819 crates/ferramari-ui/src/main.rs:3827
+msgid "unknown"
+msgstr "不明"
+
+#: crates/ferramari-core/src/update.rs:66
+msgid "Update available:"
+msgstr "更新があります:"
+
+#: crates/ferramari-ui/src/main.rs:4645
+msgid "Verify"
+msgstr "検証"
+
+#: crates/ferramari-ui/src/main.rs:3799 crates/ferramari-ui/src/main.rs:4774
+msgid "Video"
+msgstr "動画"
+
+#: crates/ferramari-ui/src/main.rs:4485
+msgid "Video frame applied as system wallpaper"
+msgstr "動画の1フレームをデスクトップの壁紙にする"
+
+#: crates/ferramari-ui/src/main.rs:4666
+msgid "Video…"
+msgstr "動画…"
+
+#: crates/ferramari-ui/src/main.rs:3915
+msgid "Waiting for the first frame"
+msgstr "最初のフレームを待っています"
+
+#: crates/ferramari-ui/src/main.rs:3768
+msgid "Waiting for the first sample…"
+msgstr "最初のサンプルを待っています…"
+
+#: crates/ferramari-ui/src/main.rs:4478
+msgid "Web wallpapers network access"
+msgstr "Web 壁紙のネットワーク利用"
+
+#: crates/ferramari-ui/src/main.rs:4140
+msgid "Window and control appearance"
+msgstr "ウィンドウとコントロールの外観"
+
+#: crates/ferramari-core/src/update.rs:64
+msgid "You are up to date"
+msgstr "最新版です"
+
+#: crates/ferramari-ui/src/main.rs:118
+msgid "Your animated wallpaper engine"
+msgstr "アニメーション壁紙エンジン"
+
+#: crates/ferramari-ui/src/main.rs:119
+msgid "Your local wallpapers"
+msgstr "ローカルの壁紙"
+
+#: crates/ferramari-ui/src/main.rs:429
+msgid "—"
+msgstr "—"
+
+#: crates/ferramari-ui/src/main.rs:430
+msgid "…"
+msgstr "…"
+
+#, python-brace-format
+#~ msgid "Set For {monitor}"
+#~ msgstr "{monitor} に設定"
+
+#~ msgid "Set For All"
+#~ msgstr "すべてに設定"
+
+#~ msgid "Couldn't connect to server"
+#~ msgstr "サーバーに接続できませんでした"
+
+#~ msgid "Welcome to Ferramari 🤗"
+#~ msgstr "Ferramari へようこそ 🤗"
+
+#~ msgid ""
+#~ "Quickstart for adding local videos:\n"
+#~ " ・Click the folder icon to open the Ferramari folder\n"
+#~ " ・Put your videos there\n"
+#~ " ・Click the refresh button"
+#~ msgstr ""
+#~ "ローカル動画を追加するクイックスタート:\n"
+#~ " ・フォルダーアイコンをクリックして Ferramari フォルダーを開きます\n"
+#~ " ・動画をそこに入れます\n"
+#~ " ・更新ボタンをクリックします"
+
+#~ msgid "Oops!"
+#~ msgstr "おっと！"
+
+#~ msgid "No Video Selected"
+#~ msgstr "動画が選択されていません"
+
+#~ msgid ""
+#~ "There are no video selected.\n"
+#~ "Please choose one first."
+#~ msgstr ""
+#~ "動画が選択されていません。\n"
+#~ "まず動画を1つ選択してください。"
+
+#~ msgid "Please choose a HTML file"
+#~ msgstr "HTML ファイルを選択してください"
+
+#, python-brace-format
+#~ msgid ""
+#~ "Failed to access {url}. Error:\n"
+#~ "{error}"
+#~ msgstr ""
+#~ "{url} にアクセスできませんでした。エラー:\n"
+#~ "{error}"
+
+#, python-brace-format
+#~ msgid "Failed to access {url}. Error code: {code}"
+#~ msgstr "{url} にアクセスできませんでした。エラーコード: {code}"
+
+#, python-brace-format
+#~ msgid ""
+#~ "Failed to stream {url}. Error:\n"
+#~ "{error}"
+#~ msgstr ""
+#~ "{url} のストリーミングに失敗しました。エラー:\n"
+#~ "{error}"
+
+#~ msgid "Show Ferramari"
+#~ msgstr "Ferramari を表示"
+
+#~ msgid "Toggle Mute Audio"
+#~ msgstr "音声ミュートの切り替え"
+
+#~ msgid "Toggle Play/Pause"
+#~ msgstr "再生 / 一時停止の切り替え"
+
+#~ msgid "I'm Feeling Lucky"
+#~ msgstr "おまかせ再生"
+
+#~ msgid "Quit Ferramari"
+#~ msgstr "Ferramari を終了"
+
+#~ msgid "Video wallpaper for Linux. Written in Rust. 🦀"
+#~ msgstr "Linux 向けの動画ウォールペーパー。Rust で書かれています。🦀"
+
+#~ msgid "Quick toggles"
+#~ msgstr "クイック切り替え"
+
+#~ msgid "Autostart after login"
+#~ msgstr "ログイン後に自動起動"
+
+#~ msgid "Volume control"
+#~ msgstr "音量調整"
+
+#~ msgid "Static wallpaper blur radius"
+#~ msgstr "静止画壁紙のぼかし半径"
+
+#~ msgid "Open config file"
+#~ msgstr "設定ファイルを開く"
+
+#~ msgid "About Ferramari"
+#~ msgstr "Ferramari について"
+
+#~ msgid ""
+#~ "<span size=\"x-large\"><b>Local Video</b></span>\n"
+#~ "Videos located in Ferramari folder"
+#~ msgstr ""
+#~ "<span size=\"x-large\"><b>ローカル動画</b></span>\n"
+#~ "Ferramari フォルダー内の動画"
+
+#~ msgid "Local Video"
+#~ msgstr "ローカル動画"
+
+#~ msgid ""
+#~ "<span size=\"x-large\"><b>Streaming</b></span>\n"
+#~ "Videos from streaming services"
+#~ msgstr ""
+#~ "<span size=\"x-large\"><b>ストリーミング</b></span>\n"
+#~ "ストリーミングサービスの動画"
+
+#~ msgid "<b>Streaming URL</b>"
+#~ msgstr "<b>ストリーミング URL</b>"
+
+#~ msgid "💡\tThis feature uses <i>yt-dlp</i> as backend"
+#~ msgstr "💡\tこの機能はバックエンドに <i>yt-dlp</i> を使用します"
+
+#~ msgid ""
+#~ "😉\tTry playing any YouTube video! <a href=\"https://github.com/yt-dlp/yt-"
+#~ "dlp/blob/master/supportedsites.md\">Supported sites (yt-dlp)</a>"
+#~ msgstr ""
+#~ "😉\tYouTube の動画を再生してみましょう！<a href=\"https://github.com/yt-"
+#~ "dlp/yt-dlp/blob/master/supportedsites.md\">対応サイト (yt-dlp)</a>"
+
+#~ msgid "Hint"
+#~ msgstr "ヒント"
+
+#~ msgid "Streaming"
+#~ msgstr "ストリーミング"
+
+#~ msgid ""
+#~ "<span size=\"x-large\"><b>Web Page</b></span>\n"
+#~ "Set a web page as wallpaper"
+#~ msgstr ""
+#~ "<span size=\"x-large\"><b>ウェブページ</b></span>\n"
+#~ "ウェブページを壁紙に設定"
+
+#~ msgid "<b>Web Page URL</b>"
+#~ msgstr "<b>ウェブページ URL</b>"
+
+#~ msgid ""
+#~ "💡\tCheck this website for some really amazing examples!\n"
+#~ "\t<a href=\"https://alteredqualia.com/\">https://alteredqualia.com/</a>"
+#~ msgstr ""
+#~ "💡\tこのウェブサイトで素晴らしい例をチェックしてみましょう！\n"
+#~ "\t<a href=\"https://alteredqualia.com/\">https://alteredqualia.com/</a>"
+
+#~ msgid "<b>Local Web Page</b>"
+#~ msgstr "<b>ローカルウェブページ</b>"
+
+#~ msgid "Alternately, you can choose a HTML file on your PC"
+#~ msgstr "または、PC 上の HTML ファイルを選択することもできます"
+
+#~ msgid "Web Page"
+#~ msgstr "ウェブページ"
+
+#~ msgid "Project website"
+#~ msgstr "プロジェクトのウェブサイト"
+
+#~ msgid "😉\tTry playing any YouTube video!"
+#~ msgstr "😉\tYouTube の動画を再生してみましょう！"
+
+#~ msgid "Check this website for some really amazing examples!"
+#~ msgstr "このウェブサイトで素晴らしい例をチェックしてみましょう！"
+
+#~ msgid "Volume"
+#~ msgstr "音量"
+
+#~ msgid "Mute"
+#~ msgstr "ミュート"
+
+#~ msgid "Restart Ferramari to apply the language."
+#~ msgstr "言語を適用するには Ferramari を再起動してください。"
+
+#~ msgid "result"
+#~ msgid_plural "results"
+#~ msgstr[0] "結果"
+
+#~ msgid "Overview"
+#~ msgstr "概要"
+
+#~ msgid "Playback, wallpaper and system behaviour"
+#~ msgstr "再生・壁紙・システムの動作"
+
+#~ msgid "App behaviour"
+#~ msgstr "アプリの動作"
+
+#~ msgid "Create a collection"
+#~ msgstr "コレクションを作成"
+
+#~ msgid "Rename"
+#~ msgstr "名前を変更"
+
+#~ msgid "Delete"
+#~ msgstr "削除"
+
+#~ msgid "Remove from collection"
+#~ msgstr "コレクションから削除"
+
+#~ msgid "Delete collection"
+#~ msgstr "コレクションを削除"
+
+#~ msgid "New collection…"
+#~ msgstr "新しいコレクション…"
+
+#~ msgid "No recently used videos"
+#~ msgstr "最近使用したビデオはありません"
+
+#~ msgid "Collection is empty"
+#~ msgstr "コレクションは空です"
+
+#~ msgid "Add videos to this collection."
+#~ msgstr "このコレクションにビデオを追加してください。"
+
+#~ msgid "Save"
+#~ msgstr "保存"
+
+#~ msgid "Default"
+#~ msgstr "デフォルト"
+
+#~ msgid "Title"
+#~ msgstr "タイトル"
+
+#~ msgid "Size"
+#~ msgstr "サイズ"
+
+#~ msgid "Duration"
+#~ msgstr "再生時間"
+
+#~ msgid "Any resolution"
+#~ msgstr "すべての解像度"
+
+#~ msgid "Resolution filters use metadata from downloaded previews"
+#~ msgstr "解像度フィルターはダウンロード済みプレビューの情報を使用します"
+
+#~ msgid "No wallpapers match these filters"
+#~ msgstr "フィルターに一致する壁紙はありません"
+
+#~ msgid "Try another resolution or reload the catalogue."
+#~ msgstr "別の解像度を選ぶか、カタログを更新してください。"
+
+#~ msgid "Rotation"
+#~ msgstr "ローテーション"
+
+#~ msgid "Use the collection assigned to each monitor on Home"
+#~ msgstr "ホームでモニターに割り当てたコレクションを使用します"
+
+#~ msgid "Rotate this collection on this monitor"
+#~ msgstr "このモニターでこのコレクションを切り替える"
+
+#~ msgid "Battery"
+#~ msgstr "バッテリー"
+
+#~ msgid "on battery"
+#~ msgstr "バッテリー駆動"
+
+#~ msgid "on AC power"
+#~ msgstr "AC電源"
+
+#~ msgid "Paused (covered)"
+#~ msgstr "一時停止（ウィンドウに覆われています）"
+
+#~ msgid "Hardware decoding is not available here; decoding on the CPU."
+#~ msgstr ""
+#~ "ハードウェアデコードはこの環境では利用できません。CPUでデコードしていま"
+#~ "す。"
+
+#~ msgid ""
+#~ "The selected decoder is not available here; decoding on the CPU instead."
+#~ msgstr "選択したデコーダーは利用できないため、CPUでデコードしています。"
+
+#~ msgid ""
+#~ "The selected decoder is not available; a different hardware decoder is "
+#~ "active."
+#~ msgstr ""
+#~ "選択したデコーダーは利用できません。代わりに別のハードウェアデコーダーが動"
+#~ "作しています。"
+
+#~ msgid "Hardware decoding is active although software decoding was selected."
+#~ msgstr ""
+#~ "ソフトウェアデコードが選択されているのにハードウェアデコードが有効です。"
+
+#~ msgid "Auto"
+#~ msgstr "自動"
+
+#~ msgid "Allow network for web wallpapers"
+#~ msgstr "Web 壁紙のネットワークを許可"
+
+#~ msgid "Live resource use of Ferramari and its media processes"
+#~ msgstr "Ferramari とメディアプロセスのリアルタイムリソース使用量"
+
+#~ msgid "Resources"
+#~ msgstr "リソース"
+
+#~ msgid "Memory (RSS)"
+#~ msgstr "メモリ (RSS)"
+
+#~ msgid "Threads"
+#~ msgstr "スレッド"
+
+#~ msgid "Processes"
+#~ msgstr "プロセス"
+
+#~ msgid "Metrics cover the Ferramari server and its mpv children."
+#~ msgstr "計測対象は Ferramari サーバーとその mpv 子プロセスです。"
+
+#~ msgid "Not measurable here"
+#~ msgstr "この環境では計測不可"
+
+#~ msgid "Live resource use"
+#~ msgstr "リアルタイムのリソース使用量"
+
+#~ msgid ""
+#~ "Native Wayland surfaces are not implemented; Ferramari uses X11/XWayland."
+#~ msgstr ""
+#~ "ネイティブ Wayland サーフェスは未実装です。Ferramari は X11/XWayland を使"
+#~ "用します。"
+
+#~ msgid "Export .ferramari"
+#~ msgstr ".ferramari にエクスポート"
+
+#~ msgid "Export the selected video as a package"
+#~ msgstr "選択した動画をパッケージとしてエクスポート"
+
+#~ msgid "Choose a .ferramari package"
+#~ msgstr ".ferramari パッケージを選択"
+
+#~ msgid "Choose a folder for the package"
+#~ msgstr "パッケージの保存先フォルダーを選択"
+
+#~ msgid "Select"
+#~ msgstr "選択"
+
+#~ msgid "Done"
+#~ msgstr "完了"
+
+#~ msgid "Community sources"
+#~ msgstr "コミュニティソース"
+
+#~ msgid "No catalogue plugins installed"
+#~ msgstr "カタログプラグインがインストールされていません"
+
+#~ msgid "Sign package…"
+#~ msgstr "パッケージに署名…"
+
+#~ msgid "Verify package…"
+#~ msgstr "パッケージを検証…"
+
+#~ msgid "Checksum and sign this package with your key"
+#~ msgstr "チェックサムを計算し、自分の鍵でパッケージに署名します"
+
+#~ msgid "Check the package checksums and signature"
+#~ msgstr "パッケージのチェックサムと署名を確認します"
+
+#~ msgid "Sign this package?"
+#~ msgstr "このパッケージに署名しますか?"
+
+#~ msgid ""
+#~ "Ferramari creates a signing key on first use and stores it in your config "
+#~ "folder."
+#~ msgstr ""
+#~ "初回使用時に Ferramari が署名鍵を作成し、設定フォルダーに保存します。"
+
+#~ msgid "Package integrity"
+#~ msgstr "パッケージの完全性"
+
+#~ msgid "All files match their recorded SHA-256"
+#~ msgstr "すべてのファイルが記録された SHA-256 と一致します"
+
+#~ msgid "The package carries no checksums"
+#~ msgstr "パッケージにチェックサムがありません"
+
+#~ msgid "Unsigned"
+#~ msgstr "未署名"
+
+#~ msgid "Signed by"
+#~ msgstr "署名者:"
+
+#~ msgid "The signature is not valid"
+#~ msgstr "署名が不正です"
+
+#~ msgid "Trust this author and remember the key for future packages?"
+#~ msgstr "この作者を信頼し、今後のパッケージ用にこの鍵を記憶しますか?"
+
+#~ msgid "Signed"
+#~ msgstr "署名済み"
+
+#~ msgid "Package signing"
+#~ msgstr "パッケージ署名"
+
+#~ msgid "My key"
+#~ msgstr "自分の鍵"
+
+#~ msgid "No signing key yet"
+#~ msgstr "署名鍵はまだありません"
+
+#~ msgid "No trusted keys"
+#~ msgstr "信頼する鍵はありません"
+
+#~ msgid "Trusted keys"
+#~ msgstr "信頼する鍵"
+
+#~ msgid "Export my public key…"
+#~ msgstr "公開鍵をエクスポート…"
+
+#~ msgid "Share this file so others can trust your packages"
+#~ msgstr "このファイルを共有すると他の人があなたのパッケージを信頼できます"
+
+#~ msgid "Trust a key…"
+#~ msgstr "鍵を信頼…"
+
+#~ msgid "Open a public key file shared by another creator"
+#~ msgstr "他の作者が共有した公開鍵ファイルを開きます"
+
+#~ msgid "Save your public key"
+#~ msgstr "公開鍵を保存"
+
+#~ msgid "Choose a public key file"
+#~ msgstr "公開鍵ファイルを選択"
+
+#~ msgid "Could not export the key"
+#~ msgstr "鍵をエクスポートできませんでした"
+
+#~ msgid "Verify or sign this package"
+#~ msgstr "パッケージを検証または署名"
+
+#~ msgid "Ferramari packages"
+#~ msgstr "Ferramari パッケージ"
+
+#~ msgid ""
+#~ "Import, export, sign and verify .ferramari packages. Enter absolute "
+#~ "paths; operations run in the server."
+#~ msgstr ""
+#~ ".ferramari パッケージのインポート、エクスポート、署名、検証を行います。絶"
+#~ "対パスを入力してください。処理はサーバーで実行されます。"
+
+#~ msgid "Import package"
+#~ msgstr "パッケージをインポート"
+
+#~ msgid "Export video package"
+#~ msgstr "動画パッケージをエクスポート"
+
+#~ msgid "Sign package"
+#~ msgstr "パッケージに署名"
+
+#~ msgid "Verify package"
+#~ msgstr "パッケージを検証"
+
+#~ msgid "Trust package key"
+#~ msgstr "パッケージの鍵を信頼"

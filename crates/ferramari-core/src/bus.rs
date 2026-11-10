@@ -145,6 +145,12 @@ pub struct Snapshot {
     /// rather than a pair: the map travels over D-Bus, where a variant of two
     /// integers would force every client to learn a new type for one label.
     pub monitor_resolutions: std::collections::HashMap<String, String>,
+    /// Monitor name → vertical refresh in hertz as whole digits (`144`).
+    /// Absent for a monitor the backend could not measure — a Wayland session
+    /// or a virtual output — which is why this is a map of names rather than
+    /// a parallel vector: a missing display must not shift every later value
+    /// into the wrong row.
+    pub monitor_refresh: std::collections::HashMap<String, u32>,
     /// Config key of the primary display, empty when the backend says nothing.
     pub primary_monitor: String,
     /// What the primary player's decoder reported at the last supervision
@@ -193,6 +199,7 @@ impl Default for Snapshot {
             data_source: std::collections::HashMap::new(),
             monitor_states: std::collections::HashMap::new(),
             monitor_resolutions: std::collections::HashMap::new(),
+            monitor_refresh: std::collections::HashMap::new(),
             primary_monitor: String::new(),
             player_stats: crate::stats::PlaybackStats::default(),
             language: String::new(),

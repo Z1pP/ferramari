@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: ferramari\n"
-"Report-Msgid-Bugs-To: \n"
+"Report-Msgid-Bugs-To: https://github.com/Z1pP/ferramari/issues\n"
 "PO-Revision-Date: 2026-10-29 21:00+0300\n"
 "Last-Translator: Ferramari contributors\n"
 "Language-Team: Russian\n"
@@ -10,1113 +10,1380 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
-#: src/ui/control.rs:2119
-msgid "video"
-msgid_plural "videos"
-msgstr[0] "видео"
-msgstr[1] "видео"
-msgstr[2] "видео"
+#: crates/ferramari-ui/src/main.rs:412
+msgid "Active"
+msgstr "Активен"
 
-#: src/ui/online.rs:581
-msgid "wallpaper"
-msgid_plural "wallpapers"
-msgstr[0] "обои"
-msgstr[1] "обои"
-msgstr[2] "обоев"
+#: crates/ferramari-ui/src/main.rs:2778
+msgid "Add"
+msgstr "Добавить"
 
-#: src/ui/online.rs:559
-#: src/ui/online.rs:579
-msgid "result"
-msgid_plural "results"
-msgstr[0] "результат"
-msgstr[1] "результата"
-msgstr[2] "результатов"
+#: crates/ferramari-ui/src/main.rs:2875
+msgid "Add a video, or download one from Online."
+msgstr "Добавьте видео или загрузите его в разделе «Онлайн»."
 
-#: src/ui/control.rs:2053
-#: src/ui/control.rs:2066
-msgid "match"
-msgid_plural "matches"
-msgstr[0] "совпадение"
-msgstr[1] "совпадения"
-msgstr[2] "совпадений"
+#: crates/ferramari-ui/src/main.rs:3114
+msgid "Add to"
+msgstr "Добавить в"
 
-#: src/ui/control.rs:788
-msgid "About Ferramari"
-msgstr "О Ferramari"
-
-#: src/ui/control.rs:2036
-msgid "Add videos to your Ferramari folder, then refresh the list."
-msgstr "Добавьте видео в папку Ferramari и обновите список."
-
-#: src/ui/control.rs:712
-msgid "Adjust playback, wallpaper and startup behaviour."
-msgstr "Настройте воспроизведение, обои и автозапуск."
-
-#: src/ui/online.rs:106
-#: src/ui/online.rs:604
-msgid "All wallpapers"
-msgstr "Все обои"
-
-#: src/ui/control.rs:1410
-msgid "Alternately, you can choose a HTML file on your PC"
-msgstr "Или выберите HTML-файл на компьютере"
-
-#: src/ui/control.rs:1314
-msgid "Any website that renders in WebKitGTK can become your wallpaper."
-msgstr "Любой сайт, который открывается в WebKitGTK, может стать обоями."
-
-#: src/ui/control.rs:1029
-#: src/ui/control.rs:1329
-#: src/ui/control.rs:1432
-msgid "Apply"
-msgstr "Применить"
-
-#: src/ui/control.rs:749
-msgid "Apply static wallpaper"
-msgstr "Применять статичные обои"
-
-#: src/ui/control.rs:2230
-msgid "Apply to"
-msgstr "Применить к"
-
-#: src/ui/control.rs:1031
-msgid "Apply to wallpaper"
-msgstr "Применить как обои"
-
-#: src/ui/online.rs:1029
-#: src/ui/online.rs:1066
-msgid "Apply…"
-msgstr "Применить…"
-
-#: src/ui/control.rs:736
-msgid "Automatically mutes playback when maximized window or full screen mode is detected"
-msgstr "Автоматически выключать звук при развёрнутом окне или полноэкранном режиме"
-
-#: src/ui/control.rs:727
-msgid "Automatically pauses playback when maximized window or full screen mode is detected"
-msgstr "Автоматически приостанавливать воспроизведение при развёрнутом окне или полноэкранном режиме"
-
-#: src/ui/control.rs:777
-msgid "Autostart after login"
-msgstr "Запускать при входе в систему"
-
-#: src/ui/control.rs:1524
-msgid "Browse"
-msgstr "Обзор"
-
-#: src/ui/control.rs:1459
-#: src/ui/online.rs:1166
-msgid "Cancel"
-msgstr "Отмена"
-
-#: src/ui/online.rs:987
-#: src/ui/online.rs:988
-msgid "Cancelling…"
-msgstr "Отмена…"
-
-#: src/ui/control.rs:1344
-msgid "Check this website for some really amazing examples!"
-msgstr "На этом сайте есть отличные примеры!"
-
-#: src/ui/control.rs:1423
-#: src/ui/control.rs:1424
-#: src/ui/control.rs:1455
-msgid "Choose a HTML file"
-msgstr "Выбрать HTML-файл"
-
-#: src/ui/control.rs:1507
-msgid "Choose an HTML file first."
-msgstr "Сначала выберите HTML-файл."
-
-#: src/ui/control.rs:996
-#: src/ui/control.rs:997
-#: src/ui/control.rs:1106
-#: src/ui/online.rs:401
-msgid "Clear search"
-msgstr "Очистить поиск"
-
-#: src/ui/online.rs:863
-#: src/ui/online.rs:1354
-msgid "Close"
-msgstr "Закрыть"
-
-#: src/ui/online.rs:1037
-msgid "Could not install"
-msgstr "Не удалось установить"
-
-#: src/ui/online.rs:514
-msgid "Could not load more"
-msgstr "Не удалось загрузить ещё"
-
-#: src/ui/online.rs:198
-msgid "Could not load wallpapers"
-msgstr "Не удалось загрузить обои"
-
-#: src/ui/online.rs:956
-msgid "Could not read file details"
-msgstr "Не удалось прочитать данные файла"
-
-#: src/ui/online.rs:856
-msgid "Delete the cached video and frames"
-msgstr "Удалить видео и кадры из кэша"
-
-#: src/ui/online.rs:866
-#: src/ui/online.rs:1063
-#: src/ui/online.rs:1274
-msgid "Download"
-msgstr "Скачать"
-
-#: src/ui/online.rs:1277
-msgid "Download cancelled."
-msgstr "Загрузка отменена."
-
-#: src/ui/online.rs:1267
-msgid "Download failed"
-msgstr "Не удалось скачать"
-
-#: src/ui/online.rs:1057
-msgid "Download removed from the cache."
-msgstr "Загрузка удалена из кэша."
-
-#: src/ui/online.rs:967
-#: src/ui/online.rs:1235
-msgid "Downloaded"
-msgstr "Скачано"
-
-#: src/ui/online.rs:1251
-msgid "Downloaded, but the preview frames could not be generated."
-msgstr "Скачано, но кадры предпросмотра создать не удалось."
-
-#: src/ui/online.rs:1150
-#: src/ui/online.rs:1243
-msgid "Downloaded. Check the frames, then install."
-msgstr "Скачано. Проверьте кадры и установите."
-
-#: src/ui/online.rs:1172
-msgid "Downloading the wallpaper…"
-msgstr "Загрузка обоев…"
-
-#: src/ui/control.rs:1250
-msgid "Enter a streaming URL first."
-msgstr "Сначала введите ссылку для стриминга."
-
-#: src/ui/control.rs:1357
-msgid "Enter a web page URL first."
-msgstr "Сначала введите адрес веб-страницы."
-
-#: src/ui/online.rs:838
-msgid "Fetching details…"
-msgstr "Получение данных…"
-
-#: src/ui/online.rs:109
-msgid "Filter by category"
-msgstr "Фильтр по категории"
-
-#: src/ui/control.rs:1236
-#: src/ui/control.rs:1343
-msgid "Hint"
-msgstr "Подсказка"
-
-#: src/ui/control.rs:546
-msgid "I'm Feeling Lucky"
-msgstr "Мне повезёт"
-
-#: src/ui/online.rs:1032
-msgid "Installed to"
-msgstr "Установлено в"
-
-#: src/ui/online.rs:869
-#: src/ui/online.rs:1069
-#: src/ui/online.rs:1237
-msgid "Install…"
-msgstr "Установить…"
-
-#: src/ui/control.rs
-msgid "Interface language"
-msgstr "Язык интерфейса"
-
-#: src/ui/control.rs
-#: src/ui/control.rs
-msgid "Theme"
-msgstr "Тема"
-
-#: src/ui/control.rs
-msgid "Window and control appearance"
-msgstr "Оформление окон и элементов"
-
-#: src/ui/control.rs
-msgid "Light"
-msgstr "Светлая"
-
-#: src/ui/control.rs
-msgid "Dark"
-msgstr "Тёмная"
-
-msgid "Language"
-msgstr "Язык"
-
-#: src/ui/online.rs:229
-msgid "Load the next page"
-msgstr "Загрузить следующую страницу"
-
-#: src/ui/online.rs:975
-msgid "Loading frames…"
-msgstr "Загрузка кадров…"
-
-#: src/ui/online.rs:166
-#: src/ui/online.rs:449
-msgid "Loading wallpapers…"
-msgstr "Загрузка обоев…"
-
-#: src/ui/online.rs:453
-msgid "Loading…"
-msgstr "Загрузка…"
-
-#: src/ui/control.rs:207
-#: src/ui/control.rs:909
-#: src/ui/control.rs:1546
-#: src/ui/control.rs:2127
-msgid "Local Video"
-msgstr "Локальное видео"
-
-#: src/ui/control.rs:1408
-msgid "Local Web Page"
-msgstr "Локальная веб-страница"
-
-#: src/ui/control.rs:473
-#: src/ui/control.rs:648
-#: src/ui/control.rs:651
-msgid "Mute"
-msgstr "Выключить звук"
-
-#: src/ui/control.rs:735
-msgid "Mute when maximized window"
-msgstr "Выключать звук при развёрнутом окне"
-
-#: src/ui/control.rs:2155
-msgid "No displays detected"
-msgstr "Дисплеи не обнаружены"
-
-#: src/ui/control.rs:1426
-msgid "No file selected"
-msgstr "Файл не выбран"
-
-#: src/ui/control.rs:2042
-msgid "No videos"
-msgstr "Нет видео"
-
-#: src/ui/control.rs:2044
-msgid "No videos in the Ferramari folder"
-msgstr "В папке Ferramari нет видео"
-
-#: src/ui/control.rs:2047
-#: src/ui/control.rs:2055
-msgid "No videos match your search"
-msgstr "Нет видео по вашему запросу"
-
-#: src/ui/control.rs:2035
-msgid "No videos yet"
-msgstr "Видео пока нет"
-
-#: src/ui/control.rs:414
-#: src/ui/control.rs:418
-#: src/ui/control.rs:1653
-#: src/ui/control.rs:2130
-#: src/ui/control.rs:2136
-msgid "No wallpaper set"
-msgstr "Обои не выбраны"
-
-#: src/ui/online.rs:562
-msgid "No wallpapers found"
-msgstr "Обои не найдены"
-
-#: src/ui/online.rs:569
-msgid "No wallpapers in this category"
-msgstr "В этой категории нет обоев"
-
-#: src/ui/control.rs:1638
-msgid "Now playing"
-msgstr "Сейчас воспроизводится"
-
-#: src/ui/online.rs:149
-msgid "Online wallpapers"
-msgstr "Живые обои"
-
-#: src/ui/control.rs:483
-msgid "Oops!"
-msgstr "Ой!"
-
-#: src/ui/control.rs:1460
-msgid "Open"
-msgstr "Открыть"
-
-#: src/ui/control.rs:787
-msgid "Open config file"
-msgstr "Открыть файл конфигурации"
-
-#: src/ui/control.rs:925
-#: src/ui/control.rs:990
-msgid "Open Ferramari folder"
-msgstr "Открыть папку Ferramari"
-
-#: src/ui/control.rs:924
-#: src/ui/control.rs:989
-msgid "Open folder"
-msgstr "Открыть папку"
-
-#: src/ui/control.rs:1399
-msgid "or"
-msgstr "или"
-
-#: src/ui/control.rs:1194
-msgid "Paste a video link. Ferramari resolves it with yt-dlp and starts playback."
-msgstr "Вставьте ссылку на видео. Ferramari обработает её через yt-dlp и запустит воспроизведение."
-
-#: src/ui/control.rs:384
-#: src/ui/control.rs:544
-msgid "Pause wallpaper"
-msgstr "Приостановить обои"
-
-#: src/ui/control.rs:726
-msgid "Pause when maximized window"
-msgstr "Приостанавливать при развёрнутом окне"
-
-#: src/ui/control.rs:393
-msgid "Paused"
-msgstr "Пауза"
-
-#: src/ui/control.rs:1209
-msgid "Play"
-msgstr "Воспроизвести"
-
-#: src/ui/control.rs:720
-msgid "Playback"
-msgstr "Воспроизведение"
-
-#: src/ui/control.rs:395
-msgid "Playing"
-msgstr "Воспроизводится"
-
-#: src/ui/control.rs:1553
-msgid "Preview before installing"
-msgstr "Предпросмотр перед установкой"
-
-#: src/ui/online.rs:94
-msgid "Preview live wallpapers before installing them"
-msgstr "Смотрите живые обои перед установкой"
-
-#: src/ui/control.rs:2298
-msgid "Project website"
-msgstr "Сайт проекта"
-
-#: src/ui/control.rs:555
-#: src/ui/control.rs:557
-#: src/ui/control.rs:709
-msgid "Quick toggles"
-msgstr "Быстрые настройки"
-
-#: src/ui/control.rs:493
-msgid "Quickstart for adding local videos:\n・Click the folder icon to open the Ferramari folder\n・Put your videos there\n・Click the refresh button"
-msgstr "Быстрый старт для локальных видео:\n・Нажмите на значок папки, чтобы открыть папку Ferramari\n・Положите туда видео\n・Нажмите кнопку обновления"
-
-#: src/ui/control.rs:789
-msgid "Quit Ferramari"
-msgstr "Выйти из Ferramari"
-
-#: src/ui/control.rs:391
-#: src/ui/control.rs:530
-#: src/ui/control.rs:1647
-msgid "Ready"
-msgstr "Готово"
-
-#: src/ui/control.rs:928
-#: src/ui/control.rs:928
-msgid "Refresh"
-msgstr "Обновить"
-
-#: src/ui/menu.rs:17
-#: src/tray.rs:50
-msgid "Reload"
-msgstr "Обновить"
-
-#: src/ui/online.rs:128
-#: src/ui/online.rs:129
-msgid "Reload the catalogue"
-msgstr "Обновить каталог"
-
-#: src/ui/online.rs:855
-msgid "Remove download"
-msgstr "Удалить загрузку"
-
-#: src/ui/control.rs:447
-#: src/ui/control.rs:451
-#: src/ui/control.rs:453
-msgid "Resolving stream…"
-msgstr "Получение ссылки на поток…"
-
-#: src/ui/control.rs
-msgid "Restart Ferramari to apply the language."
-msgstr "Перезапустите Ferramari, чтобы применить язык."
-
-#: src/ui/control.rs:382
-msgid "Resume wallpaper"
-msgstr "Возобновить обои"
-
-#: src/ui/online.rs:1262
-msgid "Retry download"
-msgstr "Повторить загрузку"
-
-#: src/ui/control.rs:943
-#: src/ui/control.rs:947
-#: src/ui/control.rs:948
-msgid "Search videos"
-msgstr "Поиск видео"
-
-#: src/ui/online.rs:120
-#: src/ui/online.rs:122
-msgid "Search wallpapers"
-msgstr "Поиск обоев"
-
-#: src/ui/online.rs:114
-msgid "Search wallpapers…"
-msgstr "Поиск обоев…"
-
-#: src/ui/control.rs:1025
-#: src/ui/control.rs:2097
-msgid "Select a video to apply"
-msgstr "Выберите видео для применения"
-
-#: src/ui/control.rs:1303
-msgid "Set a web page as wallpaper"
-msgstr "Сделать веб-страницу обоями"
-
-#: src/ui/control.rs:2235
-msgid "Set For"
-msgstr "Для"
-
-#: src/ui/control.rs:2248
-msgid "Set For All"
-msgstr "Для всех"
-
-#: src/ui/menu.rs:14
-#: src/tray.rs:41
-msgid "Show Ferramari"
-msgstr "Показать Ferramari"
-
-#: src/ui/online.rs:227
-#: src/ui/online.rs:502
-msgid "Show more"
-msgstr "Показать ещё"
-
-#: src/ui/online.rs:1170
-msgid "Starting…"
-msgstr "Запуск…"
-
-#: src/ui/control.rs:758
-#: src/ui/control.rs:765
-#: src/ui/control.rs:766
-msgid "Static wallpaper blur radius"
-msgstr "Размытие статичных обоев"
-
-#: src/ui/control.rs:238
-#: src/ui/control.rs:1182
-#: src/ui/control.rs:1558
-#: src/ui/control.rs:2128
-msgid "Streaming"
-msgstr "Стриминг"
-
-#: src/ui/control.rs:1237
-msgid "Streaming is resolved with yt-dlp."
-msgstr "Ссылка обрабатывается через yt-dlp."
-
-#: src/ui/control.rs:1192
-#: src/ui/control.rs:1208
-msgid "Streaming URL"
-msgstr "Ссылка для стриминга"
-
-#: src/ui/control.rs:773
-msgid "System"
-msgstr "Система"
-
-#: src/ui/control.rs
-msgid "System default"
-msgstr "Как в системе"
-
-#: src/ui/online.rs:1060
-msgid "The cached video and frames were deleted. Installed wallpapers are not touched."
-msgstr "Видео и кадры удалены из кэша. Установленные обои не затронуты."
-
-#: src/ui/menu.rs:15
-#: src/tray.rs:44
-msgid "Toggle Mute Audio"
-msgstr "Выключить/включить звук"
-
-#: src/ui/control.rs:543
-msgid "Toggle Play/Pause"
-msgstr "Пауза/воспроизведение"
-
-#: src/ui/control.rs:2049
-msgid "Try a different name or clear the search."
-msgstr "Попробуйте другое название или очистите поиск."
-
-#: src/ui/online.rs:563
-msgid "Try a different search, or clear it to browse the catalogue."
-msgstr "Попробуйте другой запрос или очистите поиск, чтобы вернуться к каталогу."
-
-#: src/ui/online.rs:204
-msgid "Try again"
-msgstr "Повторить"
-
-#: src/ui/online.rs:570
-msgid "Try another category or reload the catalogue."
-msgstr "Выберите другую категорию или обновите каталог."
-
-#: src/ui/online.rs:510
-msgid "Unavailable"
-msgstr "Недоступно"
-
-#: src/ui/control.rs:473
-msgid "Unmute"
-msgstr "Включить звук"
-
-#: src/ui/control.rs:1859
-msgid "Untitled video"
-msgstr "Без названия"
-
-#: src/ui/control.rs:1565
-msgid "URL or HTML"
-msgstr "URL или HTML"
-
-#: src/ui/control.rs:1927
-msgid "Video"
-msgstr "Видео"
-
-#: src/ui/online.rs:1311
-msgid "Video downloaded"
-msgstr "Видео скачано"
-
-#: src/ui/control.rs:750
-msgid "Video frame can be applied as system wallpaper, look great in GNOME"
-msgstr "Кадр из видео можно использовать как системные обои — отлично смотрится в GNOME"
-
-#: src/ui/control.rs:962
-msgid "Video library"
-msgstr "Библиотека видео"
-
-#: src/ui/control.rs:1559
-msgid "Video links"
-msgstr "Ссылки на видео"
-
-#: src/ui/control.rs:515
-msgid "Video wallpaper"
-msgstr "Видеообои"
-
-#: src/ui/control.rs
-msgid "Video wallpaper for Linux. Written in Rust. 🦀"
-msgstr "Видеообои для Linux. Написано на Rust. 🦀"
-
-#: src/ui/control.rs:1182
-msgid "Videos from streaming services"
-msgstr "Видео со стриминговых сервисов"
-
-#: src/ui/control.rs:914
-msgid "Videos located in Ferramari folder"
-msgstr "Видео в папке Ferramari"
-
-#: src/ui/control.rs:476
-#: src/ui/control.rs:631
-#: src/ui/control.rs:643
-#: src/ui/control.rs:644
-#: src/ui/control.rs:660
-#: src/ui/control.rs:663
-msgid "Volume"
-msgstr "Громкость"
-
-#: src/ui/control.rs:743
-msgid "Wallpaper"
-msgstr "Обои"
-
-#: src/ui/online.rs:1111
-msgid "Wallpaper archive"
-msgstr "Архив обоев"
-
-#: src/ui/online.rs:93
-msgid "Wallpaper catalogue"
-msgstr "Каталог обоев"
-
-#: src/ui/online.rs:110
-msgid "Wallpaper category"
-msgstr "Категория обоев"
-
-#: src/ui/control.rs:227
-#: src/ui/control.rs:1552
-msgid "Wallpapers"
-msgstr "Обои"
-
-#: src/ui/control.rs:241
-#: src/ui/control.rs:1303
-#: src/ui/control.rs:1564
-#: src/ui/control.rs:2129
-msgid "Web Page"
-msgstr "Веб-страница"
-
-#: src/ui/control.rs:1312
-#: src/ui/control.rs:1328
-msgid "Web Page URL"
-msgstr "Адрес веб-страницы"
-
-#: src/ui/control.rs:492
-msgid "Welcome to Ferramari 🤗"
-msgstr "Добро пожаловать в Ferramari 🤗"
-
-#: src/ui/control.rs:1547
-msgid "Your own files"
-msgstr "Ваши файлы"
-
-msgid "Home"
-msgstr "Главная"
-
-msgid "Overview"
-msgstr "Обзор"
-
-msgid "Your wallpapers at a glance"
-msgstr "Обои и мониторы"
-
-msgid "Open library"
-msgstr "Открыть библиотеку"
-
-msgid "Browse catalogue"
-msgstr "Открыть каталог"
-
-msgid "Settings"
-msgstr "Настройки"
-
-msgid "Monitors"
-msgstr "Мониторы"
-
-msgid "Primary"
-msgstr "Основной"
-
-msgid "Choose video…"
-msgstr "Выбрать видео…"
-
-msgid "Playback, wallpaper and system behaviour"
-msgstr "Воспроизведение, обои и поведение системы"
-
-msgid "App behaviour"
-msgstr "Поведение приложения"
-
-msgid "New collection"
-msgstr "Новая коллекция"
-
-msgid "Create a collection"
-msgstr "Создать коллекцию"
-
-msgid "All videos"
-msgstr "Все видео"
-
-msgid "Favorites"
-msgstr "Избранное"
-
-msgid "Recent"
-msgstr "Недавние"
-
-msgid "Library view"
-msgstr "Вид библиотеки"
-
-msgid "Rename"
-msgstr "Переименовать"
-
-msgid "Delete"
-msgstr "Удалить"
-
-msgid "Add to collection"
-msgstr "Добавить в коллекцию"
-
-msgid "Remove from collection"
-msgstr "Убрать из коллекции"
-
+#: crates/ferramari-ui/src/main.rs:3084
 msgid "Add to favorites"
 msgstr "Добавить в избранное"
 
-msgid "Remove from favorites"
-msgstr "Убрать из избранного"
+#: crates/ferramari-ui/src/main.rs:4541
+msgid "Add video"
+msgstr "Добавить видео"
 
-msgid "Collection name"
-msgstr "Название коллекции"
+#: crates/ferramari-ui/src/main.rs:2696
+msgid "Add Wallpaper"
+msgstr "Добавить обои"
 
-msgid "Delete collection"
-msgstr "Удалить коллекцию"
+#: crates/ferramari-ui/src/main.rs:1389
+msgid "Added to library"
+msgstr "Добавлено в библиотеку"
 
-msgid "New collection…"
-msgstr "Новая коллекция…"
+#: crates/ferramari-ui/src/main.rs:646
+msgid "Advanced"
+msgstr "Дополнительно"
 
-msgid "No favorite videos"
-msgstr "Нет избранных видео"
+#: crates/ferramari-ui/src/main.rs:4773
+msgid "All"
+msgstr "Все"
 
-msgid "Mark a video with the star to see it here."
-msgstr "Отметьте видео звёздочкой, чтобы оно появилось здесь."
+#: crates/ferramari-ui/src/main.rs:1504
+msgid "All wallpapers"
+msgstr "Все обои"
 
-msgid "No recently used videos"
-msgstr "Нет недавних видео"
+#: crates/ferramari-ui/src/main.rs:642
+msgid "Appearance"
+msgstr "Оформление"
 
-msgid "Apply a video and it will appear here."
-msgstr "Примените видео, и оно появится здесь."
+#: crates/ferramari-ui/src/main.rs:4512
+msgid "Apply"
+msgstr "Применить"
 
-msgid "Collection is empty"
-msgstr "Коллекция пуста"
+#: crates/ferramari-ui/src/main.rs:2871
+msgid "Apply a wallpaper and it will show here."
+msgstr "Примените обои — и они появятся здесь."
 
-msgid "Add videos to this collection."
-msgstr "Добавьте видео в эту коллекцию."
+#: crates/ferramari-ui/src/main.rs:3073
+msgid "Apply as wallpaper"
+msgstr "Применить как обои"
 
-msgid "Save"
-msgstr "Сохранить"
+#: crates/ferramari-ui/src/main.rs:4484
+msgid "Apply static wallpaper"
+msgstr "Применять статичные обои"
 
-msgid "Default"
-msgstr "По умолчанию"
+#: crates/ferramari-ui/src/main.rs:4083
+msgid "Ask GitHub for a new release when the window opens"
+msgstr "Спрашивать GitHub о новом релизе при открытии окна"
 
-msgid "Title"
-msgstr "Название"
+#: crates/ferramari-ui/src/main.rs:4240
+msgid "Auto lets mpv choose; VA-API forces it; Off uses software"
+msgstr "«Авто» предоставляет выбор mpv, VA-API заставляет, «Выкл» — программное декодирование"
+"«Авто» предоставляет выбор mpv, VA-API заставляет, «Выкл» — программное "
+"декодированиеАвто позволяет mpv выбрать безопасный декодер; VA-API включает "
+"его принудительно; Выкл использует программное декодирование"
 
-msgid "Category"
-msgstr "Категория"
+#: crates/ferramari-ui/src/main.rs:4473
+msgid "Auto-mute when maximized or fullscreen detected"
+msgstr "Выключать звук, когда окно развёрнуто или открыто во весь экран"
+"Выключать звук, когда окно развёрнуто или открыто во весь экранАвтоматически "
+"выключать звук при развёрнутом окне или полноэкранном режиме"
 
-msgid "Size"
-msgstr "Размер"
+#: crates/ferramari-ui/src/main.rs:4467
+msgid "Auto-pause when maximized or fullscreen detected"
+msgstr "Пауза, когда окно развёрнуто или открыто во весь экран"
+"Пауза, когда окно развёрнуто или открыто во весь экранАвтоматически "
+"приостанавливать воспроизведение при развёрнутом окне или полноэкранном "
+"режиме"
 
-msgid "Duration"
-msgstr "Длительность"
+#: crates/ferramari-ui/src/main.rs:3914
+msgid "avg"
+msgstr "в среднем"
 
-msgid "Any resolution"
-msgstr "Любое разрешение"
-
-msgid "Sort wallpapers"
-msgstr "Сортировка обоев"
-
-msgid "Resolution"
-msgstr "Разрешение"
-
-msgid "Resolution filters use metadata from downloaded previews"
-msgstr "Фильтры разрешения используют данные из скачанных превью"
-
-msgid "No wallpapers match these filters"
-msgstr "Нет обоев, подходящих под фильтры"
-
-msgid "Try another resolution or reload the catalogue."
-msgstr "Выберите другое разрешение или обновите каталог."
-
-msgid "Rotation"
-msgstr "Ротация"
-
-msgid "Rotate wallpapers"
-msgstr "Переключать обои"
-
-msgid "Use the collection assigned to each monitor on Home"
-msgstr "Использовать коллекцию, назначенную монитору на главном экране"
-
-msgid "Off"
-msgstr "Выключено"
-
-msgid "In order"
-msgstr "По порядку"
-
-msgid "Random"
-msgstr "Случайно"
-
-msgid "Rotation mode"
-msgstr "Режим ротации"
-
-msgid "Rotation interval"
-msgstr "Интервал ротации"
-
-msgid "Minutes between changes"
-msgstr "Минут между сменами"
-
-msgid "No rotation"
-msgstr "Без ротации"
-
-msgid "Rotate this collection on this monitor"
-msgstr "Переключать эту коллекцию на этом мониторе"
-
-msgid "Performance"
-msgstr "Производительность"
-
-msgid "Playback profile"
-msgstr "Профиль воспроизведения"
-
-msgid "Quality prioritises smoothness; Eco reduces decoding and pauses idle wallpapers"
-msgstr "Качество важнее плавности; «Эко» снижает декодирование и приостанавливает обои при простое"
-
-msgid "Quality"
-msgstr "Качество"
-
+#: crates/ferramari-ui/src/main.rs:4217
 msgid "Balanced"
 msgstr "Сбалансированный"
 
-msgid "Eco"
-msgstr "Эко"
+#: crates/ferramari-ui/src/main.rs:4498
+msgid "Blur radius"
+msgstr "Радиус размытия"
 
-msgid "Pause on battery"
-msgstr "Пауза от батареи"
+#: crates/ferramari-ui/src/main.rs:3425
+msgid "Browse"
+msgstr "Обзор"
 
-msgid "Stop playback when running on battery"
-msgstr "Останавливать воспроизведение при работе от батареи"
+#: crates/ferramari-ui/src/main.rs:120
+msgid "Browse and download wallpapers"
+msgstr "Поиск и загрузка обоев"
 
-msgid "Battery"
-msgstr "Батарея"
+#: crates/ferramari-ui/src/main.rs:2699
+msgid "Browse Online"
+msgstr "Найти в онлайне"
 
-msgid "on battery"
-msgstr "от батареи"
+#: crates/ferramari-ui/src/main.rs:3593
+msgid "Categories"
+msgstr "Категории"
 
-msgid "on AC power"
-msgstr "от сети"
+#: crates/ferramari-ui/src/main.rs:4016
+msgid "Check for updates"
+msgstr "Проверять обновления"
 
-msgid "No battery detected"
-msgstr "Батарея не обнаружена"
+#: crates/ferramari-ui/src/main.rs:4123
+msgid "Check now"
+msgstr "Проверить сейчас"
 
-msgid "Eco idle delay"
-msgstr "Задержка простоя Eco"
+#: crates/ferramari-ui/src/main.rs:1435
+msgid "Choose export destination"
+msgstr "Выберите папку для экспорта"
 
-msgid "Minutes of desktop inactivity before Eco pauses playback"
-msgstr "Минуты бездействия рабочего стола до паузы в режиме «Эко»"
+#: crates/ferramari-ui/src/main.rs:1404
+msgid "Choose package directory"
+msgstr "Выберите каталог пакета"
 
-msgid "Idle"
-msgstr "Простой"
+#: crates/ferramari-ui/src/main.rs:1420
+msgid "Choose video to export"
+msgstr "Выберите видео для экспорта"
 
-msgid "Paused (covered)"
-msgstr "Пауза (перекрыто)"
+#: crates/ferramari-ui/src/main.rs:2692
+msgid "Choose Wallpaper"
+msgstr "Выбрать обои"
 
-msgid "Hardware decoding"
-msgstr "Аппаратное декодирование"
+#: crates/ferramari-ui/src/main.rs:4598
+msgid "Collection name"
+msgstr "Название коллекции"
 
-msgid "Auto lets mpv choose a safe decoder; VA-API forces it; Off uses software"
-msgstr "Авто позволяет mpv выбрать безопасный декодер; VA-API включает его принудительно; Выкл использует программное декодирование"
-msgid "Hardware decoding is not available here; decoding on the CPU."
-msgstr "Аппаратное декодирование недоступно; декодирование выполняется на CPU."
-msgid "The selected decoder is not available here; decoding on the CPU instead."
-msgstr "Выбранный декодер недоступен; декодирование выполняется на CPU."
-msgid "The selected decoder is not available; a different hardware decoder is active."
-msgstr "Выбранный декодер недоступен; вместо него работает другой аппаратный декодер."
-msgid "Hardware decoding is active although software decoding was selected."
-msgstr "Аппаратное декодирование активно, хотя выбрано программное."
+#: crates/ferramari-ui/src/main.rs:299
+msgid "Collections"
+msgstr "Коллекции"
 
-msgid "Auto"
-msgstr "Авто"
+#: crates/ferramari-ui/src/main.rs:122
+msgid "Configure Ferramari to your needs"
+msgstr "Настройте Ferramari под себя"
 
-msgid "Allow network for web wallpapers"
-msgstr "Разрешить сеть для веб-обоев"
+#: crates/ferramari-core/src/update.rs:266
+#: crates/ferramari-core/src/update.rs:335
+msgid "Could not reach GitHub"
+msgstr "Не удалось связаться с GitHub"
 
-msgid "Remote pages and subresources; local HTML and data URIs are always allowed"
-msgstr "Удалённые страницы и ресурсы; локальный HTML и data-URI разрешены всегда"
+#: crates/ferramari-core/src/update.rs:303
+msgid "Could not read the release listing"
+msgstr "Не удалось прочитать список релизов"
 
-msgid "Live resource use of Ferramari and its media processes"
-msgstr "Текущее потребление ресурсов Ferramari и его медиапроцессов"
+#: crates/ferramari-ui/src/main.rs:1021
+msgid "Could not save the update setting"
+msgstr "Не удалось сохранить настройку обновлений"
 
-msgid "Resources"
-msgstr "Ресурсы"
-
+#: crates/ferramari-ui/src/main.rs:2619
 msgid "CPU"
 msgstr "ЦП"
 
-msgid "Memory (RSS)"
-msgstr "Память (RSS)"
-
-msgid "Threads"
-msgstr "Потоки"
-
-msgid "Processes"
-msgstr "Процессы"
-
-msgid "GPU"
-msgstr "ГП"
-
-msgid "Waiting for the first sample…"
-msgstr "Ожидание первого замера…"
-
-msgid "Metrics cover the Ferramari server and its mpv children."
-msgstr "Метрики охватывают сервер Ferramari и его дочерние процессы mpv."
-
-msgid "Not measurable here"
-msgstr "Здесь не измеримо"
-
-msgid "Measuring…"
-msgstr "Измерение…"
-
-msgid "Live resource use"
-msgstr "Потребление ресурсов"
-
-msgid "Eco Engine"
-msgstr "Движок Eco"
-
-msgid "Desktop integration"
-msgstr "Интеграция с рабочим столом"
-
-msgid "Native Wayland surfaces are not implemented; Ferramari uses X11/XWayland."
-msgstr "Нативные поверхности Wayland не реализованы; Ferramari использует X11/XWayland."
-
-msgid "Import…"
-msgstr "Импорт…"
-
-msgid "Import a .ferramari package"
-msgstr "Импортировать пакет .ferramari"
-
-msgid "Export .ferramari"
-msgstr "Экспорт .ferramari"
-
-msgid "Export the selected video as a package"
-msgstr "Экспортировать выбранное видео как пакет"
-
-msgid "Choose a .ferramari package"
-msgstr "Выберите пакет .ferramari"
-
-msgid "Choose a folder for the package"
-msgstr "Выберите папку для пакета"
-
-msgid "Select"
-msgstr "Выбрать"
-
-msgid "Done"
-msgstr "Готово"
-
-msgid "Community sources"
-msgstr "Источники сообщества"
-
-msgid "No catalogue plugins installed"
-msgstr "Плагины каталога не установлены"
-
-msgid "Sign"
-msgstr "Подписать"
-
-msgid "Verify"
-msgstr "Проверить"
-
-msgid "Sign package…"
-msgstr "Подписать пакет…"
-
-msgid "Verify package…"
-msgstr "Проверить пакет…"
-
-msgid "Checksum and sign this package with your key"
-msgstr "Вычислить контрольные суммы и подписать пакет вашим ключом"
-
-msgid "Check the package checksums and signature"
-msgstr "Проверить контрольные суммы и подпись пакета"
-
-msgid "Sign this package?"
-msgstr "Подписать этот пакет?"
-
-msgid "Ferramari creates a signing key on first use and stores it in your config folder."
-msgstr "При первом использовании Ferramari создаст ключ подписи и сохранит его в папке конфигурации."
-
-msgid "Package integrity"
-msgstr "Целостность пакета"
-
-msgid "All files match their recorded SHA-256"
-msgstr "Все файлы совпадают с записанными SHA-256"
-
-msgid "The package carries no checksums"
-msgstr "В пакете нет контрольных сумм"
-
-msgid "Unsigned"
-msgstr "Без подписи"
-
-msgid "Signed by"
-msgstr "Подписан"
-
-msgid "The signature is not valid"
-msgstr "Подпись недействительна"
-
-msgid "Trust this author and remember the key for future packages?"
-msgstr "Доверять этому автору и запомнить ключ для будущих пакетов?"
-
-msgid "Trusted key"
-msgstr "Ключ добавлен в доверенные"
-
-msgid "Signed"
-msgstr "Подписан"
-msgid "Package signing"
-msgstr "Подпись пакетов"
-
-msgid "My key"
-msgstr "Мой ключ"
-
-msgid "No signing key yet"
-msgstr "Ключ подписи ещё не создан"
-
-msgid "No trusted keys"
-msgstr "Нет доверенных ключей"
-
-msgid "Trusted keys"
-msgstr "Доверенные ключи"
-
-msgid "Export my public key…"
-msgstr "Экспортировать мой открытый ключ…"
-
-msgid "Share this file so others can trust your packages"
-msgstr "Передайте этот файл, чтобы другие доверяли вашим пакетам"
-
-msgid "Trust a key…"
-msgstr "Добавить ключ в доверенные…"
-
-msgid "Open a public key file shared by another creator"
-msgstr "Открыть файл открытого ключа другого автора"
-
-msgid "Save your public key"
-msgstr "Сохранить ваш открытый ключ"
-
-msgid "Choose a public key file"
-msgstr "Выберите файл открытого ключа"
-
-msgid "Could not export the key"
-msgstr "Не удалось экспортировать ключ"
-msgid "Package…"
-msgstr "Пакет…"
-
-msgid "Verify or sign this package"
-msgstr "Проверить или подписать этот пакет"
-
-msgid "Remove favorite"
-msgstr "Убрать из избранного"
-
+#: crates/ferramari-ui/src/main.rs:4577
 msgid "Create"
 msgstr "Создать"
 
-msgid "Collections"
-msgstr "Коллекции"
-msgid "Ferramari packages"
-msgstr "Пакеты Ferramari"
+#: crates/ferramari-ui/src/main.rs:1915
+msgid "Daemon"
+msgstr "Демон"
 
-msgid "Import, export, sign and verify .ferramari packages. Enter absolute paths; operations run in the server."
-msgstr "Импортируйте, экспортируйте, подписывайте и проверяйте пакеты .ferramari. Укажите абсолютные пути; операции выполняются сервером."
+#: crates/ferramari-ui/src/main.rs:1917
+msgid "Daemon offline"
+msgstr "Демон недоступен"
 
-msgid "Package file or directory"
-msgstr "Файл пакета или каталог"
+#: crates/ferramari-ui/src/main.rs:4157 crates/ferramari-ui/src/main.rs:4177
+msgid "Dark"
+msgstr "Тёмная"
 
-msgid "Export destination folder (for export)"
-msgstr "Папка назначения (для экспорта)"
+#: crates/ferramari-ui/src/main.rs:3798
+msgid "Decoder"
+msgstr "Декодер"
 
-msgid "Import package"
-msgstr "Импортировать пакет"
+#: crates/ferramari-ui/src/main.rs:4169
+msgid "Desktop preference"
+msgstr "Предпочтение системы"
 
-msgid "Export video package"
-msgstr "Экспортировать видеопакет"
+#: crates/ferramari-ui/src/main.rs:4671
+msgid "Destination…"
+msgstr "Назначение…"
 
-msgid "Sign package"
-msgstr "Подписать пакет"
+#: crates/ferramari-ui/src/main.rs:2557
+msgid "display"
+msgid_plural "displays"
+msgstr[0] "монитор"
+msgstr[1] "монитора"
+msgstr[2] "мониторов"
 
-msgid "Verify package"
-msgstr "Проверить пакет"
+#: crates/ferramari-ui/src/main.rs:1593 crates/ferramari-ui/src/main.rs:298
+msgid "Downloaded"
+msgstr "Скачано"
 
-msgid "Trust package key"
-msgstr "Доверять ключу пакета"
+#: crates/ferramari-ui/src/main.rs:3696
+msgid "Downloading…"
+msgstr "Загрузка…"
 
-msgid "Package request queued; processing continues in the server"
-msgstr "Запрос на обработку пакета отправлен серверу"
+#: crates/ferramari-ui/src/main.rs:3823
+msgid "Dropped Frames"
+msgstr "Пропущенные кадры"
 
+#: crates/ferramari-ui/src/main.rs:4222
+msgid "Eco"
+msgstr "Эко"
+
+#: crates/ferramari-ui/src/main.rs:877
 msgid "Enter the required package paths"
 msgstr "Укажите необходимые пути к пакету"
 
+#: crates/ferramari-ui/src/main.rs:4639
+msgid "Export"
+msgstr "Экспортировать"
+
+#: crates/ferramari-ui/src/main.rs:4689
+msgid "Export destination folder"
+msgstr "Папка для экспорта"
+
+#: crates/ferramari-ui/src/main.rs:4777
+msgid "Favorites"
+msgstr "Избранное"
+
+#: crates/ferramari-ui/src/main.rs:296
+msgid "Featured"
+msgstr "Рекомендуемое"
+
+#: crates/ferramari-ui/src/main.rs:2655 crates/ferramari-ui/src/main.rs:3816
+msgid "FPS"
+msgstr "К/с"
+
+#: crates/ferramari-ui/src/main.rs:3911
+msgid "Frame Time"
+msgstr "Время кадра"
+
+#: crates/ferramari-ui/src/main.rs:641
+msgid "General"
+msgstr "Основные"
+
+#: crates/ferramari-core/src/update.rs:332
+msgid "GitHub rate limit reached; try again later"
+msgstr "Превышен лимит запросов GitHub; попробуйте позже"
+
+#: crates/ferramari-ui/src/main.rs:2643
+msgid "GPU"
+msgstr "ГП"
+
+#: crates/ferramari-ui/src/main.rs:4562
+msgid "Groups of wallpapers a display can cycle through"
+msgstr "Наборы обоев, которые монитор может перебирать"
+
+#: crates/ferramari-ui/src/main.rs:4238
+msgid "Hardware decoding"
+msgstr "Аппаратное декодирование"
+
+#: crates/ferramari-ui/src/main.rs:83
+msgid "Home"
+msgstr "Главная"
+
+#: crates/ferramari-ui/src/main.rs:2121 crates/ferramari-ui/src/main.rs:2658
+#: crates/ferramari-ui/src/main.rs:413
+msgid "Idle"
+msgstr "Простой"
+
+#: crates/ferramari-ui/src/main.rs:4374
+msgid "Idle delay"
+msgstr "Задержка простоя"
+
+#: crates/ferramari-ui/src/main.rs:4775
+msgid "Image"
+msgstr "Изображения"
+
+#: crates/ferramari-ui/src/main.rs:4634
+msgid "Import"
+msgstr "Импортировать"
+
+#: crates/ferramari-ui/src/main.rs:4625
+msgid "Import, export, sign and verify .ferramari packages"
+msgstr "Импорт, экспорт, подпись и проверка пакетов .ferramari"
+
+#: crates/ferramari-ui/src/main.rs:4444
+msgid "In order"
+msgstr "По порядку"
+
+#: crates/ferramari-ui/src/main.rs:3711
+msgid "Install"
+msgstr "Установить"
+
+#: crates/ferramari-ui/src/main.rs:4039
+msgid "Interface language"
+msgstr "Язык интерфейса"
+
+#: crates/ferramari-ui/src/main.rs:2765
+msgid "item"
+msgid_plural "items"
+msgstr[0] "предмет"
+msgstr[1] "предмета"
+msgstr[2] "предметов"
+
+#: crates/ferramari-ui/src/main.rs:4011
+msgid "Keep the daemon running when the window is closed"
+msgstr "Демон продолжает работать, когда окно закрыто"
+
+#: crates/ferramari-ui/src/main.rs:4037
+msgid "Language"
+msgstr "Язык"
+
+#: crates/ferramari-ui/src/main.rs:4080 crates/ferramari-ui/src/main.rs:4082
+msgid "Last checked"
+msgstr "Последняя проверка"
+
+#: crates/ferramari-ui/src/main.rs:4005
+msgid "Launch Ferramari automatically on login"
+msgstr "Запускать Ferramari автоматически при входе"
+
+#: crates/ferramari-ui/src/main.rs:84
+msgid "Library"
+msgstr "Библиотека"
+
+#: crates/ferramari-ui/src/main.rs:4525
+msgid "Library folder"
+msgstr "Папка библиотеки"
+
+#: crates/ferramari-ui/src/main.rs:4152 crates/ferramari-ui/src/main.rs:4179
+msgid "Light"
+msgstr "Светлая"
+
+#: crates/ferramari-ui/src/main.rs:3243 crates/ferramari-ui/src/main.rs:4776
+msgid "Live"
+msgstr "Активные"
+
+#: crates/ferramari-ui/src/main.rs:3403
+msgid "Live wallpapers"
+msgstr "Живые обои"
+
+#: crates/ferramari-ui/src/main.rs:3326
+msgid "Load more"
+msgstr "Показать ещё"
+
+#: crates/ferramari-ui/src/main.rs:3315
+msgid "Loading wallpapers…"
+msgstr "Загрузка обоев…"
+
+#: crates/ferramari-ui/src/main.rs:4404
+msgid "Minutes between wallpaper changes"
+msgstr "Минут между сменами обоев"
+
+#: crates/ferramari-ui/src/main.rs:4376
+msgid "Minutes of inactivity before the Eco Engine pauses"
+msgstr "Минуты бездействия до паузы в режиме «Эко»"
+
+#: crates/ferramari-ui/src/main.rs:2552 crates/ferramari-ui/src/main.rs:644
+msgid "Monitors"
+msgstr "Мониторы"
+
+#: crates/ferramari-ui/src/main.rs:2117
+msgid "MPV Engine"
+msgstr "Движок MPV"
+
+#: crates/ferramari-ui/src/main.rs:3834
+msgid "MPV Statistics"
+msgstr "Статистика MPV"
+
+#: crates/ferramari-ui/src/main.rs:4472
+msgid "Mute on maximized window"
+msgstr "Тишина при развёрнутом окне"
+
+#: crates/ferramari-ui/src/main.rs:428
+msgid "N/A"
+msgstr "нет данных"
+
+#: crates/ferramari-core/src/update.rs:68
+msgid "Never checked"
+msgstr "Ещё не проверялось"
+
+#: crates/ferramari-ui/src/main.rs:1149 crates/ferramari-ui/src/main.rs:1258
+#: crates/ferramari-ui/src/main.rs:834
+msgid "New collection"
+msgstr "Новая коллекция"
+
+#: crates/ferramari-ui/src/main.rs:4585
+msgid "No collections yet"
+msgstr "Коллекций пока нет"
+
+#: crates/ferramari-ui/src/main.rs:2447 crates/ferramari-ui/src/main.rs:4358
+msgid "No displays detected"
+msgstr "Дисплеи не обнаружены"
+
+#: crates/ferramari-ui/src/main.rs:2866
+msgid "No favorites yet"
+msgstr "Избранного пока нет"
+
+#: crates/ferramari-ui/src/main.rs:2880
+msgid "No matches"
+msgstr "Совпадений нет"
+
+#: crates/ferramari-ui/src/main.rs:2493 crates/ferramari-ui/src/main.rs:4291
+msgid "No rotation"
+msgstr "Без ротации"
+
+#: crates/ferramari-ui/src/main.rs:2235 crates/ferramari-ui/src/main.rs:2476
+msgid "No wallpaper"
+msgstr "Обои не выбраны"
+
+#: crates/ferramari-ui/src/main.rs:3318
+msgid "No wallpapers found"
+msgstr "Обои не найдены"
+
+#: crates/ferramari-ui/src/main.rs:3405
+msgid "Nothing featured yet"
+msgstr "Рекомендуемого пока нет"
+
+#: crates/ferramari-ui/src/main.rs:2881
+msgid "Nothing in the library matches that search."
+msgstr "Поиск не нашёл ничего в библиотеке."
+
+#: crates/ferramari-ui/src/main.rs:2275 crates/ferramari-ui/src/main.rs:2870
+msgid "Nothing is playing"
+msgstr "Ничего не воспроизводится"
+
+#: crates/ferramari-ui/src/main.rs:2400
+msgid "Now Playing"
+msgstr "Сейчас воспроизводится"
+
+#: crates/ferramari-ui/src/main.rs:414
+msgid "Occluded"
+msgstr "Закрыт окном"
+
+#: crates/ferramari-ui/src/main.rs:4260 crates/ferramari-ui/src/main.rs:4439
+msgid "Off"
+msgstr "Выключено"
+
+#: crates/ferramari-ui/src/main.rs:85
+msgid "Online"
+msgstr "Онлайн"
+
+#: crates/ferramari-ui/src/main.rs:2772 crates/ferramari-ui/src/main.rs:4537
+msgid "Open folder"
+msgstr "Открыть папку"
+
+#: crates/ferramari-ui/src/main.rs:2705
+msgid "Open Settings"
+msgstr "Открыть настройки"
+
+#: crates/ferramari-ui/src/main.rs:4681
+msgid "Package directory or video to export"
+msgstr "Каталог пакета или видео для экспорта"
+
+#: crates/ferramari-ui/src/main.rs:1179
+msgid "Package request queued; processing continues in the server"
+msgstr "Запрос на обработку пакета отправлен серверу"
+
+#: crates/ferramari-ui/src/main.rs:4623
+msgid "Packages"
+msgstr "Пакеты"
+
+#: crates/ferramari-ui/src/main.rs:4271
+msgid "Pause on battery"
+msgstr "Пауза от батареи"
+
+#: crates/ferramari-ui/src/main.rs:4466
+msgid "Pause on maximized window"
+msgstr "Пауза при развёрнутом окне"
+
+#: crates/ferramari-ui/src/main.rs:645 crates/ferramari-ui/src/main.rs:86
+msgid "Performance"
+msgstr "Производительность"
+
+#: crates/ferramari-ui/src/main.rs:3095
+msgid "Play on"
+msgstr "Воспроизвести на"
+
+#: crates/ferramari-ui/src/main.rs:643
+msgid "Playback"
+msgstr "Воспроизведение"
+
+#: crates/ferramari-ui/src/main.rs:2529
+msgid "Primary"
+msgstr "Основной"
+
+#: crates/ferramari-ui/src/main.rs:4202
+msgid "Profile"
+msgstr "Профиль"
+
+#: crates/ferramari-ui/src/main.rs:4212
+msgid "Quality"
+msgstr "Качество"
+
+#: crates/ferramari-ui/src/main.rs:4204
+msgid "Quality prioritises smoothness; Eco reduces decoding"
+msgstr "«Качество» ставит плавность выше экономии, «Эко» снижает нагрузку"
+"«Качество» ставит плавность выше экономии, «Эко» снижает нагрузкуКачество "
+"важнее плавности; «Эко» снижает декодирование и приостанавливает обои при "
+"простое"
+
+#: crates/ferramari-ui/src/main.rs:2631
+msgid "RAM"
+msgstr "ОЗУ"
+
+#: crates/ferramari-ui/src/main.rs:4449
+msgid "Random"
+msgstr "Случайно"
+
+#: crates/ferramari-ui/src/main.rs:2273
+msgid "Reading playback data…"
+msgstr "Читаем данные плеера…"
+
+#: crates/ferramari-ui/src/main.rs:2996
+msgid "Reading…"
+msgstr "Читаем…"
+
+#: crates/ferramari-ui/src/main.rs:297
+msgid "Recent"
+msgstr "Недавние"
+
+#: crates/ferramari-ui/src/main.rs:4543
+msgid "Refresh"
+msgstr "Обновить"
+
+#: crates/ferramari-ui/src/main.rs:3129
+msgid "Reload"
+msgstr "Обновить"
+
+#: crates/ferramari-ui/src/main.rs:4479
+msgid "Remote pages and subresources; local always allowed"
+msgstr "Внешние страницы и ресурсы; локальные разрешены всегда"
+"Внешние страницы и ресурсы; локальные разрешены всегдаУдалённые страницы и "
+"ресурсы; локальный HTML и data-URI разрешены всегда"
+
+#: crates/ferramari-ui/src/main.rs:3112
+msgid "Remove from"
+msgstr "Убрать из"
+
+#: crates/ferramari-ui/src/main.rs:3082
+msgid "Remove from favorites"
+msgstr "Убрать из избранного"
+
+#: crates/ferramari-ui/src/main.rs:3136
+msgid "Remove from library"
+msgstr "Убрать из библиотеки"
+
+#: crates/ferramari-ui/src/main.rs:3807
+msgid "Resolution"
+msgstr "Разрешение"
+
+#: crates/ferramari-ui/src/main.rs:2082
+msgid "Restart"
+msgstr "Перезапуск"
+
+#: crates/ferramari-ui/src/main.rs:4560
+msgid "Rotation collections"
+msgstr "Коллекции для ротации"
+
+#: crates/ferramari-ui/src/main.rs:4402
+msgid "Rotation interval"
+msgstr "Интервал ротации"
+
+#: crates/ferramari-ui/src/main.rs:4435
+msgid "Rotation mode"
+msgstr "Режим ротации"
+
+#: crates/ferramari-ui/src/main.rs:4010
+msgid "Run in background"
+msgstr "Работать в фоне"
+
+#: crates/ferramari-ui/src/main.rs:2119
+msgid "Running"
+msgstr "Работает"
+
+#: crates/ferramari-ui/src/main.rs:3405
+msgid "Search or pick a category"
+msgstr "Найдите обои или выберите категорию"
+
+#: crates/ferramari-ui/src/main.rs:1148 crates/ferramari-ui/src/main.rs:1257
+#: crates/ferramari-ui/src/main.rs:2145 crates/ferramari-ui/src/main.rs:840
+msgid "Search wallpapers…"
+msgstr "Поиск обоев…"
+
+#: crates/ferramari-ui/src/main.rs:868
 msgid "Server is unavailable"
 msgstr "Сервер недоступен"
+
+#: crates/ferramari-ui/src/main.rs:87
+msgid "Settings"
+msgstr "Настройки"
+
+#: crates/ferramari-ui/src/main.rs:4643
+msgid "Sign"
+msgstr "Подписать"
+
+#: crates/ferramari-ui/src/main.rs:4661
+msgid "Source…"
+msgstr "Источник…"
+
+#: crates/ferramari-ui/src/main.rs:2867
+msgid "Star a wallpaper to keep it here."
+msgstr "Отметьте обои звёздочкой, чтобы они появились здесь."
+
+#: crates/ferramari-ui/src/main.rs:2070
+msgid "Start"
+msgstr "Запуск"
+
+#: crates/ferramari-ui/src/main.rs:4004
+msgid "Start with system"
+msgstr "Запускать с системой"
+
+#: crates/ferramari-ui/src/main.rs:2076
+msgid "Stop"
+msgstr "Останов"
+
+#: crates/ferramari-ui/src/main.rs:4272
+msgid "Stop playback when running on battery"
+msgstr "Останавливать воспроизведение при работе от батареи"
+
+#: crates/ferramari-ui/src/main.rs:415
+msgid "Suspended"
+msgstr "Приостановлен"
+
+#: crates/ferramari-ui/src/main.rs:4047 crates/ferramari-ui/src/main.rs:4147
+msgid "System"
+msgstr "Система"
+
+#: crates/ferramari-ui/src/main.rs:121
+msgid "System monitoring and engine statistics"
+msgstr "Мониторинг системы и статистика движка"
+
+#: crates/ferramari-ui/src/main.rs:4171
+msgid "The desktop asks for a dark theme"
+msgstr "Система просит тёмное оформление"
+
+#: crates/ferramari-ui/src/main.rs:4173
+msgid "The desktop asks for a light theme"
+msgstr "Система просит светлое оформление"
+
+#: crates/ferramari-ui/src/main.rs:2874
+msgid "The library is empty"
+msgstr "Библиотека пуста"
+
+#: crates/ferramari-core/src/update.rs:281
+msgid "The release listing had no version"
+msgstr "В списке релизов не было версии"
+
+#: crates/ferramari-core/src/update.rs:334
+msgid ""
+"The release listing was not found (is the project still at the same address?)"
+msgstr "Список релизов не найден (проект доступен по прежнему адресу?)"
+
+#: crates/ferramari-core/src/update.rs:308
+msgid "The release listing was not valid JSON"
+msgstr "Список релизов не является корректным JSON"
+
+#: crates/ferramari-core/src/update.rs:305
+msgid "The release listing was unexpectedly large"
+msgstr "Список релизов оказался неожиданно большим"
+
+#: crates/ferramari-ui/src/main.rs:4138
+msgid "Theme"
+msgstr "Тема"
+
+#: crates/ferramari-ui/src/main.rs:4114
+msgid "This version"
+msgstr "Эта версия"
+
+#: crates/ferramari-ui/src/main.rs:4650
+msgid "Trust key"
+msgstr "Добавить ключ в доверенные"
+
+#: crates/ferramari-ui/src/main.rs:417
+msgid "Unknown"
+msgstr "Неизвестно"
+
+#: crates/ferramari-ui/src/main.rs:3802 crates/ferramari-ui/src/main.rs:3810
+#: crates/ferramari-ui/src/main.rs:3819 crates/ferramari-ui/src/main.rs:3827
+msgid "unknown"
+msgstr "неизвестно"
+
+#: crates/ferramari-core/src/update.rs:66
+msgid "Update available:"
+msgstr "Доступно обновление:"
+
+#: crates/ferramari-ui/src/main.rs:4645
+msgid "Verify"
+msgstr "Проверить"
+
+#: crates/ferramari-ui/src/main.rs:3799 crates/ferramari-ui/src/main.rs:4774
+msgid "Video"
+msgstr "Видео"
+
+#: crates/ferramari-ui/src/main.rs:4485
+msgid "Video frame applied as system wallpaper"
+msgstr "Кадр видео как фон системы"
+"Кадр видео как фон системыКадр из видео можно использовать как системные "
+"обои — отлично смотрится в GNOME"
+
+#: crates/ferramari-ui/src/main.rs:4666
+msgid "Video…"
+msgstr "Видео…"
+
+#: crates/ferramari-ui/src/main.rs:3915
+msgid "Waiting for the first frame"
+msgstr "Ждём первый кадр"
+
+#: crates/ferramari-ui/src/main.rs:3768
+msgid "Waiting for the first sample…"
+msgstr "Ожидание первого замера…"
+
+#: crates/ferramari-ui/src/main.rs:4478
+msgid "Web wallpapers network access"
+msgstr "Сеть для веб-обоев"
+
+#: crates/ferramari-ui/src/main.rs:4140
+msgid "Window and control appearance"
+msgstr "Оформление окон и элементов"
+
+#: crates/ferramari-core/src/update.rs:64
+msgid "You are up to date"
+msgstr "У вас последняя версия"
+
+#: crates/ferramari-ui/src/main.rs:118
+msgid "Your animated wallpaper engine"
+msgstr "Ваши живые обои"
+
+#: crates/ferramari-ui/src/main.rs:119
+msgid "Your local wallpapers"
+msgstr "Ваши локальные обои"
+
+#: crates/ferramari-ui/src/main.rs:429
+msgid "—"
+msgstr "—"
+
+#: crates/ferramari-ui/src/main.rs:430
+msgid "…"
+msgstr "…"
+
+#~ msgid "video"
+#~ msgid_plural "videos"
+#~ msgstr[0] "видео"
+#~ msgstr[1] "видео"
+#~ msgstr[2] "видео"
+
+#~ msgid "wallpaper"
+#~ msgid_plural "wallpapers"
+#~ msgstr[0] "обои"
+#~ msgstr[1] "обои"
+#~ msgstr[2] "обоев"
+
+#~ msgid "result"
+#~ msgid_plural "results"
+#~ msgstr[0] "результат"
+#~ msgstr[1] "результата"
+#~ msgstr[2] "результатов"
+
+#~ msgid "About Ferramari"
+#~ msgstr "О Ferramari"
+
+#~ msgid "Add videos to your Ferramari folder, then refresh the list."
+#~ msgstr "Добавьте видео в папку Ferramari и обновите список."
+
+#~ msgid "Adjust playback, wallpaper and startup behaviour."
+#~ msgstr "Настройте воспроизведение, обои и автозапуск."
+
+#~ msgid "Alternately, you can choose a HTML file on your PC"
+#~ msgstr "Или выберите HTML-файл на компьютере"
+
+#~ msgid "Any website that renders in WebKitGTK can become your wallpaper."
+#~ msgstr "Любой сайт, который открывается в WebKitGTK, может стать обоями."
+
+#~ msgid "Apply to"
+#~ msgstr "Применить к"
+
+#~ msgid "Apply…"
+#~ msgstr "Применить…"
+
+#~ msgid "Autostart after login"
+#~ msgstr "Запускать при входе в систему"
+
+#~ msgid "Cancel"
+#~ msgstr "Отмена"
+
+#~ msgid "Cancelling…"
+#~ msgstr "Отмена…"
+
+#~ msgid "Check this website for some really amazing examples!"
+#~ msgstr "На этом сайте есть отличные примеры!"
+
+#~ msgid "Choose a HTML file"
+#~ msgstr "Выбрать HTML-файл"
+
+#~ msgid "Choose an HTML file first."
+#~ msgstr "Сначала выберите HTML-файл."
+
+#~ msgid "Clear search"
+#~ msgstr "Очистить поиск"
+
+#~ msgid "Close"
+#~ msgstr "Закрыть"
+
+#~ msgid "Could not install"
+#~ msgstr "Не удалось установить"
+
+#~ msgid "Could not load more"
+#~ msgstr "Не удалось загрузить ещё"
+
+#~ msgid "Delete the cached video and frames"
+#~ msgstr "Удалить видео и кадры из кэша"
+
+#~ msgid "Download"
+#~ msgstr "Скачать"
+
+#~ msgid "Download cancelled."
+#~ msgstr "Загрузка отменена."
+
+#~ msgid "Download failed"
+#~ msgstr "Не удалось скачать"
+
+#~ msgid "Download removed from the cache."
+#~ msgstr "Загрузка удалена из кэша."
+
+#~ msgid "Downloaded, but the preview frames could not be generated."
+#~ msgstr "Скачано, но кадры предпросмотра создать не удалось."
+
+#~ msgid "Downloaded. Check the frames, then install."
+#~ msgstr "Скачано. Проверьте кадры и установите."
+
+#~ msgid "Downloading the wallpaper…"
+#~ msgstr "Загрузка обоев…"
+
+#~ msgid "Enter a streaming URL first."
+#~ msgstr "Сначала введите ссылку для стриминга."
+
+#~ msgid "Enter a web page URL first."
+#~ msgstr "Сначала введите адрес веб-страницы."
+
+#~ msgid "Fetching details…"
+#~ msgstr "Получение данных…"
+
+#~ msgid "Filter by category"
+#~ msgstr "Фильтр по категории"
+
+#~ msgid "Hint"
+#~ msgstr "Подсказка"
+
+#~ msgid "I'm Feeling Lucky"
+#~ msgstr "Мне повезёт"
+
+#~ msgid "Installed to"
+#~ msgstr "Установлено в"
+
+#~ msgid "Load the next page"
+#~ msgstr "Загрузить следующую страницу"
+
+#~ msgid "Loading frames…"
+#~ msgstr "Загрузка кадров…"
+
+#~ msgid "Local Video"
+#~ msgstr "Локальное видео"
+
+#~ msgid "Local Web Page"
+#~ msgstr "Локальная веб-страница"
+
+#~ msgid "Mute"
+#~ msgstr "Выключить звук"
+
+#~ msgid "No file selected"
+#~ msgstr "Файл не выбран"
+
+#~ msgid "No videos"
+#~ msgstr "Нет видео"
+
+#~ msgid "No videos in the Ferramari folder"
+#~ msgstr "В папке Ferramari нет видео"
+
+#~ msgid "No videos match your search"
+#~ msgstr "Нет видео по вашему запросу"
+
+#~ msgid "No videos yet"
+#~ msgstr "Видео пока нет"
+
+#~ msgid "No wallpapers in this category"
+#~ msgstr "В этой категории нет обоев"
+
+#~ msgid "Oops!"
+#~ msgstr "Ой!"
+
+#~ msgid "Open"
+#~ msgstr "Открыть"
+
+#~ msgid "Open config file"
+#~ msgstr "Открыть файл конфигурации"
+
+#~ msgid "Open Ferramari folder"
+#~ msgstr "Открыть папку Ferramari"
+
+#~ msgid "or"
+#~ msgstr "или"
+
+#~ msgid ""
+#~ "Paste a video link. Ferramari resolves it with yt-dlp and starts playback."
+#~ msgstr ""
+#~ "Вставьте ссылку на видео. Ferramari обработает её через yt-dlp и запустит "
+#~ "воспроизведение."
+
+#~ msgid "Pause wallpaper"
+#~ msgstr "Приостановить обои"
+
+#~ msgid "Paused"
+#~ msgstr "Пауза"
+
+#~ msgid "Playing"
+#~ msgstr "Воспроизводится"
+
+#~ msgid "Preview before installing"
+#~ msgstr "Предпросмотр перед установкой"
+
+#~ msgid "Preview live wallpapers before installing them"
+#~ msgstr "Смотрите живые обои перед установкой"
+
+#~ msgid "Project website"
+#~ msgstr "Сайт проекта"
+
+#~ msgid "Quick toggles"
+#~ msgstr "Быстрые настройки"
+
+#~ msgid ""
+#~ "Quickstart for adding local videos:\n"
+#~ "・Click the folder icon to open the Ferramari folder\n"
+#~ "・Put your videos there\n"
+#~ "・Click the refresh button"
+#~ msgstr ""
+#~ "Быстрый старт для локальных видео:\n"
+#~ "・Нажмите на значок папки, чтобы открыть папку Ferramari\n"
+#~ "・Положите туда видео\n"
+#~ "・Нажмите кнопку обновления"
+
+#~ msgid "Quit Ferramari"
+#~ msgstr "Выйти из Ferramari"
+
+#~ msgid "Ready"
+#~ msgstr "Готово"
+
+#~ msgid "Reload the catalogue"
+#~ msgstr "Обновить каталог"
+
+#~ msgid "Remove download"
+#~ msgstr "Удалить загрузку"
+
+#~ msgid "Resolving stream…"
+#~ msgstr "Получение ссылки на поток…"
+
+#~ msgid "Restart Ferramari to apply the language."
+#~ msgstr "Перезапустите Ferramari, чтобы применить язык."
+
+#~ msgid "Resume wallpaper"
+#~ msgstr "Возобновить обои"
+
+#~ msgid "Retry download"
+#~ msgstr "Повторить загрузку"
+
+#~ msgid "Search videos"
+#~ msgstr "Поиск видео"
+
+#~ msgid "Search wallpapers"
+#~ msgstr "Поиск обоев"
+
+#~ msgid "Select a video to apply"
+#~ msgstr "Выберите видео для применения"
+
+#~ msgid "Set a web page as wallpaper"
+#~ msgstr "Сделать веб-страницу обоями"
+
+#~ msgid "Set For"
+#~ msgstr "Для"
+
+#~ msgid "Set For All"
+#~ msgstr "Для всех"
+
+#~ msgid "Show Ferramari"
+#~ msgstr "Показать Ferramari"
+
+#~ msgid "Static wallpaper blur radius"
+#~ msgstr "Размытие статичных обоев"
+
+#~ msgid "Streaming"
+#~ msgstr "Стриминг"
+
+#~ msgid "Streaming is resolved with yt-dlp."
+#~ msgstr "Ссылка обрабатывается через yt-dlp."
+
+#~ msgid "Streaming URL"
+#~ msgstr "Ссылка для стриминга"
+
+#~ msgid "System default"
+#~ msgstr "Как в системе"
+
+#~ msgid ""
+#~ "The cached video and frames were deleted. Installed wallpapers are not "
+#~ "touched."
+#~ msgstr "Видео и кадры удалены из кэша. Установленные обои не затронуты."
+
+#~ msgid "Toggle Mute Audio"
+#~ msgstr "Выключить/включить звук"
+
+#~ msgid "Toggle Play/Pause"
+#~ msgstr "Пауза/воспроизведение"
+
+#~ msgid "Try a different name or clear the search."
+#~ msgstr "Попробуйте другое название или очистите поиск."
+
+#~ msgid "Try a different search, or clear it to browse the catalogue."
+#~ msgstr ""
+#~ "Попробуйте другой запрос или очистите поиск, чтобы вернуться к каталогу."
+
+#~ msgid "Try again"
+#~ msgstr "Повторить"
+
+#~ msgid "Try another category or reload the catalogue."
+#~ msgstr "Выберите другую категорию или обновите каталог."
+
+#~ msgid "Unmute"
+#~ msgstr "Включить звук"
+
+#~ msgid "Untitled video"
+#~ msgstr "Без названия"
+
+#~ msgid "URL or HTML"
+#~ msgstr "URL или HTML"
+
+#~ msgid "Video downloaded"
+#~ msgstr "Видео скачано"
+
+#~ msgid "Video links"
+#~ msgstr "Ссылки на видео"
+
+#~ msgid "Video wallpaper"
+#~ msgstr "Видеообои"
+
+#~ msgid "Video wallpaper for Linux. Written in Rust. 🦀"
+#~ msgstr "Видеообои для Linux. Написано на Rust. 🦀"
+
+#~ msgid "Videos from streaming services"
+#~ msgstr "Видео со стриминговых сервисов"
+
+#~ msgid "Videos located in Ferramari folder"
+#~ msgstr "Видео в папке Ferramari"
+
+#~ msgid "Volume"
+#~ msgstr "Громкость"
+
+#~ msgid "Wallpaper archive"
+#~ msgstr "Архив обоев"
+
+#~ msgid "Wallpaper catalogue"
+#~ msgstr "Каталог обоев"
+
+#~ msgid "Wallpaper category"
+#~ msgstr "Категория обоев"
+
+#~ msgid "Wallpapers"
+#~ msgstr "Обои"
+
+#~ msgid "Web Page"
+#~ msgstr "Веб-страница"
+
+#~ msgid "Web Page URL"
+#~ msgstr "Адрес веб-страницы"
+
+#~ msgid "Welcome to Ferramari 🤗"
+#~ msgstr "Добро пожаловать в Ferramari 🤗"
+
+#~ msgid "Your own files"
+#~ msgstr "Ваши файлы"
+
+#~ msgid "Overview"
+#~ msgstr "Обзор"
+
+#~ msgid "Open library"
+#~ msgstr "Открыть библиотеку"
+
+#~ msgid "Browse catalogue"
+#~ msgstr "Открыть каталог"
+
+#~ msgid "Playback, wallpaper and system behaviour"
+#~ msgstr "Воспроизведение, обои и поведение системы"
+
+#~ msgid "App behaviour"
+#~ msgstr "Поведение приложения"
+
+#~ msgid "Create a collection"
+#~ msgstr "Создать коллекцию"
+
+#~ msgid "Rename"
+#~ msgstr "Переименовать"
+
+#~ msgid "Delete"
+#~ msgstr "Удалить"
+
+#~ msgid "Remove from collection"
+#~ msgstr "Убрать из коллекции"
+
+#~ msgid "Delete collection"
+#~ msgstr "Удалить коллекцию"
+
+#~ msgid "New collection…"
+#~ msgstr "Новая коллекция…"
+
+#~ msgid "No recently used videos"
+#~ msgstr "Нет недавних видео"
+
+#~ msgid "Collection is empty"
+#~ msgstr "Коллекция пуста"
+
+#~ msgid "Add videos to this collection."
+#~ msgstr "Добавьте видео в эту коллекцию."
+
+#~ msgid "Save"
+#~ msgstr "Сохранить"
+
+#~ msgid "Default"
+#~ msgstr "По умолчанию"
+
+#~ msgid "Title"
+#~ msgstr "Название"
+
+#~ msgid "Size"
+#~ msgstr "Размер"
+
+#~ msgid "Duration"
+#~ msgstr "Длительность"
+
+#~ msgid "Any resolution"
+#~ msgstr "Любое разрешение"
+
+#~ msgid "Sort wallpapers"
+#~ msgstr "Сортировка обоев"
+
+#~ msgid "Resolution filters use metadata from downloaded previews"
+#~ msgstr "Фильтры разрешения используют данные из скачанных превью"
+
+#~ msgid "No wallpapers match these filters"
+#~ msgstr "Нет обоев, подходящих под фильтры"
+
+#~ msgid "Try another resolution or reload the catalogue."
+#~ msgstr "Выберите другое разрешение или обновите каталог."
+
+#~ msgid "Rotation"
+#~ msgstr "Ротация"
+
+#~ msgid "Rotate wallpapers"
+#~ msgstr "Переключать обои"
+
+#~ msgid "Use the collection assigned to each monitor on Home"
+#~ msgstr "Использовать коллекцию, назначенную монитору на главном экране"
+
+#~ msgid "Rotate this collection on this monitor"
+#~ msgstr "Переключать эту коллекцию на этом мониторе"
+
+#~ msgid "Battery"
+#~ msgstr "Батарея"
+
+#~ msgid "on battery"
+#~ msgstr "от батареи"
+
+#~ msgid "on AC power"
+#~ msgstr "от сети"
+
+#~ msgid "No battery detected"
+#~ msgstr "Батарея не обнаружена"
+
+#~ msgid "Paused (covered)"
+#~ msgstr "Пауза (перекрыто)"
+
+#~ msgid "Hardware decoding is not available here; decoding on the CPU."
+#~ msgstr ""
+#~ "Аппаратное декодирование недоступно; декодирование выполняется на CPU."
+
+#~ msgid ""
+#~ "The selected decoder is not available here; decoding on the CPU instead."
+#~ msgstr "Выбранный декодер недоступен; декодирование выполняется на CPU."
+
+#~ msgid ""
+#~ "The selected decoder is not available; a different hardware decoder is "
+#~ "active."
+#~ msgstr ""
+#~ "Выбранный декодер недоступен; вместо него работает другой аппаратный "
+#~ "декодер."
+
+#~ msgid "Hardware decoding is active although software decoding was selected."
+#~ msgstr "Аппаратное декодирование активно, хотя выбрано программное."
+
+#~ msgid "Auto"
+#~ msgstr "Авто"
+
+#~ msgid "Allow network for web wallpapers"
+#~ msgstr "Разрешить сеть для веб-обоев"
+
+#~ msgid "Live resource use of Ferramari and its media processes"
+#~ msgstr "Текущее потребление ресурсов Ferramari и его медиапроцессов"
+
+#~ msgid "Resources"
+#~ msgstr "Ресурсы"
+
+#~ msgid "Memory (RSS)"
+#~ msgstr "Память (RSS)"
+
+#~ msgid "Threads"
+#~ msgstr "Потоки"
+
+#~ msgid "Processes"
+#~ msgstr "Процессы"
+
+#~ msgid "Metrics cover the Ferramari server and its mpv children."
+#~ msgstr "Метрики охватывают сервер Ferramari и его дочерние процессы mpv."
+
+#~ msgid "Not measurable here"
+#~ msgstr "Здесь не измеримо"
+
+#~ msgid "Measuring…"
+#~ msgstr "Измерение…"
+
+#~ msgid "Live resource use"
+#~ msgstr "Потребление ресурсов"
+
+#~ msgid ""
+#~ "Native Wayland surfaces are not implemented; Ferramari uses X11/XWayland."
+#~ msgstr ""
+#~ "Нативные поверхности Wayland не реализованы; Ferramari использует X11/"
+#~ "XWayland."
+
+#~ msgid "Export .ferramari"
+#~ msgstr "Экспорт .ferramari"
+
+#~ msgid "Export the selected video as a package"
+#~ msgstr "Экспортировать выбранное видео как пакет"
+
+#~ msgid "Choose a .ferramari package"
+#~ msgstr "Выберите пакет .ferramari"
+
+#~ msgid "Choose a folder for the package"
+#~ msgstr "Выберите папку для пакета"
+
+#~ msgid "Select"
+#~ msgstr "Выбрать"
+
+#~ msgid "Done"
+#~ msgstr "Готово"
+
+#~ msgid "Community sources"
+#~ msgstr "Источники сообщества"
+
+#~ msgid "No catalogue plugins installed"
+#~ msgstr "Плагины каталога не установлены"
+
+#~ msgid "Sign package…"
+#~ msgstr "Подписать пакет…"
+
+#~ msgid "Verify package…"
+#~ msgstr "Проверить пакет…"
+
+#~ msgid "Checksum and sign this package with your key"
+#~ msgstr "Вычислить контрольные суммы и подписать пакет вашим ключом"
+
+#~ msgid "Check the package checksums and signature"
+#~ msgstr "Проверить контрольные суммы и подпись пакета"
+
+#~ msgid "Sign this package?"
+#~ msgstr "Подписать этот пакет?"
+
+#~ msgid ""
+#~ "Ferramari creates a signing key on first use and stores it in your config "
+#~ "folder."
+#~ msgstr ""
+#~ "При первом использовании Ferramari создаст ключ подписи и сохранит его в "
+#~ "папке конфигурации."
+
+#~ msgid "Package integrity"
+#~ msgstr "Целостность пакета"
+
+#~ msgid "All files match their recorded SHA-256"
+#~ msgstr "Все файлы совпадают с записанными SHA-256"
+
+#~ msgid "The package carries no checksums"
+#~ msgstr "В пакете нет контрольных сумм"
+
+#~ msgid "Unsigned"
+#~ msgstr "Без подписи"
+
+#~ msgid "Signed by"
+#~ msgstr "Подписан"
+
+#~ msgid "The signature is not valid"
+#~ msgstr "Подпись недействительна"
+
+#~ msgid "Trust this author and remember the key for future packages?"
+#~ msgstr "Доверять этому автору и запомнить ключ для будущих пакетов?"
+
+#~ msgid "Signed"
+#~ msgstr "Подписан"
+
+#~ msgid "Package signing"
+#~ msgstr "Подпись пакетов"
+
+#~ msgid "My key"
+#~ msgstr "Мой ключ"
+
+#~ msgid "No signing key yet"
+#~ msgstr "Ключ подписи ещё не создан"
+
+#~ msgid "No trusted keys"
+#~ msgstr "Нет доверенных ключей"
+
+#~ msgid "Trusted keys"
+#~ msgstr "Доверенные ключи"
+
+#~ msgid "Export my public key…"
+#~ msgstr "Экспортировать мой открытый ключ…"
+
+#~ msgid "Share this file so others can trust your packages"
+#~ msgstr "Передайте этот файл, чтобы другие доверяли вашим пакетам"
+
+#~ msgid "Trust a key…"
+#~ msgstr "Добавить ключ в доверенные…"
+
+#~ msgid "Open a public key file shared by another creator"
+#~ msgstr "Открыть файл открытого ключа другого автора"
+
+#~ msgid "Save your public key"
+#~ msgstr "Сохранить ваш открытый ключ"
+
+#~ msgid "Choose a public key file"
+#~ msgstr "Выберите файл открытого ключа"
+
+#~ msgid "Could not export the key"
+#~ msgstr "Не удалось экспортировать ключ"
+
+#~ msgid "Verify or sign this package"
+#~ msgstr "Проверить или подписать этот пакет"
+
+#~ msgid "Ferramari packages"
+#~ msgstr "Пакеты Ferramari"
+
+#~ msgid ""
+#~ "Import, export, sign and verify .ferramari packages. Enter absolute "
+#~ "paths; operations run in the server."
+#~ msgstr ""
+#~ "Импортируйте, экспортируйте, подписывайте и проверяйте пакеты .ferramari. "
+#~ "Укажите абсолютные пути; операции выполняются сервером."
+
+#~ msgid "Import package"
+#~ msgstr "Импортировать пакет"
+
+#~ msgid "Export video package"
+#~ msgstr "Экспортировать видеопакет"
+
+#~ msgid "Sign package"
+#~ msgstr "Подписать пакет"
+
+#~ msgid "Verify package"
+#~ msgstr "Проверить пакет"
+
+#~ msgid "Trust package key"
+#~ msgstr "Доверять ключу пакета"

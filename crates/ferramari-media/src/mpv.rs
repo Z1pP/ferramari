@@ -458,17 +458,15 @@ fn serve_ipc(mut ipc: Ipc, receiver: Receiver<Request>, shared: &Shared, _stop: 
                     }
                 }
             }
-            Request::ProbeStats => {
-                match probe_stats(&mut ipc, shared) {
-                    Ok(()) => {}
-                    Err(err) => {
-                        record_failure(&err, false, shared);
-                        if is_fatal(&err) {
-                            break;
-                        }
+            Request::ProbeStats => match probe_stats(&mut ipc, shared) {
+                Ok(()) => {}
+                Err(err) => {
+                    record_failure(&err, false, shared);
+                    if is_fatal(&err) {
+                        break;
                     }
                 }
-            }
+            },
             Request::LoadFile(source) => {
                 if let Err(err) = exchange(&mut ipc, json!(["loadfile", source, "replace"])) {
                     if record_failure(&err, true, shared) {
@@ -597,6 +595,15 @@ fn probe_stats(ipc: &mut Ipc, shared: &Shared) -> anyhow::Result<()> {
         if let Some(value) = read_property(ipc, "container-fps")? {
             stats.fps = value.as_f64().filter(|value| *value > 0.0);
         }
+        // The rate the decoder is producing, which is what the frame-rate
+        // tile is about: a 60 FPS file capped to 30 by the Eco Engine
+        // decodes at 30, and saying so is the point of the tile.
+        if let Some(value) = read_property(ipc, "estimated-vf-fps")? {
+            stats.decoded_fps = value.as_f64().filter(|value| *value > 0.0);
+        }
+        if let Some(value) = read_property(ipc, "display-fps")? {
+            stats.display_fps = value.as_f64().filter(|value| *value > 0.0);
+        }
         if let Some(value) = read_property(ipc, "video-codec")? {
             stats.codec = value.as_str().unwrap_or_default().to_string();
         }
@@ -610,10 +617,14 @@ fn probe_stats(ipc: &mut Ipc, shared: &Shared) -> anyhow::Result<()> {
             stats.dropped = value.as_u64();
         }
         if let Some(value) = read_property(ipc, "duration")? {
-            stats.duration = value.as_f64().filter(|value| value.is_finite() && *value > 0.0);
+            stats.duration = value
+                .as_f64()
+                .filter(|value| value.is_finite() && *value > 0.0);
         }
         if let Some(value) = read_property(ipc, "time-pos")? {
-            stats.position = value.as_f64().filter(|value| value.is_finite() && *value >= 0.0);
+            stats.position = value
+                .as_f64()
+                .filter(|value| value.is_finite() && *value >= 0.0);
         }
         Ok(())
     })();
@@ -979,25 +990,59 @@ mod tests {
         let stop = Arc::new(AtomicBool::new(false));
         let (requests, receiver) = mpsc::channel();
 
+        // The probe reads every decoder property in one pass, so the peer
+        // answers by the property named in the request rather than by a
+        // fixed script: a script of three replies would be exhausted by the
+        // first probe and the worker would sit out its read timeout on the
+        // fourth property. `hwdec-current` is the one answer that changes
+        // between the two rounds, which is what the test asserts on.
         let peer = std::thread::spawn(move || {
             let mut reader = BufReader::new(server.try_clone().unwrap());
-            let replies = [
-                ("hwdec-current", Some(json!("vulkan")), "success"),
-                ("hwdec-current", Some(json!("no")), "success"),
-                ("quit", None, "success"),
-            ];
-            for (expected, data, error) in replies {
+            let mut probed = 0u32;
+            loop {
                 let mut line = String::new();
-                reader.read_line(&mut line).unwrap();
-                assert!(line.contains(expected), "{line}");
+                if reader.read_line(&mut line).unwrap() == 0 {
+                    break;
+                }
                 let request: Value = serde_json::from_str(&line).unwrap();
                 let request_id = request["request_id"].as_u64().unwrap();
-                let mut reply = json!({ "request_id": request_id, "error": error });
+                let property = request["command"]
+                    .get(1)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+
+                let data = match property.as_str() {
+                    "hwdec-current" => {
+                        probed += 1;
+                        Some(json!(if probed == 1 { "vulkan" } else { "no" }))
+                    }
+                    // The rest of the probe's properties, answered with the
+                    // shape mpv uses. A number where mpv would say
+                    // "unavailable" is what the probe's per-property skip is
+                    // meant to survive, so they are given real values here.
+                    "container-fps" => Some(json!(59.94)),
+                    "estimated-vf-fps" => Some(json!(58.7)),
+                    "display-fps" => Some(json!(119.8)),
+                    "video-codec" => Some(json!("H.264 / AVC / MPEG-4 AVC")),
+                    "width" => Some(json!(3840)),
+                    "height" => Some(json!(2160)),
+                    "frame-drop-count" => Some(json!(3)),
+                    "duration" => Some(json!(35.3)),
+                    "time-pos" => Some(json!(1.6)),
+                    "quit" => None,
+                    _ => None,
+                };
+
+                let mut reply = json!({ "request_id": request_id, "error": "success" });
                 if let Some(data) = data {
                     reply["data"] = data;
                 }
                 writeln!(server, "{reply}").unwrap();
                 server.flush().unwrap();
+                if property == "quit" {
+                    break;
+                }
             }
         });
 

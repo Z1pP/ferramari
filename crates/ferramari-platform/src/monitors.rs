@@ -51,6 +51,8 @@ struct RawMonitor {
     height: i32,
     /// The RandR monitor atom name — the value GDK uses as the model.
     atom_name: String,
+    /// Vertical refresh of the mode this monitor is running in.
+    refresh_hz: Option<f64>,
     is_primary: bool,
     identity: DisplayIdentity,
 }
@@ -120,6 +122,66 @@ fn output_name(
     (!name.is_empty()).then_some(name)
 }
 
+/// Vertical refresh of the mode an output is running in, in hertz.
+///
+/// RandR does not put the mode on the monitor, only on its CRTC, so the path
+/// is output → CRTC → mode id → the mode table the resources query already
+/// returned. The rate is then the pixel clock over the full frame: `htotal`
+/// and `vtotal` are the blanking-inclusive counts, which is what a refresh
+/// rate means. A virtual or XWayland output has no CRTC and answers `None`;
+/// guessing 60 there would be a number the machine never reported.
+fn output_refresh_hz(
+    connection: &impl x11rb::connection::Connection,
+    output: x11rb::protocol::randr::Output,
+    timestamp: u32,
+    modes: &[x11rb::protocol::randr::ModeInfo],
+) -> Option<f64> {
+    use x11rb::protocol::randr::ConnectionExt as _;
+
+    let crtc = connection
+        .randr_get_output_info(output, timestamp)
+        .ok()?
+        .reply()
+        .ok()?
+        .crtc;
+    if crtc == 0 {
+        return None;
+    }
+    let mode = connection
+        .randr_get_crtc_info(crtc, timestamp)
+        .ok()?
+        .reply()
+        .ok()?
+        .mode;
+    if mode == 0 {
+        return None;
+    }
+    let info = modes.iter().find(|candidate| candidate.id == mode)?;
+    if info.dot_clock == 0 {
+        return None;
+    }
+    let frame = u32::from(info.htotal).max(1) as f64 * u32::from(info.vtotal).max(1) as f64;
+
+    // The spec says `dot_clock` is in kilohertz, and Xorg obeys; a compositor
+    // that synthesises RandR state may hand back hertz instead. Both readings
+    // are computed and the plausible one is taken: a refresh rate is a small
+    // number, so exactly one of the two can be in the range a display has,
+    // and the other is a thousand times off. Picking by magnitude is a
+    // measurement of the units, not a guess at the answer.
+    let from_kilohertz = info.dot_clock as f64 * 1000.0 / frame;
+    let from_hertz = info.dot_clock as f64 / frame;
+    let plausible = |rate: f64| (15.0..=1000.0).contains(&rate);
+    if plausible(from_kilohertz) {
+        Some(from_kilohertz)
+    } else if plausible(from_hertz) {
+        Some(from_hertz)
+    } else {
+        // Neither reading is a refresh rate: the mode table said something we
+        // cannot interpret, which is not the same as 60.
+        None
+    }
+}
+
 fn randr_monitors() -> (Vec<RawMonitor>, Option<i32>) {
     use x11rb::connection::Connection;
     use x11rb::protocol::randr::ConnectionExt as _;
@@ -148,6 +210,11 @@ fn randr_monitors() -> (Vec<RawMonitor>, Option<i32>) {
         .as_ref()
         .map(|resources| resources.config_timestamp)
         .unwrap_or(0);
+    // The mode table is what turns a CRTC's mode id into a refresh rate.
+    let modes: Vec<x11rb::protocol::randr::ModeInfo> = resources
+        .as_ref()
+        .map(|resources| resources.modes.clone())
+        .unwrap_or_default();
 
     let monitors: Vec<RawMonitor> = reply
         .monitors
@@ -183,12 +250,16 @@ fn randr_monitors() -> (Vec<RawMonitor>, Option<i32>) {
                 height_mm: monitor.height_in_millimeters,
                 native_id: None,
             };
+            let refresh_hz = monitor.outputs.first().and_then(|output| {
+                output_refresh_hz(&connection, *output, config_timestamp, &modes)
+            });
             RawMonitor {
                 x: i32::from(monitor.x) / scale,
                 y: i32::from(monitor.y) / scale,
                 width: i32::from(monitor.width) / scale,
                 height: i32::from(monitor.height) / scale,
                 atom_name,
+                refresh_hz,
                 is_primary: monitor.primary,
                 identity,
             }
@@ -235,6 +306,7 @@ pub fn list() -> Vec<MonitorInfo> {
             width: raw.width,
             height: raw.height,
             scale_factor: scale,
+            refresh_hz: raw.refresh_hz,
             is_primary: Some(index as i32) == primary_index,
             identity: raw.identity.clone(),
         });
@@ -262,10 +334,20 @@ pub struct Watcher {
 
 impl Drop for Watcher {
     fn drop(&mut self) {
-        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
-        if let Some(handle) = self.thread.take() {
-            let _ = handle.join();
-        }
+        self.stop();
+        // Deliberately not joined. The thread spends its life inside
+        // `wait_for_event`, which is a blocking read on the X socket: it
+        // cannot observe the `stop` flag until an event arrives, and an idle
+        // desktop produces none. Joining here therefore hung the server's
+        // shutdown forever — reached on exit, and the process kept the
+        // D-Bus name so no new daemon could start.
+        //
+        // Detaching is safe because the thread does only two things while
+        // blocked: wait, and send on the command channel. Once the owner is
+        // gone that send fails and is ignored, and the watcher is created
+        // exactly once per process (`App::start_external_watchers`), so no
+        // thread accumulates. The thread dies with the process.
+        self.thread = None;
     }
 }
 

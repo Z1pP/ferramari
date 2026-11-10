@@ -125,6 +125,10 @@ pub struct App {
     /// rate, codec, geometry, dropped frames. Published to bus clients for
     /// the Performance page; default while nothing is decoding.
     player_stats: ferramari_core::stats::PlaybackStats,
+    /// The tray item, kept so `Command::SetShowSystray` can withdraw it or
+    /// bring it back without restarting the process. `None` while hidden or
+    /// when the desktop has no StatusNotifier host at all.
+    tray: Option<tray::Handle>,
 }
 
 impl App {
@@ -158,7 +162,7 @@ impl App {
             config.idle_timeout_sec.clamp(30, 86_400) as u64
         ));
 
-        let app = Self {
+        let mut app = Self {
             config,
             monitors,
             display_ids,
@@ -198,11 +202,12 @@ impl App {
             operation_error: false,
             hwdec_running: String::new(),
             player_stats: ferramari_core::stats::PlaybackStats::default(),
+            tray: None,
         };
         app.sync_snapshot();
 
         if app.config.is_show_systray {
-            tray::spawn(tx.clone());
+            app.tray = tray::spawn(app.tx.clone());
         }
 
         let app = Rc::new(RefCell::new(app));
@@ -484,6 +489,13 @@ impl App {
                     if self.config.mode == Mode::Webpage {
                         self.restart_windows();
                     }
+                }
+            }
+            Command::SetShowSystray(enabled) => {
+                if self.config.is_show_systray != enabled {
+                    self.config.is_show_systray = enabled;
+                    self.save_config();
+                    self.apply_tray_visibility();
                 }
             }
             Command::Suspend(sleeping) => {
@@ -1717,6 +1729,24 @@ impl App {
         self.gui_shown = true;
     }
 
+    /// Bring the tray icon in or out of the status-notifier host.
+    ///
+    /// The daemon keeps running either way: this only decides whether the
+    /// user has a handle on it without a window, which is what the control
+    /// surface's "Run in background" switch promises. A desktop with no
+    /// StatusNotifier host simply gives `None` back, and hiding is then a
+    /// no-op rather than an error.
+    fn apply_tray_visibility(&mut self) {
+        if self.config.is_show_systray {
+            if self.tray.is_none() {
+                self.tray = tray::spawn(self.tx.clone());
+            }
+        } else if let Some(handle) = self.tray.take() {
+            handle.shutdown().wait();
+        }
+        self.sync_snapshot();
+    }
+
     pub fn set_autostart(&mut self, enabled: bool) {
         if let Err(err) = autostart::set_enabled(enabled) {
             self.notify_user_error(UserError::with_detail(
@@ -1798,6 +1828,21 @@ impl App {
                         String::new()
                     };
                     (monitor.name.clone(), text)
+                })
+                .collect(),
+            monitor_refresh: self
+                .monitors
+                .iter()
+                .filter_map(|monitor| {
+                    // Only measured rates are published. A monitor without one
+                    // is left out of the map rather than given a `0`, which a
+                    // client could not tell apart from a real 0 Hz.
+                    let hz = monitor.refresh_hz?;
+                    if hz.is_finite() && hz > 0.0 {
+                        Some((monitor.name.clone(), hz.round().max(1.0) as u32))
+                    } else {
+                        None
+                    }
                 })
                 .collect(),
             primary_monitor: self
@@ -2061,6 +2106,7 @@ mod tests {
             width: 1920,
             height: 1080,
             scale_factor: 1,
+            refresh_hz: None,
             is_primary: name == "eDP-1",
             identity: DisplayIdentity::default(),
         }
@@ -2232,6 +2278,7 @@ mod tests {
                     width: 1920,
                     height: 1080,
                     scale_factor: 1,
+                    refresh_hz: None,
                     is_primary: true,
                     identity: DisplayIdentity::default(),
                 },
@@ -2243,6 +2290,7 @@ mod tests {
                     width: 1920,
                     height: 1080,
                     scale_factor: 1,
+                    refresh_hz: None,
                     is_primary: false,
                     identity: DisplayIdentity::default(),
                 },

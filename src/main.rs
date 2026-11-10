@@ -65,6 +65,13 @@ fn main() {
         return;
     }
 
+    // Before anything that spawns a thread — the D-Bus client, the tray, the
+    // watchers, the cache cleaner below all do — so every one of them
+    // inherits a mask with the termination signals blocked and none of them
+    // can be the thread that dies from a default action.
+    #[cfg(unix)]
+    block_signals_process_wide();
+
     log::info!(
         "Ferramari v{}\n--- System information ---\n\
          is_gnome = {}\n\
@@ -130,10 +137,26 @@ fn main() {
 
 /// SIGINT/SIGTERM are blocked process-wide and delivered by one thread.
 ///
-/// Blocking them before any thread starts is what makes this work: without
-/// it the default action would kill the process mid-fade, and a handler
-/// could not send on the command channel without risking an async-signal-
-/// unsafe call. `sigwait` returns only for the signals we asked for.
+/// The blocking must happen here, in the main thread, before any thread is
+/// started: `sigprocmask` applies to the calling thread only, and a thread
+/// that blocks a signal does not unblock it for its siblings. Blocking inside
+/// the waiter thread leaves the main thread with the default action, so
+/// `kill -TERM` stops the process where it stands — mid-fade, with the
+/// children it spawned still running and re-parented to init. New threads
+/// inherit this mask, which is what lets the waiter `sigwait` for them.
+#[cfg(unix)]
+fn block_signals_process_wide() {
+    let signals = [libc::SIGINT, libc::SIGTERM];
+    let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };
+    unsafe {
+        libc::sigemptyset(&mut set);
+        for signal in signals {
+            libc::sigaddset(&mut set, signal);
+        }
+        libc::sigprocmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
+    }
+}
+
 #[cfg(unix)]
 fn install_signal_handlers(tx: &CommandSender) {
     let tx = tx.clone();
@@ -146,7 +169,6 @@ fn install_signal_handlers(tx: &CommandSender) {
                 libc::sigemptyset(&mut set);
                 for signal in signals {
                     libc::sigaddset(&mut set, signal);
-                    libc::sigprocmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
                 }
             }
             let mut received = 0;

@@ -76,7 +76,7 @@ impl DisplayIdentity {
 }
 
 /// One connected display, in logical pixels.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MonitorInfo {
     pub index: i32,
     /// Model name, also used as the `data_source` key.
@@ -88,6 +88,11 @@ pub struct MonitorInfo {
     /// Logical-to-device-pixel factor. Root-window coordinates (EWMH window
     /// geometry) are in device pixels, so occlusion checks scale by this.
     pub scale_factor: i32,
+    /// Vertical refresh of the mode the screen is running in, in hertz.
+    /// `None` when the display backend could not work it out: a Wayland
+    /// session, a virtual output, or a server that does not answer RandR.
+    /// The control surface prints `—` rather than guessing 60.
+    pub refresh_hz: Option<f64>,
     pub is_primary: bool,
     /// Facts that identify the physical screen, used to keep `name` stable.
     pub identity: DisplayIdentity,

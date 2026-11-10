@@ -419,6 +419,19 @@ impl ServerInterface {
         self.snapshot().autostart_enabled
     }
 
+    /// Whether the tray item is registered. The control surface's "Run in
+    /// background" switch writes this: the daemon always runs, the icon is
+    /// what makes it reachable without a window.
+    #[zbus(property, name = "is_show_systray")]
+    fn is_show_systray(&self) -> bool {
+        self.snapshot().is_show_systray
+    }
+
+    #[zbus(property, name = "is_show_systray")]
+    fn set_is_show_systray(&self, enabled: bool) {
+        send(&self.tx, Command::SetShowSystray(enabled));
+    }
+
     #[zbus(property, name = "operation_status")]
     fn operation_status(&self) -> String {
         self.snapshot().operation_status
@@ -526,6 +539,14 @@ impl PlayerInterface {
     #[zbus(property, name = "monitor_resolutions")]
     fn monitor_resolutions(&self) -> HashMap<String, String> {
         self.snapshot().monitor_resolutions
+    }
+
+    /// Monitor name → vertical refresh in hertz. A monitor the backend could
+    /// not measure is absent from the map, so a client never has to decide
+    /// whether `0` was a reading.
+    #[zbus(property, name = "monitor_refresh")]
+    fn monitor_refresh(&self) -> HashMap<String, u32> {
+        self.snapshot().monitor_refresh
     }
 
     /// Config key of the primary display; empty when nothing is primary.

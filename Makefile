@@ -2,6 +2,10 @@ PREFIX  ?= /usr/local
 DESTDIR ?=
 CARGO   ?= cargo
 TARGET_DIR ?= target
+PYTHON  ?= python3
+
+# The gettext domain, which is also the basename of the installed .mo file.
+APP_DOMAIN = ferramari
 
 APP_ID     = io.github.ferramari.Ferramari
 BINDIR     = $(DESTDIR)$(PREFIX)/bin
@@ -12,7 +16,8 @@ ICONDIR    = $(DATADIR)/icons/hicolor/scalable/apps
 METAINFODIR= $(DATADIR)/metainfo
 LOCALEDIR  = $(DATADIR)/locale
 
-.PHONY: all build release test lint fmt clean install uninstall run translations bench
+.PHONY: all build release test lint fmt clean install uninstall run translations bench \
+       pot po-update po-fill po-status po-check
 
 all: build
 
@@ -57,6 +62,46 @@ translations:
 		mkdir -p "$(LOCALEDIR)/$$lang/LC_MESSAGES"; \
 		msgfmt -c -o "$(LOCALEDIR)/$$lang/LC_MESSAGES/ferramari.mo" "$$po"; \
 	done
+
+# The catalogue template is generated, not maintained by hand: GNU gettext
+# has no Rust parser and its Python mode misreads Rust-only syntax, so
+# `scripts/extract-messages.py` walks the sources itself. Run this after
+# adding or renaming any `tr("…")`, then `make po-update`.
+pot:
+	$(PYTHON) scripts/extract-messages.py -o po/$(APP_DOMAIN).pot
+
+# Folds the new template into every language. msgmerge never invents a
+# finished translation: strings it is unsure about arrive flagged `#, fuzzy`,
+# which gettext ignores at run time, so the UI falls back to English rather
+# than showing a wrong sentence. `make po-fill` turns those into real ones.
+po-update: pot
+	@for po in po/*.po; do \
+		msgmerge --quiet --update --backup=none "$$po" po/$(APP_DOMAIN).pot; \
+	done
+
+# Applies the reviewed wording held in `scripts/translations-<lang>.py` to
+# the entries that are still fuzzy or empty. A language with no table is left
+# untouched and reported, so adding a locale is one file, not an edit here.
+po-fill:
+	@for po in po/*.po; do \
+		lang=$$(basename "$$po" .po); \
+		table=scripts/translations-$$lang.py; \
+		if [ -f "$$table" ]; then \
+			$(PYTHON) scripts/fill-po.py "$$po" --table "$$table"; \
+		else \
+			echo "$$po: no $$table, leaving it to a translator"; \
+		fi; \
+	done
+
+# What is still open in each language, as counted by gettext itself.
+po-status:
+	@for po in po/*.po; do printf '%-10s ' "$$(basename $$po .po)"; \
+		msgfmt --statistics -c -o /dev/null "$$po" 2>&1 | tail -1; done
+
+# The template is checked, not trusted: a string added to a page and never
+# added to the catalogue is how a translation quietly goes stale.
+po-check:
+	$(PYTHON) scripts/extract-messages.py -o po/$(APP_DOMAIN).pot --check
 
 install: build
 	install -Dm755 "$(TARGET_DIR)/release/ferramari" "$(BINDIR)/ferramari"

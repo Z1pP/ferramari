@@ -28,6 +28,7 @@ pub mod signing;
 pub mod stats;
 pub mod supervisor;
 pub mod thumbnails;
+pub mod update;
 pub mod util;
 pub mod window;
 pub mod ytdlp;

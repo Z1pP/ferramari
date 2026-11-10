@@ -369,8 +369,9 @@ mod tests {
         assert_eq!(mem_total(&path), Metric::Value(16_384_000 * 1024));
         fs::write(&path, "MemFree: 1 kB\n").unwrap();
         assert_eq!(mem_total(&path), Metric::Unavailable);
-        let _ = std::fs::remove_file(path);
-        assert_eq!(mem_total(Path::new(&path)), Metric::Unsupported);
+        // A file that is not there is a platform with no `/proc/meminfo`.
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(mem_total(&path), Metric::Unsupported);
     }
 
     #[test]

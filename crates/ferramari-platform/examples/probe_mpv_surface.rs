@@ -22,6 +22,7 @@ fn root_monitor() -> anyhow::Result<ferramari_core::MonitorInfo> {
         width: info.width_in_pixels as i32,
         height: info.height_in_pixels as i32,
         scale_factor: 1,
+        refresh_hz: None,
         is_primary: true,
         identity: ferramari_core::DisplayIdentity::default(),
     })

@@ -2,8 +2,57 @@
 
 ## Unreleased
 
-Work on the migration tracker since 2.0.0. **305 tests** pass (219 core + 39
-platform + 20 media + 13 UI + 14 binary).
+Work on the migration tracker since 2.0.0. **431 tests** pass (334 core + 46
+platform + 20 media + 17 UI + 14 binary).
+
+- **The control surface was rebuilt around the reference design.** A gradient
+  backdrop instead of a flat fill, a title bar the app draws itself, a rail,
+  and five pages assembled from one material vocabulary. The styles moved to a
+  new `crates/ferramari-ui/src/style.rs`, which owns every closure, so
+  `main.rs` holds no colour literal and no radius arithmetic of its own.
+  Home's hero is now the wallpaper's own frame with transport and volume over
+  a scrim, Library is a grid of measured cards, Performance gained the
+  decoder's numbers and a frame-time chart with its axis.
+- **Two shutdown bugs, both real, both only reachable now.** `sigprocmask` was
+  called inside the signal-waiter thread, where it blocks the signal for that
+  thread alone; the main thread kept the default action, so `kill -TERM`
+  stopped the process mid-fade and left its mpv children re-parented to init.
+  Signals are now blocked in the main thread before anything spawns. Fixing
+  that made `shutdown()` reachable for the first time, and it hung: the
+  monitors watcher's `Drop` joined a thread parked in `wait_for_event`, which
+  cannot observe the stop flag without an X event, so the daemon kept holding
+  the D-Bus name and no new one could start.
+- **`Run in background` changes the tray at runtime.** `is_show_systray` is now
+  writable over D-Bus and registers or withdraws the StatusNotifierItem
+  without a restart. Measured on the bus: the SNI name goes 0 → 1 → 0.
+- **The frame rate shown is the frame rate produced.** `estimated-vf-fps` and
+  `display-fps` join the probe next to `container-fps`, because a 60 FPS file
+  capped to 30 by the Eco Engine is running at 30 and the tile is about what
+  is on screen. The FPS tile's ceiling is the display's own refresh rate, read
+  from RandR (`MonitorInfo::refresh_hz`) rather than assumed; on the test panel
+  RandR reports 120 Hz and mpv's `display-fps` independently answers 119.93.
+- **`Check for updates` is a real check.** `ferramari_core::update` asks
+  GitHub's releases API, caches the answer in `update.json` for a week, and is
+  gated by the user's switch, so opening the window to change a volume costs
+  no request. Verified against the live API: it fetched `v2.0.0`, compared it
+  with this build and reported "up to date".
+- **Translations are generated, not remembered.** 116 strings had been added
+  to the UI without ever entering the catalogues. GNU gettext has no Rust
+  parser, so `scripts/extract-messages.py` generates the template,
+  `make po-update` folds it into each language and `make po-fill` applies
+  reviewed wording to what msgmerge could only guess — its guesses were unsafe,
+  `Nothing is playing` having arrived as `Сейчас воспроизводится`, the
+  opposite. Both catalogues are at 180/180, including Russian's three plural
+  forms, which msgmerge flattens silently. `make po-check` fails when the
+  template and the sources drift.
+- **Icon names are checked against the installed font.** A name missing from
+  the table, or a codepoint borrowed from Font Awesome 5, renders as a wrong
+  glyph with no error; `scripts/glyph-check.py` reads the font's own charset
+  and reports both cases.
+- **`FERRAMARI_UI_BOOT="page=… size=… section=…"`** opens the window at one
+  page, size and settings section, which is how every page was verified in
+  dark and light, at 1180, 940 and 1600 wide, in English, Russian and
+  Japanese.
 
 - **A wallpaper now follows the physical monitor.** A config key was only as
   durable as the enumeration that produced it, so a replugged screen that came

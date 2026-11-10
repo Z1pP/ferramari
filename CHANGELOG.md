@@ -1,9 +1,29 @@
 # Changelog
 
-## Unreleased
+## 2.1.0 — 2026-11-10
 
-Work on the migration tracker since 2.0.0. **431 tests** pass (334 core + 46
-platform + 20 media + 17 UI + 14 binary).
+**The control surface redrawn to the reference design, and the shutdown path
+made real.** **433 tests** pass (334 core + 46 platform + 20 media + 19 UI +
+14 binary).
+
+- **`Install` installs.** The button put the wallpaper on the screen and left
+  the file in `~/.cache/ferramari/catalogue`, where the seven-day and 2 GB
+  pruning eventually deletes it — leaving a Library card and a config entry
+  pointing at a path that no longer exists. `catalogue::install` had lost its
+  caller during the GTK removal, so the download now copies into
+  `$XDG_VIDEOS_DIR/Ferramari` under the source's own name before playing.
+- **The paused engine no longer reports a frame rate.** mpv answers
+  `container-fps` for a loaded-but-paused file, so the FPS tile showed `30`
+  next to an `Idle` badge in the same window. The tile and its history now
+  read nothing while the engine is not playing.
+- **Thread and process counts returned to the Performance page**, dropped by
+  the redesign, in a card of their own: they describe the process tree, not
+  mpv, and did not belong under *MPV Statistics*.
+- **Category tiles answer in the source's language.** The catalogue publishes
+  its categories in Russian whatever the interface language is, so an
+  English-only keyword table left nearly every tile on the fallback globe;
+  `Зима` and `Огонь` now get a snowflake and a flame instead of a collapse
+  arrow and a duplicate bolt.
 
 - **The control surface was rebuilt around the reference design.** A gradient
   backdrop instead of a flat fill, a title bar the app draws itself, a rail,
@@ -142,7 +162,7 @@ platform + 20 media + 17 UI + 14 binary).
 - **Native tray** via `ksni` (already in place, no GTK).
 - **Web wallpapers** gated behind `web-wallpaper` feature flag. Enabling it
   pulls WebKitGTK 2.x back in (the only toolkit with a maintained Rust
-  binding for WebKitGTK 4.1). See `docs/GTK_REMOVAL_AUDIT.md` §4 for
+  binding for WebKitGTK 4.1). See `docs/archive/GTK_REMOVAL_AUDIT.md` §4 for
   alternatives (CEF, external browser process).
 - **160 tests** pass (113 core + 19 platform + 19 media + 8 UI + 1 binary).
 - **Workspace split** into 4 crates: `ferramari-core`, `ferramari-media`,
@@ -161,7 +181,7 @@ platform + 20 media + 17 UI + 14 binary).
 
 ### Migration guide
 
-See `docs/GTK_REMOVAL_AUDIT.md` for the full audit and migration plan.
+See `docs/archive/GTK_REMOVAL_AUDIT.md` for the full audit and migration plan.
 
 ## 1.9.4 — 2026-11-04
 

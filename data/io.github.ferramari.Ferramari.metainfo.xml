@@ -21,6 +21,21 @@
     <category>Graphics</category>
   </categories>
   <releases>
+    <release version="2.1.0" date="2026-11-10" type="stable">
+      <description>
+        <p>The control surface redrawn to the reference design, and the shutdown path made real.</p>
+        <ul>
+          <li>New shell: gradient backdrop, app-drawn title bar, navigation rail, and five pages built from one shared material.</li>
+          <li>The Home hero shows the playing wallpaper's own frame, with transport, mute and volume over it.</li>
+          <li>The Library is a grid of cards with measured resolution and frame rate, a type filter and search.</li>
+          <li>The frame-rate tile reports the rate the decoder produces, capped by the display's measured refresh rate, not the rate the file was authored at.</li>
+          <li>Install now copies a downloaded wallpaper into the library folder instead of playing it from the pruned cache.</li>
+          <li>Run in background registers or withdraws the tray icon at once.</li>
+          <li>SIGTERM stops the server cleanly again; it used to kill it mid-fade and orphan the players.</li>
+          <li>Russian and Japanese catalogs are complete; they were never installed before.</li>
+        </ul>
+      </description>
+    </release>
     <release version="2.0.0" date="2026-11-07" type="stable">
       <description>
         <p>Major architecture update: GTK-free Iced control surface and native Linux wallpaper surfaces.</p>

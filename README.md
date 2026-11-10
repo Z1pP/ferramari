@@ -9,15 +9,22 @@ iron (*ferrum*) and Rust's crab mascot.
 
 ## Screenshots
 
-| Home | Catalogue | Settings |
+| Home | Library | Online |
 | --- | --- | --- |
-| ![Home](docs/screenshots/home.png) | ![Catalogue](docs/screenshots/catalogue.png) | ![Settings](docs/screenshots/settings.png) |
+| ![Home](docs/screenshots/home.png) | ![Library](docs/screenshots/library.png) | ![Online](docs/screenshots/online.png) |
 
-The interface has a hand-tuned dark palette as well as the light one:
+| Performance | Settings |
+| --- | --- |
+| ![Performance](docs/screenshots/performance.png) | ![Settings](docs/screenshots/settings.png) |
 
-| Settings, dark theme |
+The interface has a hand-tuned dark palette as well as a light one:
+
+| Settings, light theme |
 | --- |
-| ![Settings in the dark theme](docs/screenshots/settings-dark.png) |
+| ![Settings in the light theme](docs/screenshots/settings-light.png) |
+
+The Home hero shows the frame of the wallpaper that is actually playing, so
+these captures carry the test machine's own media library.
 
 ## Features
 
@@ -49,8 +56,8 @@ The interface has a hand-tuned dark palette as well as the light one:
   with a local trust store
 - Declarative catalogue-source plugins (no plugin code execution) and a
   first-party Catalog API v1 client (`--catalog`)
-- Browse a catalogue of live wallpapers with categories, search, sorting,
-  resolution filters and a six-frame preview before installing
+- Browse a catalogue of live wallpapers with categories, search and
+  pagination, over a featured carousel and a row of category tiles
 - Streaming URLs through `yt-dlp` (YouTube and many other sites)
 - Web-page wallpapers are currently unavailable; a replacement browser engine is required before this feature can return
 - GNOME static wallpaper with a blurred frame from the video
@@ -62,11 +69,15 @@ The interface has a hand-tuned dark palette as well as the light one:
 - Volume control with fade in/out, mute toggle
 - Autostart after login
 - “I'm Feeling Lucky” random video
-- Tray icon (StatusNotifierItem) for GNOME/KDE and friends
-- Settings page grouped by playback, wallpaper and system behaviour
+- Tray icon (StatusNotifierItem) for GNOME/KDE and friends, registered or
+  withdrawn at runtime by the “Run in background” switch
+- Settings page split into General, Appearance, Playback, Monitors,
+  Performance and Advanced
 - English, Russian and Japanese interface; the language can be changed in
   Settings
 - Light, dark or system colour scheme; changes apply immediately
+- Release check against the project's GitHub releases, cached for a week and
+  opt-in
 - Config format schema version 4, including the 3.x → 4 migration
 - D-Bus API for scripting and the tray/CLI
 
@@ -161,18 +172,21 @@ ferramari package --help    # checksum, sign and verify .ferramari packages
 
 A second `ferramari` invocation does not start another wallpaper server: it asks the running server to launch the separate `ferramari-ui` control-surface binary and exits. Both binaries must be installed side by side.
 
-Local videos are read from `$XDG_VIDEOS_DIR/Ferramari` (usually
+Local videos and images are read from `$XDG_VIDEOS_DIR/Ferramari` (usually
 `~/Videos/Ferramari`). The Iced library view covers recent videos, favourites
 and collections, supports applying a recent video to a chosen monitor, and lets
-you assign a rotation collection per monitor. Native file pickers and thumbnail
-management are still being restored.
+you assign a rotation collection per monitor. Cards show a frame extracted by
+`ffmpeg` and cached per file, and the resolution and frame rate under each
+title come from `ffprobe`, not from the file name. Native file pickers run
+through the XDG Desktop Portal, so no GTK is involved.
 
 ### Packages
 
-The Iced Library page exposes package import, export, signing, verification
-and key trust through the server. Until native file pickers land, enter absolute
-paths in the package controls. Import accepts a package source; export takes a
-video file and a destination folder. A video package is installed under
+Package work lives in **Settings → Advanced → Packages**, import, export,
+signing, verification and key trust all through the server. **Source…**,
+**Video…** and **Destination…** open native pickers; the two path fields stay
+editable for a machine without a portal. Import accepts a package source;
+export takes a video file and a destination folder. A video package is installed under
 `$XDG_DATA_HOME/ferramari/packages`, applied to the configured monitors and
 reported in the UI with progress, success and actionable errors. Web packages
 remain unavailable while the browser engine is absent. The format, manifest
@@ -186,25 +200,32 @@ Ferramari creates a signing key on first use
 (`~/.config/ferramari/signing-key.json`, mode `0600`) and signs exports
 automatically. Verification distinguishes four states — trusted, signed by an
 unknown author, unsigned and invalid — and trusting a key is always an explicit
-choice in **Local Video → Verify**, **Settings → Package signing** or
+choice in **Settings → Advanced → Packages** (**Verify** answers which of the
+four states a package is in, **Trust key** records the author) or
 `ferramari package trust`. Packages without checksums or signatures stay
 usable.
 
 ### Wallpaper catalogue
 
-The **Wallpapers** page lists live wallpapers: pick a category, search, or load
-more pages. Opening a card shows the still preview; after you press
-**Download** it fetches the file, reads the metadata (size, resolution, frame
-rate, duration) and builds a 3×2 sheet of frames, so you can inspect the motion
-before deciding. **Install…** puts the video into
-`$XDG_VIDEOS_DIR/Ferramari` and opens the same monitor menu as a local video.
-**Apply…** reuses the installed file.
+The **Online** page lists live wallpapers: a featured carousel, a row of
+category tiles, a search field and **Load more** for pagination. Each card
+shows the source's still preview and its category. **Install** fetches the
+file, reads its metadata (size, resolution, frame rate, duration) and puts the
+video into `$XDG_VIDEOS_DIR/Ferramari`, then applies it as the wallpaper — the
+same path a local video takes, so it appears in the Library afterwards.
 
 Downloads only start when you ask for them. Previews, archives and extracted
 videos are cached in `$XDG_CACHE_HOME/ferramari/catalogue` (default
 `~/.cache/ferramari/catalogue`); cached videos older than seven days or beyond
-the 2 GB budget are removed on start, and **Remove download** deletes one
-entry.
+the 2 GB budget are removed on start.
+
+The four chips under the tiles are views over the listing that was fetched,
+not four sources: **Featured** is the order the site publishes, **Recent** is
+ordered by the publication month read from each item's own upload path,
+**Downloaded** is what the local cache already holds, and **Collections**
+groups the same items by category. There is deliberately no “Popular” view:
+the listing carries no rating, download count or view count, so such a tab
+would sort by the default order and present it as something else.
 
 ### D-Bus
 
@@ -278,7 +299,7 @@ URLs make a reload unreliable.
 ### Theme
 
 Ferramari follows the desktop colour scheme by default and also ships a
-hand-tuned dark palette. Choose **Settings → System → Theme** → System
+hand-tuned dark palette. Choose **Settings → Appearance → Theme** → System
 default, Light or Dark; the window, popovers and dialogs switch immediately.
 The choice is stored as `"theme"` in `config.json` and exposed as the `theme`
 D-Bus property.
@@ -286,10 +307,11 @@ D-Bus property.
 ### Language
 
 The interface follows the desktop locale (`LANG`/`LANGUAGE`). It can also be
-chosen explicitly in **Settings → System → Language**:
+chosen explicitly in **Settings → General → Language**:
 System default, English, Русский or 日本語. Applying a different language takes
 effect after restarting Ferramari. Catalogs live in `po/*.po`; `make install`
-compiles them with `msgfmt`.
+compiles them with `msgfmt`, and `make po-update && make po-fill` regenerate
+them after strings change.
 
 ## Architecture
 
@@ -352,16 +374,18 @@ In `$XDG_VIDEOS_DIR/Ferramari` (usually `~/Videos/Ferramari`). The video folder
 is not recursive.
 
 **The catalogue shows no resolution/size/duration.**
-Those values are learned from previews and downloads and cached; cards that
-have never been previewed cannot be filtered by resolution yet.
+Those values are learned from previews and downloads and cached; a card that
+has never been fetched shows its category instead of inventing numbers.
 
 **Why does mpv/ffmpeg not start?**
 Install `mpv`, `ffmpeg` and `ffprobe`. Streaming also needs a current
 `yt-dlp`. The error dialog names the missing tool.
 
 **How do I rotate wallpapers?**
-Create a collection in Local Video, assign it to a monitor on Home, then
-choose Off/In order/Random and an interval in Settings → Rotation.
+Create a collection in **Settings → Advanced → Rotation collections**, add
+videos to it from a card's menu in the Library, assign it to a monitor on
+Home, then choose Off/In order/Random and an interval in
+**Settings → Performance**.
 
 **Is there a Flatpak?**
 Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
@@ -393,8 +417,8 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 - Two- and three-monitor performance scenarios are not measured on the current
   single-display test machine.
 - Streaming currently uses one shared source for all monitors; local video
-  sources are assigned independently. Web-page wallpapers are temporarily
-  unavailable in 2.0.0.
+  sources are assigned independently. Web-page wallpapers remain unavailable
+  until a GTK-free browser engine is chosen.
 - The Performance page reports GPU usage only where the driver exposes
   `gpu_busy_percent` (currently AMDGPU). NVIDIA/Intel utilisation is labelled
   *not measurable here* rather than zero, and the same page distinguishes a

@@ -1217,7 +1217,7 @@ dependencies = [
 
 [[package]]
 name = "ferramari"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1234,7 +1234,7 @@ dependencies = [
 
 [[package]]
 name = "ferramari-core"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -1255,7 +1255,7 @@ dependencies = [
 
 [[package]]
 name = "ferramari-media"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "ferramari-core",
@@ -1265,7 +1265,7 @@ dependencies = [
 
 [[package]]
 name = "ferramari-platform"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "ferramari-core",
@@ -1282,7 +1282,7 @@ dependencies = [
 
 [[package]]
 name = "ferramari-ui"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "ferramari-core",
  "gettext-rs",

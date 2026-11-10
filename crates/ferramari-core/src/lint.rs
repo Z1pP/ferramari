@@ -406,10 +406,18 @@ pub fn measure(path: &std::path::Path) -> Measured {
     if let Some(mut pipe) = child.stdout.take() {
         let _ = pipe.read_to_string(&mut stdout);
     }
-    if !status.success() {
+    interpret(status.success(), &stdout)
+}
+
+/// What ffprobe's answer means, read apart from running it. A machine with no
+/// ffprobe can still say what an exit status and a payload mean, and that is
+/// the half worth testing: the distinction between "this file did not decode"
+/// and "there was no tool to ask" is the whole point of `Measured::unprobed`.
+fn interpret(clean_exit: bool, stdout: &str) -> Measured {
+    if !clean_exit {
         return Measured::default();
     }
-    let parsed: serde_json::Value = match serde_json::from_str(&stdout) {
+    let parsed: serde_json::Value = match serde_json::from_str(stdout) {
         Ok(value) => value,
         Err(_) => return Measured::default(),
     };
@@ -1092,14 +1100,12 @@ mod tests {
         assert_eq!(facts.kind, "video");
         assert_eq!(facts.declared_resolution.as_deref(), Some("3840x2160"));
         assert!(!facts.preview_present);
-        // A fabricated .mp4 has no moov atom: ffprobe answers "invalid data".
-        // That is a decode failure, which is the creator's problem, not the
-        // machine's; the distinction must survive gather.
-        assert!(
-            !facts.measured_entry.unprobed || facts.measured_entry.width.is_some(),
-            "{:?}",
-            facts.measured_entry
-        );
+        // The probe outcome is deliberately not asserted here: a machine with
+        // ffprobe calls this fabricated entry a decode failure, and one
+        // without calls it unprobed, and both are correct. What the answer
+        // means is covered by the `interpret` tests below, which need no tool
+        // — this test is about gather reading the manifest, and it used to
+        // fail on CI for having borrowed a tool from the developer's PATH.
         let report = review(&facts);
         assert!(
             find(&report, "description-missing").is_none(),
@@ -1112,6 +1118,41 @@ mod tests {
             report.findings
         );
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_failed_probe_is_a_decode_failure_not_an_unprobed_file() {
+        // Non-zero exit is ffprobe saying "invalid data": the creator's file
+        // is broken, and the machine had the tool. Calling this unprobed
+        // would excuse a broken package on every machine that has ffmpeg.
+        let measured = interpret(false, "");
+        assert!(!measured.unprobed);
+        assert_eq!(measured.resolution(), None);
+    }
+
+    #[test]
+    fn a_probe_answer_with_dimensions_is_a_measurement() {
+        let measured = interpret(true, r#"{"streams":[{"width":3840,"height":2160}]}"#);
+        assert!(!measured.unprobed);
+        assert_eq!(measured.resolution().as_deref(), Some("3840x2160"));
+    }
+
+    #[test]
+    fn a_probe_answer_without_a_usable_stream_is_a_decode_failure() {
+        // Every way ffprobe can answer "nothing to measure" while still exiting
+        // 0. None of them may be reported as an unprobed file.
+        for stdout in [
+            "",
+            "{}",
+            r#"{"streams":[]}"#,
+            r#"{"streams":[{"width":0,"height":0}]}"#,
+            r#"{"streams":[{"width":1920}]}"#,
+            "not json at all",
+        ] {
+            let measured = interpret(true, stdout);
+            assert!(!measured.unprobed, "{stdout}");
+            assert_eq!(measured.resolution(), None, "{stdout}");
+        }
     }
 
     #[test]

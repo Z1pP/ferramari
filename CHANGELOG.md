@@ -3,7 +3,7 @@
 ## 2.1.0 — 2026-11-10
 
 **The control surface redrawn to the reference design, and the shutdown path
-made real.** **433 tests** pass (334 core + 46 platform + 20 media + 19 UI +
+made real.** **436 tests** pass (337 core + 46 platform + 20 media + 19 UI +
 14 binary).
 
 - **`Install` installs.** The button put the wallpaper on the screen and left
@@ -24,6 +24,11 @@ made real.** **433 tests** pass (334 core + 46 platform + 20 media + 19 UI +
   English-only keyword table left nearly every tile on the fallback globe;
   `Зима` and `Огонь` now get a snowflake and a flame instead of a collapse
   arrow and a duplicate bolt.
+- **CI is green again.** One lint test asserted what ffprobe said about a
+  fabricated `.mp4`, so it passed on a developer machine and failed on every
+  runner without ffmpeg — red since 2.0.0. The probe's interpretation now has
+  pure tests that need no tool, and the manifest test only tests the
+  manifest.
 
 - **The control surface was rebuilt around the reference design.** A gradient
   backdrop instead of a flat fill, a title bar the app draws itself, a rail,

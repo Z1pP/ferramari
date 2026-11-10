@@ -99,6 +99,8 @@ pub fn glyph(name: &str) -> char {
         "info-circle" => '\u{f05a}',
         "exclamation-triangle" => '\u{f071}',
         "wifi" => '\u{f1eb}',
+        "fire" => '\u{f06d}',
+        "snowflake-o" => '\u{f2dc}',
         "compress" => '\u{f066}',
         _ => '\u{f111}',
     }

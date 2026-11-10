@@ -314,34 +314,62 @@ fn quality_for(height: u32) -> String {
 /// nothing about pictures, so the icon follows the word: a nature category
 /// gets a leaf because it is called nature, not because anything confirmed
 /// that a leaf is what its wallpapers look like.
+///
+/// The roots cover both languages the source publishes in — its categories
+/// arrive in Russian whatever the interface language is, so an English-only
+/// list left almost every tile on the fallback. `globe` stays the honest
+/// answer for a name that says nothing about its content (`Азия`, `Девушки`).
 fn category_glyph(name: &str) -> &'static str {
     let lower = name.to_lowercase();
-    let words: Vec<&str> = lower.split(|c: char| !c.is_alphanumeric()).collect();
-    let has = |word: &str| {
-        words
-            .iter()
-            .any(|part| *part == word || part.contains(word))
-    };
-    if has("anime") || has("манга") {
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|part| !part.is_empty())
+        .collect();
+    let has = |root: &str| words.iter().any(|part| part.contains(root));
+    if has("anime") || has("аниме") || has("manga") || has("манга") {
         "star"
-    } else if has("nature") || has("природ") || has("forest") {
+    } else if has("nature")
+        || has("природ")
+        || has("forest")
+        || has("лес")
+        || has("animal")
+        || has("животн")
+    {
         "leaf"
-    } else if has("city") || has("urban") || has("город") {
+    } else if has("city") || has("urban") || has("город") || has("урбанист") {
         "building"
-    } else if has("space") || has("cosmos") || has("космос") || has("galaxy") {
+    } else if has("space") || has("космос") || has("galax") || has("galaxy") {
         "rocket"
-    } else if has("game") || has("игр") {
+    } else if has("game") || has("игр") || has("gaming") {
         "bolt"
-    } else if has("car") || has("авто") || has("moto") {
-        "activity"
-    } else if has("abstract") || has("абстрак") {
+    } else if has("car")
+        || has("авто")
+        || has("moto")
+        || has("мото")
+        || has("механи")
+        || has("tech")
+    {
+        "cogs"
+    } else if has("abstract") || has("абстрак") || has("art") || has("искусств") {
         "paint-brush"
-    } else if has("minimal") || has("simple") {
+    } else if has("minimal") || has("минимал") || has("simple") {
         "circle-o"
-    } else if has("dark") || has("night") || has("ноч") {
+    } else if has("night") || has("ноч") || has("dark") || has("мистик") || has("ужас")
+    {
         "moon"
-    } else if has("water") || has("sea") || has("океан") || has("rain") {
+    } else if has("snow") || has("зим") || has("winter") {
+        "snowflake-o"
+    } else if has("water") || has("sea") || has("океан") || has("rain") || has("дожд") {
         "compress"
+    } else if has("fire") || has("огон") || has("flame") {
+        "fire"
+    } else if has("computer") || has("компьютер") || has("cyber") || has("киберпанк")
+    {
+        "desktop"
+    } else if has("movie") || has("кино") || has("video") || has("видео") {
+        "film"
+    } else if has("flag") || has("флаг") || has("symbol") || has("символ") {
+        "star"
     } else if has("mountain") || has("гор") {
         "activity"
     } else {
@@ -390,6 +418,22 @@ const RADIUS_HERO: f32 = 20.0;
 fn clock(seconds: f64) -> String {
     let seconds = seconds.max(0.0) as u64;
     format!("{}:{:02}", seconds / 60, seconds % 60)
+}
+
+/// A byte count the way a card states it: `1.4 GB`, `820 MB`. The catalogue
+/// reports sizes in bytes and a five-digit run of them is not readable.
+fn human_bytes(bytes: u64) -> String {
+    const KIB: f64 = 1024.0;
+    let value = bytes as f64;
+    if value >= KIB * KIB * KIB {
+        format!("{} GB", trim_number(value / (KIB * KIB * KIB)))
+    } else if value >= KIB * KIB {
+        format!("{} MB", trim_number(value / (KIB * KIB)))
+    } else if value >= KIB {
+        format!("{} KB", trim_number(value / KIB))
+    } else {
+        format!("{bytes} B")
+    }
 }
 
 /// A number with at most one decimal, and no `.0` to read: `2.8`, `16`, not
@@ -845,9 +889,17 @@ impl App {
             // are independent, so neither waits for the other. The release
             // check honours the switch on the General page and the week-long
             // cache, so a start that has nothing to ask costs nothing.
+            // Re-entering the boot page through the navigation message is what
+            // gives a page opened by the hook the same start it has when it is
+            // clicked: the Online listing is fetched, the Library is probed.
+            // Doing it here by hand would be a second copy of that rule, and
+            // the two would drift the first time the handler changed.
             Task::batch([
                 Task::perform(Server::connect(), Message::Connected),
                 startup_update_check(&update_record),
+                Task::perform(std::future::ready(()), move |_| {
+                    Message::Navigate(boot.page)
+                }),
             ]),
         )
     }
@@ -932,10 +984,8 @@ impl App {
                     let pid = self.state.server_pid.unwrap_or_else(std::process::id);
                     self.sample = Some(self.metrics.sample_of(pid));
                 }
-                self.history.record(
-                    self.sample.as_ref(),
-                    self.effective_fps().filter(|_| self.state.is_playing),
-                );
+                self.history
+                    .record(self.sample.as_ref(), self.effective_fps());
                 // The Library keeps its own cache, so a file that arrives
                 // while the page is open (an import, a download) is picked up
                 // by the next poll rather than staying "Reading…" forever.
@@ -1573,8 +1623,25 @@ impl App {
                     async move {
                         tokio::task::spawn_blocking(move || {
                             let cancel = AtomicBool::new(false);
-                            catalogue::download_video(&id, &cancel, &mut |_, _| {})
-                                .map(|downloaded| downloaded.video)
+                            let downloaded =
+                                catalogue::download_video(&id, &cancel, &mut |_, _| {})
+                                    .map_err(|error| error.to_string())?;
+                            // The button says Install, so the file has to end
+                            // up in the library folder. Playing the extracted
+                            // cache file instead would work until the next
+                            // start: the cache is pruned by age and budget,
+                            // and a wallpaper that vanishes from it leaves a
+                            // Library card and a config entry pointing at
+                            // nothing.
+                            let extension = downloaded
+                                .video
+                                .extension()
+                                .and_then(|value| value.to_str())
+                                .unwrap_or("mp4")
+                                .to_ascii_lowercase();
+                            let name =
+                                catalogue::library_name(&downloaded.original_name, &id, &extension);
+                            catalogue::install(&downloaded.video, &name)
                                 .map_err(|error| error.to_string())
                         })
                         .await
@@ -2219,7 +2286,10 @@ impl App {
                 {
                     parts.push(format!("{width}×{height}"));
                 }
-                if let Some(fps) = stats.fps {
+                // The same definition the FPS tile uses. Reading
+                // `container-fps` here instead would let the hero claim
+                // `30 FPS` while the tile beside it says `Idle`.
+                if let Some(fps) = self.effective_fps() {
                     parts.push(format!("{} FPS", fps.round() as u32));
                 }
                 if let Some(duration) = stats.duration {
@@ -2567,7 +2637,16 @@ impl App {
     /// falling back to the rate the file was authored at while no measurement
     /// exists. One definition, used by the tile and by the history that draws
     /// under it, so the number and its trace cannot disagree.
+    ///
+    /// Nothing is reported while the engine is not playing. A paused file is
+    /// still loaded, and mpv answers `container-fps` for it, so the authored
+    /// rate would survive into the tile next to an `Idle` badge in the same
+    /// window — two answers about one thing, and the wrong one is the bigger
+    /// number.
     fn effective_fps(&self) -> Option<f64> {
+        if !self.state.is_playing {
+            return None;
+        }
         let stats = &self.state.player_stats;
         stats.decoded_fps.or(stats.fps)
     }
@@ -3396,9 +3475,29 @@ impl App {
             });
 
         let (title, subtitle) = match wallpaper {
+            // The category already begins with the source's own "live
+            // wallpapers" prefix, so appending that phrase again only
+            // doubled it. What a slide is missing is a measurement, and the
+            // cache has one once the item was probed.
             Some(item) => (
                 item.title.clone(),
-                format!("{} · {}", item.category, tr("Live wallpapers")),
+                match (
+                    ferramari_core::catalogue::cached_metadata(&item.id),
+                    item.category.is_empty(),
+                ) {
+                    (Some(cached), _) if cached.height > 0 => {
+                        let mut line = quality_for(cached.height);
+                        if let Some(fps) = cached.fps.filter(|fps| *fps > 0.0) {
+                            line.push_str(&format!(" · {} FPS", fps.round() as u32));
+                        }
+                        if let Some(size) = cached.size {
+                            line.push_str(&format!(" · {}", human_bytes(size)));
+                        }
+                        line
+                    }
+                    (_, false) => item.category.clone(),
+                    _ => tr("Live wallpapers"),
+                },
             ),
             None => (tr("Nothing featured yet"), tr("Search or pick a category")),
         };
@@ -3781,15 +3880,46 @@ impl App {
             // inherit: two `Fill` children share the leftover by their own
             // content, so the split is a result, while equal portions state
             // the promise the reference makes — the two cards end at the same
-            // width whatever they contain.
+            // width whatever they contain. The left column stacks the decoder
+            // facts over the process cost, because a thread count is not an
+            // mpv statistic and does not belong under that heading.
             .push(
                 Row::new()
                     .spacing(14)
                     .align_y(Alignment::Start)
                     .width(Length::Fill)
-                    .push(self.decoder_card(&sample, sem))
+                    .push(
+                        Column::new()
+                            .spacing(14)
+                            .push(self.decoder_card(&sample, sem))
+                            .push(self.process_card(&sample, sem))
+                            .width(Length::FillPortion(1)),
+                    )
                     .push(self.frame_time_card(sem)),
             )
+            .into()
+    }
+
+    /// What the wallpaper is costing the machine, as a process tree: the
+    /// server plus every mpv it owns. A single wallpaper on two monitors is
+    /// three processes, and the count is the fact that says so.
+    fn process_card(&self, sample: &Sample, sem: &'static Semantics) -> Element<'_, Message> {
+        let body = Column::new()
+            .spacing(12)
+            .push(s::heading_icon::<Message>("microchip", tr("Process"), sem))
+            .push(s::kv_row(
+                tr("Threads"),
+                metric_short(Some(&sample.threads), |value| value.to_string()),
+                sem,
+            ))
+            .push(s::kv_row(
+                tr("Processes"),
+                metric_short(Some(&sample.processes), |value| value.to_string()),
+                sem,
+            ));
+        s::card(body, sem)
+            .width(Length::Fill)
+            .height(Length::Shrink)
             .into()
     }
 
@@ -3840,7 +3970,7 @@ impl App {
         for (label, value) in rows {
             body = body.push(s::kv_row(label, value, sem));
         }
-        s::card(body, sem).width(Length::FillPortion(1)).into()
+        s::card(body, sem).width(Length::Fill).into()
     }
 
     /// Frame time, in milliseconds, with the scale the reference draws: the
@@ -5081,6 +5211,42 @@ mod library_tests {
         assert!(!MediaFilter::Live.accepts("/a/other.mp4", &live, &favorites));
         assert!(MediaFilter::Favorites.accepts("/a/still.png", &live, &favorites));
         assert!(MediaFilter::All.accepts("/a/whatever.txt", &live, &favorites));
+    }
+
+    /// The catalogue publishes its categories in Russian whatever the
+    /// interface language is, so the glyph table has to answer in that second
+    /// language too. These are the names read off the live listing.
+    #[test]
+    fn category_glyphs_answer_in_both_languages() {
+        assert_eq!(category_glyph("Аниме • Манга"), "star");
+        assert_eq!(category_glyph("Живые обои - Игры"), "bolt");
+        assert_eq!(category_glyph("Абстрактные"), "paint-brush");
+        assert_eq!(category_glyph("Природа"), "leaf");
+        assert_eq!(category_glyph("Космос"), "rocket");
+        assert_eq!(category_glyph("Урбанистичный мир"), "building");
+        assert_eq!(category_glyph("Киберпанк"), "desktop");
+        assert_eq!(category_glyph("Зима"), "snowflake-o");
+        assert_eq!(category_glyph("Огонь"), "fire");
+        assert_eq!(category_glyph("Мистика • Ужасы"), "moon");
+        assert_eq!(category_glyph("Авто-Мото"), "cogs");
+        // A name that says nothing about its content keeps the neutral glyph
+        // rather than an invented picture.
+        assert_eq!(category_glyph("Азия"), "globe");
+        assert_eq!(category_glyph("Девушки"), "globe");
+        assert_eq!(category_glyph("Anime"), "star");
+        assert_eq!(category_glyph("Nature"), "leaf");
+    }
+
+    #[test]
+    fn byte_counts_read_as_sizes() {
+        assert_eq!(human_bytes(0), "0 B");
+        assert_eq!(human_bytes(999), "999 B");
+        assert_eq!(human_bytes(2048), "2 KB");
+        assert_eq!(human_bytes(820 * 1024 * 1024), "820 MB");
+        assert_eq!(
+            human_bytes((1.4 * 1024.0 * 1024.0 * 1024.0) as u64),
+            "1.4 GB"
+        );
     }
 
     #[test]

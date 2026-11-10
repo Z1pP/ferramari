@@ -29,7 +29,7 @@ validation are complete. A successful compile alone is not a runtime pass.
 
 ## 2. Restore Iced feature parity
 
-- [x] Inventory every action and setting in the last GTK release against the Iced UI — see `docs/UI_ACTION_INVENTORY.md` for detailed mapping of all 5 pages × 50+ actions.
+- [x] Inventory every action and setting in the last GTK release against the Iced UI — see `docs/archive/UI_ACTION_INVENTORY.md` for detailed mapping of all 5 pages × 50+ actions.
 - [x] Complete local library actions: add/remove media, thumbnails and refresh polish — `thumbnails::generate()` integrated in Iced UI via iced_widget `image::Image` with cached JPEG previews (400×225), graceful fallback when ffmpeg unavailable or cache empty.
 - [x] Apply recent library videos to a selected monitor and assign rotation collections per monitor through D-Bus and Iced.
 - [x] Complete favourites and collections, including per-monitor rotation assignment and persistence.
@@ -39,7 +39,7 @@ validation are complete. A successful compile alone is not a runtime pass.
 - [x] Add progress, success and actionable error states for package operations over D-Bus.
 - [x] Restore all playback, hardware decoding, rotation, power and session settings — verified via inventory document.
 - [x] Restore autostart and tray controls with clear capability reporting (`PlatformCapabilities` reported via `--doctor`).
-- [x] Audit catalogue browsing, download, preview and pagination against the old UI — audit findings in `docs/CATALOGUE_API_AUDIT.md`.
+- [x] Audit catalogue browsing, download, preview and pagination against the old UI — audit findings in `docs/archive/CATALOGUE_API_AUDIT.md`.
 - [x] Validate English, Russian and Japanese strings and layout overflow — `msgfmt --check` passes for ru.po and ja.po.
 - [x] Add UI/client tests for disconnects, reconnects, command failures and stale snapshots — 6 new unit tests added covering missing properties, unparseable values, empty maps, and ServerState defaults.
 
@@ -128,7 +128,7 @@ Current boundary progress:
 - [ ] Test GNOME, KDE Plasma and XFCE where their APIs are available.
 - [x] Investigate native Wayland protocols/compositor extensions; report Partial or
       Unsupported rather than pretending universal Wayland support.
-      Documented in `docs/WAYLAND_SUPPORT_RESEARCH.md`: wlr-layer-shell-v1 for surfaces
+      Documented in `docs/archive/WAYLAND_SUPPORT_RESEARCH.md`: wlr-layer-shell-v1 for surfaces
       (Sway/Hyprland/river/niri), kde-desktop-shell-v1 for Plasma 6+, wlroots output-management
       for hotplug, zwlr-foreign-toplevel-list for window tracking. Prio-recommendation listed:
       P0 layer-shell → P1 output-management + foreign-toplevel-list → P2 Plasma desktop-shell
@@ -158,7 +158,7 @@ Current boundary progress:
 
 ## 7. Media and web wallpaper engine
 
-- [x] Audit mpv process lifecycle, IPC timeouts, restart backoff and cleanup — see `docs/MPV_LIFECYCLE_AUDIT.md`. Full review of spawn → IPC → park/unpark → Drop → death detection chain.
+- [x] Audit mpv process lifecycle, IPC timeouts, restart backoff and cleanup — see `docs/archive/MPV_LIFECYCLE_AUDIT.md`. Full review of spawn → IPC → park/unpark → Drop → death detection chain.
 - [x] Validate hardware decode per supported OS/GPU backend — the requested mode
       and the decoder actually running are now two separate values. mpv's
       `hwdec-current` (verified on mpv 0.41: `current-hwdec` does not exist) is
@@ -173,7 +173,7 @@ Current boundary progress:
       reported instead of failing silently.
 - [x] Validate stream resolution, cache invalidation and yt-dlp failures — 11 new unit tests in `crates/ferramari-core/src/ytdlp.rs` cover format parsing edge cases (codec-only, negative quality, no dimensions, oversized height), strict `<` TTL boundary (expires at `elapsed >= TTL`), separate page/height cache isolation, and that `resolve()` errors on an inaccessible URL without panicking.
 - [x] Select a GTK-free browser engine or isolated browser process for web wallpapers.
-      Documented in `docs/BROWSER_ENGINE_RESEARCH.md`: headless Chrome via CDP selected as primary path (1–2 weeks to POC), CEF/cef-rs as long-term upgrade path. Rationale: system Chromium already expected (like mpv/yt-dlp), CDP stable since Chrome 70, audio solvable via PipeWire loopback, footprint measurable (~300 MB RAM per instance). Rejected alternatives: Servo (incomplete JS/audio), mpv web renderer (cannot render HTML at all), FlutterWebView/Tauri (both use WebKitGTK on Linux), WebRender+Gecko (not embeddable on desktop Linux).
+      Documented in `docs/archive/BROWSER_ENGINE_RESEARCH.md`: headless Chrome via CDP selected as primary path (1–2 weeks to POC), CEF/cef-rs as long-term upgrade path. Rationale: system Chromium already expected (like mpv/yt-dlp), CDP stable since Chrome 70, audio solvable via PipeWire loopback, footprint measurable (~300 MB RAM per instance). Rejected alternatives: Servo (incomplete JS/audio), mpv web renderer (cannot render HTML at all), FlutterWebView/Tauri (both use WebKitGTK on Linux), WebRender+Gecko (not embeddable on desktop Linux).
 - [ ] Define a strict web-wallpaper sandbox, network permissions and process limits.
 - [ ] Restore web wallpaper only after navigation, audio, reload and cleanup tests pass.
 - [x] Do not expose a web-wallpaper feature flag or UI action while the renderer is absent — verified: no webpage actions exposed in Settings page.
@@ -195,7 +195,7 @@ Current boundary progress:
 
 ## 9. Community, catalogue and creator workflows
 
-- [x] Revalidate catalogue API v1, pagination, filtering and download integrity — see `docs/CATALOGUE_API_AUDIT.md`. Both JSON API v1 and legacy scraper reviewed: strict caps confirmed (2 MiB body, 200 items, string lengths, http(s)-only URLs). HTML scraper identified as locale-coupled.
+- [x] Revalidate catalogue API v1, pagination, filtering and download integrity — see `docs/archive/CATALOGUE_API_AUDIT.md`. Both JSON API v1 and legacy scraper reviewed: strict caps confirmed (2 MiB body, 200 items, string lengths, http(s)-only URLs). HTML scraper identified as locale-coupled.
 - [x] Revalidate declarative plugins and archive extraction limits — manifest size capped at 64 KiB, id capped at 64 chars, no code execution in-process, path traversal rejected. No ZIP-bomb uncompressed-size guard yet (see audit doc for recommendation).
 - [x] Add Iced controls and D-Bus methods for import, export, sign, verify and trust (native pickers and operation completion reporting remain open).
 - [x] Define creator-facing metadata, preview and validation workflows — `ferramari package lint` reviews a package directory the way the catalogue would show it: warnings for missing fields that degrade the listing (description, preview, resolution, authorship), errors for structural failures and signature problems that import accepts but a recipient must handle; findings carry stable codes for CI (`--json`, `--ignore`). A creator who ships an incomplete-but-valid package does not get a broken build by default; `--strict` raises the gate. Lint measures with ffprobe when present and distinguishes "no tool" from "file does not decode", so a machine without ffmpeg does not blame the creator.

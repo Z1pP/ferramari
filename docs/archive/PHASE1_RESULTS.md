@@ -164,7 +164,7 @@ The Liquid Glass palette was fully transcribed from `src/ui/theme.rs` (GTK versi
 | `ferramari-ui/src/lib.rs` | 1 | Library root (exports `theme` module) |
 | `ferramari-ui/src/main.rs` | ~590 | Full 5-page Iced application (~500 LOC after cleanup) |
 | `ferramari-ui/src/theme.rs` | ~180 | Liquid Glass semantic colors, `ferramari_theme()` builder |
-| `docs/PHASE1_RESULTS.md` | this file | Results document |
+| `docs/archive/PHASE1_RESULTS.md` | this file | Results document |
 | `data/ui/ferramari.css` | copied | Reference copy for palette transcription |
 
 **Total new code: ~780 lines** (down from 2336 LOC in original main.rs + 4358 in ui/control.rs because these are entirely different architectures — the prototype demonstrates equivalence with significantly less code since it uses mock data rather than live library/data integration).

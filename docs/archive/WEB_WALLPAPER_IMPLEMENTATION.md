@@ -2,7 +2,7 @@
 
 > **Status:** Design complete — awaiting renderer integration
 > **Date:** 2026-11-08
-> **Related:** `docs/BROWSER_ENGINE_RESEARCH.md` (engine selection), §7.176–178 (TODO)
+> **Related:** `docs/archive/BROWSER_ENGINE_RESEARCH.md` (engine selection), §7.176–178 (TODO)
 
 ## 1. Summary
 

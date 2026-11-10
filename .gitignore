@@ -10,3 +10,9 @@ repo/
 # Python
 __pycache__/
 *.pyc
+
+# Local scratch, never committed
+backup/
+
+# Notes kept locally; superseded by docs/DESIGN.md
+/REDISTGN_REVISION.md

@@ -5,8 +5,8 @@ second OS implementation: everything here is what the Linux backend already
 owes, so a new backend either matches it or the contract gets amended first,
 in writing, not by silent exceptions in one platform's code.
 
-Companion documents: `docs/UI_ACTION_INVENTORY.md` (what the product does),
-`docs/AUDIT.md` and `docs/MPV_LIFECYCLE_AUDIT.md` (media layer).
+Companion documents: `docs/archive/UI_ACTION_INVENTORY.md` (what the product does),
+`docs/AUDIT.md` and `docs/archive/MPV_LIFECYCLE_AUDIT.md` (media layer).
 
 ## 1. Layering
 

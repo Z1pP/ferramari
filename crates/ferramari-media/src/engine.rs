@@ -9,7 +9,7 @@
 //! What is *not* here (yet):
 //! * the web wallpaper content — WebKitGTK was the only engine with a
 //!   maintained GTK-3 binding, so web pages are handled in the web engine
-//!   phase (docs/GTK_REMOVAL_AUDIT.md §4). `Engine::web` returns a clear
+//!   phase (docs/archive/GTK_REMOVAL_AUDIT.md §4). `Engine::web` returns a clear
 //!   error instead of silently doing the wrong thing.
 //! * the right-click context menu on the wallpaper — a GTK popup; the native
 //!   replacement (X11 popup or Iced overlay) belongs to the system
@@ -172,7 +172,7 @@ impl Engine {
     pub fn web(monitor: &MonitorInfo, _uri: &str) -> anyhow::Result<Self> {
         anyhow::bail!(
             "web wallpapers on {}: the GTK-free web engine is not ready yet \
-             (see docs/GTK_REMOVAL_AUDIT.md, Phase 5)",
+             (see docs/archive/GTK_REMOVAL_AUDIT.md, Phase 5)",
             monitor.name
         )
     }

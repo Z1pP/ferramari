@@ -260,15 +260,64 @@ pub fn locale_dir() -> PathBuf {
 
 /// Locate a helper program (mpv, yt-dlp). A copy next to the `ferramari`
 /// binary wins, so a per-user install works even when the desktop session's
-/// PATH does not contain `~/.local/bin`.
+/// PATH does not contain `~/.local/bin`. On Windows the standard installer
+/// locations are checked next: mpv's Inno installer puts the binary under
+/// `Program Files\MPV Player` without touching PATH, and winget keeps its
+/// shims under `LOCALAPPDATA\Microsoft\WinGet\Links`.
 pub fn tool(name: &str) -> std::path::PathBuf {
-    match std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(Path::to_path_buf))
-    {
-        Some(dir) => tool_in(&dir, name),
-        None => std::path::PathBuf::from(name),
+    if let Some(sibling) = sibling_tool(name) {
+        return sibling;
     }
+    #[cfg(target_os = "windows")]
+    {
+        let local_app_data = env::var_os("LOCALAPPDATA").map(PathBuf::from);
+        let program_files = env::var_os("ProgramFiles").map(PathBuf::from);
+        for candidate in
+            windows_tool_candidates(name, local_app_data.as_deref(), program_files.as_deref())
+        {
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+    }
+    std::path::PathBuf::from(name)
+}
+
+fn sibling_tool(name: &str) -> Option<PathBuf> {
+    let directory = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))?;
+    let candidate = tool_in(&directory, name);
+    (candidate != Path::new(name)).then_some(candidate)
+}
+
+/// Standard per-user and machine-wide Windows install locations.
+#[cfg(target_os = "windows")]
+fn windows_tool_candidates(
+    name: &str,
+    local_app_data: Option<&Path>,
+    program_files: Option<&Path>,
+) -> Vec<PathBuf> {
+    let exe = format!("{name}.exe");
+    let mut candidates = Vec::new();
+    if let Some(local) = local_app_data {
+        candidates.push(
+            local
+                .join("Microsoft")
+                .join("WinGet")
+                .join("Links")
+                .join(&exe),
+        );
+        candidates.push(local.join("Programs").join(name).join(&exe));
+    }
+    if let Some(program_files) = program_files {
+        candidates.push(program_files.join(name).join(&exe));
+        if name == "mpv" {
+            // shinchiro's Inno installer (the winget `shinchiro.mpv` package).
+            candidates.push(program_files.join("MPV Player").join(&exe));
+        }
+    }
+    candidates
 }
 
 fn tool_in(dir: &Path, name: &str) -> std::path::PathBuf {
@@ -330,5 +379,35 @@ mod tests {
     #[test]
     fn video_dir_ends_with_ferramari() {
         assert!(video_wallpaper_dir().ends_with("Ferramari"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_tool_candidates_cover_installer_locations() {
+        let local = Path::new(r"C:\Users\Test\AppData\Local");
+        let program_files = Path::new(r"C:\Program Files");
+
+        let mpv = windows_tool_candidates("mpv", Some(local), Some(program_files));
+        assert!(mpv.contains(
+            &local
+                .join("Microsoft")
+                .join("WinGet")
+                .join("Links")
+                .join("mpv.exe")
+        ));
+        assert!(mpv.contains(&program_files.join("MPV Player").join("mpv.exe")));
+        assert!(mpv.contains(&program_files.join("mpv").join("mpv.exe")));
+
+        let ffmpeg = windows_tool_candidates("ffmpeg", Some(local), Some(program_files));
+        assert!(ffmpeg.contains(
+            &local
+                .join("Microsoft")
+                .join("WinGet")
+                .join("Links")
+                .join("ffmpeg.exe")
+        ));
+        assert!(!ffmpeg
+            .iter()
+            .any(|path| path.ends_with("MPV Player/ffmpeg.exe")));
     }
 }

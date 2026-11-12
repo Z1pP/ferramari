@@ -101,7 +101,9 @@ these captures carry the test machine's own media library.
 | `yt-dlp` | only for streaming mode; use a current release (distro packages are often too old for YouTube) |
 
 All three must be on `PATH`, or placed next to `ferramari.exe` on Windows and
-next to `ferramari` on Linux. The Linux wallpaper surface uses X11 directly;
+next to `ferramari` on Linux. On Windows, `paths::tool` also checks the usual
+installer locations (`Program Files\MPV Player`, the winget `Links` folder and
+`%LOCALAPPDATA%\Programs`). The Linux wallpaper surface uses X11 directly;
 on Wayland sessions it relies on XWayland and native Wayland wallpaper
 surfaces are not implemented. Windows uses the `WorkerW`/`Progman` desktop
 host behind Explorer's icons.

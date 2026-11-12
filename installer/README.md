@@ -64,8 +64,10 @@ artifact. Tagged releases attach them to the GitHub release.
 ## Runtime tools
 
 The installer does not bundle `mpv`, `ffmpeg`/`ffprobe` or `yt-dlp`. They must
-be on `PATH` or copied next to `ferramari.exe`; `paths::tool` prefers the
-sibling copy. Streaming additionally needs a current `yt-dlp`.
+be on `PATH`, in a standard Windows install location (`Program Files\MPV
+Player`, the winget `Links` folder or `%LOCALAPPDATA%\Programs`), or copied
+next to `ferramari.exe`; `paths::tool` prefers the sibling copy and then the
+standard locations. Streaming additionally needs a current `yt-dlp`.
 
 ## Unverified
 

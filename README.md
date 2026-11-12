@@ -1,11 +1,14 @@
 # Ferramari 🦀
 
-Video wallpaper for Linux, written in Rust.
+Video wallpaper for Linux and Windows, written in Rust.
 
 <img src="data/icons/hicolor/scalable/apps/io.github.ferramari.Ferramari.svg" width="128" height="128" alt="Ferramari icon: a crab holding the sun">
 
-Ferramari makes video content your desktop wallpaper. Web-page wallpapers are temporarily unavailable during the GTK-free migration. The name nods to
-iron (*ferrum*) and Rust's crab mascot.
+Ferramari makes video content your desktop wallpaper. On Linux it draws an
+X11 desktop window (through XWayland on Wayland sessions); on Windows it hosts
+a child window behind Explorer's desktop icons. Web-page wallpapers are
+temporarily unavailable during the GTK-free migration. The name nods to iron
+(*ferrum*) and Rust's crab mascot.
 
 ## Screenshots
 
@@ -28,7 +31,8 @@ these captures carry the test machine's own media library.
 
 ## Features
 
-- Play a local video as the wallpaper, one video per monitor
+- Play a local video as the wallpaper, one video per monitor, on Linux/X11
+  (including XWayland) and Windows 10/11
 - Home page with the current wallpaper and per-monitor cards
 - Local library with favorites, recently used wallpapers and collections
 - Automatic wallpaper rotation from a per-monitor collection (order or random)
@@ -39,7 +43,8 @@ these captures carry the test machine's own media library.
   mpv's file and decoder, then resumes at the same position
 - Per-monitor Eco state on Home cards and in the D-Bus `monitor_states`
   property
-- Event-driven X11 window watcher (no 300 ms polling)
+- Event-driven X11 window watcher (no 300 ms polling); Windows samples the
+  complete top-level window list every 750 ms and reports only changes
 - Performance page with live CPU, RAM, thread, process and (where available)
   GPU metrics
 - Hardware decoding selector (Auto / VA-API / Off), with the decoder that is
@@ -62,15 +67,18 @@ these captures carry the test machine's own media library.
 - Web-page wallpapers are currently unavailable; a replacement browser engine is required before this feature can return
 - GNOME static wallpaper with a blurred frame from the video
 - Pause or mute playback per monitor when that monitor is covered by a
-  maximized or fullscreen window (X11); the other monitors keep playing
-- Pause while the screen is locked; clean shutdown on logout/reboot
+  maximized or fullscreen window; the other monitors keep playing
+- Pause while the screen is locked; clean shutdown on logout/reboot; Windows
+  also handles Ctrl/Ctrl-Break, close, logoff and shutdown through one console
+  handler
 - Automatic recovery when mpv dies, with capped backoff and a visible error
   after repeated failures
 - Volume control with fade in/out, mute toggle
-- Autostart after login
+- Autostart after login (XDG autostart on Linux, the per-user `Run` key on
+  Windows)
 - “I'm Feeling Lucky” random video
-- Tray icon (StatusNotifierItem) for GNOME/KDE and friends, registered or
-  withdrawn at runtime by the “Run in background” switch
+- Tray icon (StatusNotifierItem on Linux, `Shell_NotifyIcon` on Windows),
+  registered or withdrawn at runtime by the “Run in background” switch
 - Settings page split into General, Appearance, Playback, Monitors,
   Performance and Advanced
 - English, Russian and Japanese interface; the language can be changed in
@@ -79,7 +87,8 @@ these captures carry the test machine's own media library.
 - Release check against the project's GitHub releases, cached for a week and
   opt-in
 - Config format schema version 4, including the 3.x → 4 migration
-- D-Bus API for scripting and the tray/CLI
+- D-Bus API for scripting on Linux; on Windows a token-gated loopback JSON
+  control endpoint serves the Iced UI and the CLI
 
 ## Requirements
 
@@ -91,14 +100,21 @@ these captures carry the test machine's own media library.
 | `ffmpeg` / `ffprobe` | static wallpaper frame, thumbnails |
 | `yt-dlp` | only for streaming mode; use a current release (distro packages are often too old for YouTube) |
 
-The current wallpaper surface backend uses X11 directly. On Wayland sessions it relies on XWayland; native Wayland wallpaper surfaces are not implemented.
+All three must be on `PATH`, or placed next to `ferramari.exe` on Windows and
+next to `ferramari` on Linux. The Linux wallpaper surface uses X11 directly;
+on Wayland sessions it relies on XWayland and native Wayland wallpaper
+surfaces are not implemented. Windows uses the `WorkerW`/`Progman` desktop
+host behind Explorer's icons.
 
 ### Build
 
 - Rust 1.88+ (a `rust-toolchain.toml` pins stable)
-- `pkg-config`, a C compiler
-- gettext (`msgfmt`) to build the translations; without it the app still
-  builds and runs, but only the source (English) strings are installed
+- Linux: `pkg-config`, a C compiler, and gettext (`msgfmt`) to build the
+  translations; without gettext the app still builds and runs, but only the
+  source (English) strings are installed
+- Windows: the MSVC Rust toolchain and Visual Studio Build Tools; gettext is
+  only needed to compile the optional locale catalogs, and Inno Setup 6 only
+  to build the installer
 
 Debian/Ubuntu:
 
@@ -116,6 +132,15 @@ Arch Linux:
 
 ```sh
 sudo pacman -S base-devel pkgconf gettext
+```
+
+Windows (PowerShell, with Rust and Visual Studio Build Tools installed):
+
+```powershell
+cargo build --workspace --release --locked
+# optional: installer + portable ZIP under installer\Output, after installing
+# Inno Setup 6 and (for translations) GNU gettext
+.\installer\build.ps1 -NoBuild
 ```
 
 ## Build, test, install
@@ -147,6 +172,17 @@ cannot see the rustup toolchain in your home directory).
 
 Uninstall with `sudo make uninstall` (same `PREFIX`).
 
+### Windows installer
+
+`installer/ferramari.iss` is an Inno Setup 6 script. `installer/build.ps1`
+builds the release workspace, compiles `po/*.po` when `msgfmt` is available,
+writes `installer\Output\Ferramari-<version>-setup.exe` and
+`Ferramari-<version>-portable.zip`, and stages the catalogs next to the
+binaries. The installer defaults to a per-user install under
+`%LOCALAPPDATA%\Programs\Ferramari`, creates Start-menu and optional desktop
+shortcuts, and keeps user data on uninstall. See
+[`installer/README.md`](installer/README.md).
+
 ### Flatpak
 
 A self-hosted manifest is present in `flatpak/` and has been migrated to the
@@ -170,15 +206,17 @@ ferramari --catalog https://catalog.example.org/v1  # inspect a Catalog API
 ferramari package --help    # checksum, sign and verify .ferramari packages
 ```
 
-A second `ferramari` invocation does not start another wallpaper server: it asks the running server to launch the separate `ferramari-ui` control-surface binary and exits. Both binaries must be installed side by side.
+A second `ferramari` invocation does not start another wallpaper server: it asks the running server to launch the separate `ferramari-ui` control-surface binary and exits. Both binaries must be installed side by side. On Windows the installer puts both `.exe` files in the same folder; the portable ZIP has the same layout.
 
 Local videos and images are read from `$XDG_VIDEOS_DIR/Ferramari` (usually
-`~/Videos/Ferramari`). The Iced library view covers recent videos, favourites
-and collections, supports applying a recent video to a chosen monitor, and lets
+`~/Videos/Ferramari`) on Linux and from `%USERPROFILE%\Videos\Ferramari` on
+Windows. The Iced library view covers recent videos, favourites and
+collections, supports applying a recent video to a chosen monitor, and lets
 you assign a rotation collection per monitor. Cards show a frame extracted by
 `ffmpeg` and cached per file, and the resolution and frame rate under each
 title come from `ffprobe`, not from the file name. Native file pickers run
-through the XDG Desktop Portal, so no GTK is involved.
+through the XDG Desktop Portal on Linux and the standard Windows file dialog;
+no GTK is involved on either platform.
 
 ### Packages
 
@@ -227,9 +265,9 @@ groups the same items by category. There is deliberately no “Popular” view:
 the listing carries no rating, download count or view count, so such a tab
 would sort by the default order and present it as something else.
 
-### D-Bus
+### Control transport
 
-The server owns `io.github.ferramari.Ferramari.server` and exports
+On Linux the server owns `io.github.ferramari.Ferramari.server` and exports
 `io.github.ferramari.ferramari.server` at
 `/io/github/ferramari/ferramari/server`. The player interface
 (`io.github.ferramari.ferramari.player`) mirrors it.
@@ -252,12 +290,24 @@ gdbus call --session --dest io.github.ferramari.Ferramari.server \
   --method io.github.ferramari.ferramari.server.quit
 ```
 
+Windows has no session bus. The server listens on `127.0.0.1` at an ephemeral
+port and publishes the port plus a per-process token in
+`%APPDATA%\ferramari\control-endpoint.json`. Requests are newline-delimited
+JSON, one request per connection. The endpoint file is readable only by the
+current user, and a stale file left by a crashed server is detected before it
+is replaced. The Iced UI and the second-launch handshake use the same channel;
+there is no public D-Bus or TCP replacement for scripting on Windows yet.
+
 ### Configuration
 
 `$XDG_CONFIG_HOME/ferramari/config.json` (default
-`~/.config/ferramari/config.json`). The format uses schema version 4; unknown
-keys are ignored, missing keys get defaults, and a schema-3 file is migrated on
-first start.
+`~/.config/ferramari/config.json`) on Linux, and
+`%APPDATA%\ferramari\config.json` on Windows. The format uses schema version
+4; unknown keys are ignored, missing keys get defaults, and a schema-3 file is
+migrated on first start. Cache and generated frames live under
+`$XDG_CACHE_HOME/ferramari` on Linux and `%LOCALAPPDATA%\ferramari` on Windows;
+installed packages, plugins and the video library follow the platform's native
+per-user folders.
 
 Favourites, history and collections live next to it in `library.json`, and
 `display-ids.json` remembers which connected screen owns which per-monitor
@@ -315,41 +365,39 @@ them after strings change.
 
 ## Architecture
 
-The application is split into a wallpaper server and a separate Iced control surface. The server owns media playback and system integration; the UI is an ordinary D-Bus client:
+The application is split into a wallpaper server and a separate Iced control surface. The server owns media playback and system integration; the UI talks to it over D-Bus on Linux and a loopback JSON endpoint on Windows:
 
 ```
              ferramari-ui (Iced)
                     │
-             session D-Bus API
+       D-Bus (Linux) / loopback JSON (Windows)
                     │
              ferramari server
           ┌─────────┼──────────┐
           ▼         ▼          ▼
        Core      Platform    Media
-       policy    Linux/X11   mpv + X11
+       policy    X11/Win32   mpv
 ```
 
 | Path | Responsibility |
 | --- | --- |
 | `src/app.rs` | wallpaper-server state, command handling and mode switching |
-| `crates/ferramari-ui` | separate Iced control surface and D-Bus client |
+| `crates/ferramari-ui` | separate Iced control surface and platform client |
+| `crates/ferramari-ui/src/client.rs` | Linux D-Bus client and server-state snapshot |
+| `crates/ferramari-ui/src/client_control.rs` | Windows loopback control client |
 | `crates/ferramari-core` | shared configuration, policy, catalogue, packages and data models |
-| `crates/ferramari-platform` | Linux session, tray, D-Bus, monitor and desktop integration |
-| `crates/ferramari-media` | mpv process control and native X11 wallpaper surfaces |
-| `src/app.rs` | wallpaper-server state machine and command handling |
-| `crates/ferramari-ui/src/main.rs` | Iced pages, UI state and D-Bus client calls |
-| `crates/ferramari-ui/src/client.rs` | D-Bus client and server-state snapshot |
 | `crates/ferramari-core/src/eco.rs` | pure per-monitor Eco Engine policy and profiles |
 | `crates/ferramari-core/src/config.rs` | schema-v4 config, validation and 3.x migration |
 | `crates/ferramari-core/src/package.rs` | `.ferramari` manifest validation, import and export logic |
 | `crates/ferramari-core/src/catalogue.rs` | catalogue listing/search, cache, download and frame generation |
-| `crates/ferramari-platform/src/dbus.rs` | zbus server/player interfaces and single-instance server ownership |
-| `crates/ferramari-platform/src/monitors.rs` | XRandR monitor discovery and hotplug watcher |
-| `crates/ferramari-platform/src/tray.rs` | StatusNotifierItem tray (`ksni`) |
+| `crates/ferramari-core/src/i18n.rs` | pure-Rust MO reader and plural-rule evaluator |
+| `crates/ferramari-platform/src/*.rs` | Linux session, tray, D-Bus, monitor and desktop integration |
+| `crates/ferramari-platform/src/windows/*.rs` | Win32 monitor, surface, session, tray, autostart and control integration |
+| `crates/ferramari-platform/src/static_frame.rs` | shared blurred-frame rendering for static wallpapers |
 | `crates/ferramari-media/src/engine.rs` | per-monitor wallpaper playback engine |
-| `crates/ferramari-platform/src/surface.rs` | Native X11 wallpaper windows via x11rb |
+| `crates/ferramari-media/src/mpv.rs` | mpv process control over a Unix socket or Windows named pipe |
 
-Threading rule: the Iced UI owns its widget tree on its event-loop thread. The wallpaper server owns media engines on its command-loop thread. The processes exchange commands and snapshots over the session D-Bus; background work returns plain data through channels or Iced tasks.
+Threading rule: the Iced UI owns its widget tree on its event-loop thread. The wallpaper server owns media engines on its command-loop thread. The processes exchange commands and snapshots over the platform transport; background work returns plain data through channels or Iced tasks.
 
 The Iced control window's Liquid Glass design system (tokens, material layers,
 typography, motion and accessibility rules) is documented in
@@ -369,9 +417,24 @@ The code uses standard X11/EWMH paths, but KDE is not part of the tested
 matrix yet. Treat it as unsupported until the checklist in
 `docs/TESTING.md` has been run there.
 
+**Does it work on Windows?**
+Yes, on Windows 10/11 with the Win32 backend. The installer and portable ZIP
+contain both `ferramari.exe` and `ferramari-ui.exe`; mpv, ffmpeg/ffprobe and
+yt-dlp must be installed separately (on `PATH` or next to the binaries).
+Wallpaper playback is hosted behind Explorer's icons, so it follows Explorer
+restarts. The live multi-monitor, mixed-DPI and Explorer-restart matrix is
+still recorded as pending in `docs/TESTING.md`; the backend is built and tested
+but those hardware scenarios have not been signed off.
+
 **Where do I put my videos?**
-In `$XDG_VIDEOS_DIR/Ferramari` (usually `~/Videos/Ferramari`). The video folder
-is not recursive.
+In `$XDG_VIDEOS_DIR/Ferramari` (usually `~/Videos/Ferramari`) on Linux, or
+`%USERPROFILE%\Videos\Ferramari` on Windows. The video folder is not recursive.
+
+**Does uninstalling on Windows delete my settings?**
+No. The uninstaller removes the installed binaries, shortcuts and locale
+catalogs. `%APPDATA%\ferramari` (config, library, signing key, original
+wallpaper record) and `%LOCALAPPDATA%\ferramari` (cache, generated frames)
+stay until you delete them yourself.
 
 **The catalogue shows no resolution/size/duration.**
 Those values are learned from previews and downloads and cached; a card that
@@ -393,7 +456,18 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 
 ## Known limitations
 
-- The wallpaper server currently uses X11/XWayland: a wallpaper window is
+- The Windows backend is built, unit-tested and reports its capabilities, but
+  live playback could not be exercised in this checkout because mpv, ffmpeg
+  and yt-dlp are not installed. Multi-monitor, mixed-DPI, Explorer-restart and
+  GPU-variant scenarios remain unchecked in `docs/TESTING.md` until run on
+  suitable hardware.
+- Windows firewall software may ask for confirmation when the server opens its
+  loopback control listener. The socket binds only to `127.0.0.1`, never to a
+  LAN interface.
+- The Windows control endpoint is intentionally not a public scripting API
+  yet; it exists so the two binaries can talk without D-Bus. Linux retains the
+  documented D-Bus interface.
+- The wallpaper server on Linux uses X11/XWayland: a wallpaper window is
   a `DESKTOP`-type X11 toplevel and mpv embeds into it with `--wid`. Native
   Wayland has no background role in `xdg-shell`, and `wlr-layer-shell` is not
   available on GNOME, so native Wayland windows are not an option.
@@ -449,9 +523,14 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
   ```
 
 - `mpv` is embedded with `--wid`, uses `--panscan=1.0` for the center-crop
-  effect and is driven through its JSON IPC socket.
-- The server and Iced control surface are separate processes. The existing D-Bus method and property shape stays stable for scripts and desktop integrations.
-- Window state detection uses EWMH atoms over X11.
+  effect and is driven through its JSON IPC socket on Linux and a named pipe
+  on Windows. The `--wid` value is the X11 window id or the Win32 HWND.
+- The server and Iced control surface are separate processes. On Linux the
+  D-Bus method and property shape stays stable for scripts and desktop
+  integrations; on Windows the same command/snapshot model runs over the
+  token-gated loopback endpoint.
+- Window state detection uses EWMH atoms over X11 and a 750 ms `EnumWindows`
+  sample on Windows. Both report the same platform-neutral geometry to core.
 - `-b` starts only the wallpaper, `-p` adds a startup delay, and `-r` resets the
   config (only when no instance is running).
 - A Flatpak manifest builds both binaries from the 2.0 workspace, with host
@@ -462,14 +541,15 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 
 `cargo test --workspace` covers config parsing/migration (including per-field corruption),
 atomic saves and backup recovery, the player restart policy, yt-dlp and ffmpeg
-timeouts, per-monitor EWMH coverage, Eco Engine decisions, mpv IPC framing and
-the worker command order, process-tree metric parsing, session/desktop
-classification, monitor naming/scaling, the fade maths, path handling, URI
-safety, `.ferramari` validation/import/export, plugin manifest validation,
-Catalog API parsing/client validation and the catalogue parsers (cards,
-categories, search, signed download links, archive extraction, video probing
-and frame sheets).
-The former GTK GUI, video embedding, streaming, webpage, catalogue and library modes were smoke-tested on Ubuntu 26.04 / GNOME Wayland (XWayland) before the 2.0 migration. The Iced control surface and current X11 media surface require a fresh live-session smoke run; CI compilation alone does not prove correct wallpaper stacking, mpv embedding or tray activation. The full environment
+timeouts, per-monitor EWMH and Win32 window coverage, Eco Engine decisions,
+mpv IPC framing (Unix sockets and Windows named pipes) and the worker command
+order, process-tree metric parsing, session/desktop classification, monitor
+naming/scaling, Windows display identity and surface lifecycle, the fade maths,
+path handling, URI safety, `.ferramari` validation/import/export, plugin
+manifest validation, Catalog API parsing/client validation and the catalogue
+parsers (cards, categories, search, signed download links, archive extraction,
+video probing and frame sheets).
+The former GTK GUI, video embedding, streaming, webpage, catalogue and library modes were smoke-tested on Ubuntu 26.04 / GNOME Wayland (XWayland) before the 2.0 migration. The Iced control surface and current X11 media surface require a fresh live-session smoke run; CI compilation alone does not prove correct wallpaper stacking, mpv embedding or tray activation. On Windows, `ferramari --doctor`, the live Win32 probes and one Explorer-hosted surface have been exercised, but playback, multi-monitor, mixed-DPI and Explorer-restart recovery still need the hardware matrix. The full environment
 matrix and smoke checklist live in [`docs/TESTING.md`](docs/TESTING.md). To exercise the
 static-wallpaper code without touching your real background:
 

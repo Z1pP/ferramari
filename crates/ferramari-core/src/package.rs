@@ -733,7 +733,7 @@ mod tests {
     }
 
     #[test]
-    fn path_traversal_and_symlinks_are_rejected() {
+    fn path_traversal_is_rejected() {
         let dir = temp_dir("escape");
         write_package(
             &dir,
@@ -743,7 +743,11 @@ mod tests {
         );
         assert!(load(&dir).unwrap_err().contains("relative path"));
         let _ = fs::remove_dir_all(dir);
+    }
 
+    #[cfg(unix)]
+    #[test]
+    fn symlinks_are_rejected() {
         let dir = temp_dir("symlink");
         write_package(
             &dir,
@@ -793,7 +797,12 @@ mod tests {
         assert_eq!(imported.name, "My Wallpaper");
         assert_eq!(imported.kind, PackageType::Video);
         assert!(imported.entry.is_file());
-        assert!(imported.entry.starts_with(&destination));
+        // `load` canonicalizes its root. On Windows that adds a verbatim
+        // `\\?\` prefix, so compare against the canonical destination rather
+        // than the path the test passed in.
+        assert!(imported
+            .entry
+            .starts_with(fs::canonicalize(&destination).unwrap()));
         assert!(imported.package_dir.ends_with("my-wallpaper"));
         let _ = fs::remove_dir_all(source);
         let _ = fs::remove_dir_all(destination);
@@ -1442,6 +1451,7 @@ mod tests {
     }
 
     /// Symlink inside package is rejected by walk.
+    #[cfg(unix)]
     #[test]
     fn symlink_inside_package_is_rejected_by_walk() {
         let dir = temp_dir("symlink-in-tree");

@@ -58,14 +58,14 @@ pub fn run_with_timeout(command: &mut Command, timeout: Duration) -> bool {
     wait_with_timeout(&mut child, timeout).is_some_and(|status| status.success())
 }
 
-/// Translate a user-visible string through the `ferramari` gettext domain.
+/// Translate a user-visible string through the `ferramari` catalog.
 pub fn tr(text: &str) -> String {
-    gettextrs::gettext(text)
+    crate::i18n::tr(text)
 }
 
 /// Translate a counted noun. The catalog supplies the plural forms.
 pub fn tr_n(singular: &str, plural: &str, n: u32) -> String {
-    gettextrs::ngettext(singular, plural, n)
+    crate::i18n::tr_n(singular, plural, n)
 }
 
 /// The source shown as "now playing": the primary monitor's own video in video
@@ -239,21 +239,26 @@ mod tests {
 
     #[test]
     fn uri_to_path_decodes_escapes_and_refuses_remote_hosts() {
-        assert_eq!(
-            uri_to_path("/tmp/a.html"),
-            Some(PathBuf::from("/tmp/a.html"))
+        // A `file://` URI carries a platform path, so the sample has to be one
+        // this host can represent: `Url::to_file_path` needs a drive letter on
+        // Windows and a rooted path elsewhere.
+        #[cfg(unix)]
+        let (plain, uri, decoded) = ("/tmp/a.html", "file:///tmp/a%20b.html", "/tmp/a b.html");
+        #[cfg(windows)]
+        let (plain, uri, decoded) = (
+            r"C:\tmp\a.html",
+            "file:///C:/tmp/a%20b.html",
+            r"C:\tmp\a b.html",
         );
-        assert_eq!(
-            uri_to_path("file:///tmp/a%20b.html"),
-            Some(PathBuf::from("/tmp/a b.html"))
-        );
+        assert_eq!(uri_to_path(plain), Some(PathBuf::from(plain)));
+        assert_eq!(uri_to_path(uri), Some(PathBuf::from(decoded)));
         assert_eq!(uri_to_path("file://evil.example/a.html"), None);
         assert_eq!(uri_to_path("https://example.test"), None);
         assert_eq!(uri_to_path("data:text/html,x"), None);
         assert_eq!(uri_to_path(""), None);
         // Whatever `path_to_uri` writes, `uri_to_path` reads back.
-        let round = uri_to_path(&path_to_uri(Path::new("/tmp/one two.mkv")));
-        assert_eq!(round, Some(PathBuf::from("/tmp/one two.mkv")));
+        let round = uri_to_path(&path_to_uri(Path::new(decoded)));
+        assert_eq!(round, Some(PathBuf::from(decoded)));
     }
 
     #[test]

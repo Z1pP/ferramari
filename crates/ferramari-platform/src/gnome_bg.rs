@@ -5,91 +5,20 @@
 //! Non-GNOME desktops are left untouched.
 
 use std::fs;
-use std::hash::{Hash, Hasher};
-use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::time::Duration;
 
 use ferramari_core::paths;
 use ferramari_core::util;
 
 const BACKGROUND_SCHEMA: &str = "org.gnome.desktop.background";
-const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
-const FRAME_TIMEOUT: Duration = Duration::from_secs(60);
-
-const STATIC_CACHE_LIMIT: usize = 12;
 
 /// Extract a frame at the golden-ratio point of the video, blur it and return
-/// the generated file. This is CPU/GPU work and must run off the command loop.
-/// Results are cached by `(path, mtime, blur)` so restarts and source switches
-/// do not decode the video again.
+/// the generated file. The decoding itself lives in [`crate::static_frame`];
+/// this wrapper adds the frames GNOME must keep pointing at.
 pub fn render_static_frame(video: &Path, blur_radius: u32) -> Option<PathBuf> {
-    let metadata = fs::metadata(video).ok()?;
-    let modified = metadata
-        .modified()
-        .ok()
-        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|time| time.as_secs())
-        .unwrap_or(0);
-    let cache_dir = paths::static_cache_dir();
-    fs::create_dir_all(&cache_dir).ok()?;
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    video.hash(&mut hasher);
-    modified.hash(&mut hasher);
-    blur_radius.hash(&mut hasher);
-    "static-v1".hash(&mut hasher);
-    let file = cache_dir.join(format!("{:016x}.png", hasher.finish()));
-    if file.is_file() {
-        return Some(file);
-    }
-
-    let duration = probe_duration(video).unwrap_or(0.0);
-    let seek = util::format_hms(duration / std::f64::consts::PI);
-    let partial = cache_dir.join(format!(
-        "{:016x}-{:06}.part.png",
-        hasher.finish(),
-        rand::random::<u32>() % 1_000_000
-    ));
-
-    let mut command = Command::new(paths::tool("ffmpeg"));
-    command
-        .arg("-y")
-        .arg("-v")
-        .arg("error")
-        .arg("-ss")
-        .arg(&seek)
-        .arg("-i")
-        .arg(video)
-        .arg("-frames:v")
-        .arg("1");
-    if blur_radius > 0 {
-        command.arg("-vf").arg(format!("gblur=sigma={blur_radius}"));
-    }
-    let Ok(mut child) = command
-        .arg(&partial)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-    else {
-        return None;
-    };
-    let rendered =
-        util::wait_with_timeout(&mut child, FRAME_TIMEOUT).is_some_and(|status| status.success());
-    if !rendered || !partial.is_file() {
-        log::warn!(
-            "[StaticWallpaper] Could not extract a frame from {}",
-            video.display()
-        );
-        let _ = fs::remove_file(&partial);
-        return None;
-    }
-    if fs::rename(&partial, &file).is_err() {
-        let _ = fs::remove_file(&partial);
-        return None;
-    }
-    prune_static_cache(&cache_dir, &file, &protected_cache_files());
-    Some(file)
+    crate::static_frame::render_static_frame(video, blur_radius, &protected_cache_files())
 }
 
 /// Keep the cache bounded; one PNG per video can be several megabytes.
@@ -108,44 +37,6 @@ fn protected_cache_files() -> Vec<PathBuf> {
     uris.iter()
         .map(|uri| PathBuf::from(path_from_uri(uri).to_string()))
         .collect()
-}
-
-fn prune_static_cache(dir: &Path, keep: &Path, protected: &[PathBuf]) {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-    // The cap counts every file in the directory, so the ones that must stay
-    // reduce the budget instead of being added on top of it.
-    let mut pinned = 0usize;
-    let mut candidates: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().is_none_or(|ext| ext != "png")
-            || path.to_string_lossy().ends_with(".part.png")
-        {
-            continue;
-        }
-        if path == keep || protected.contains(&path) {
-            pinned += 1;
-            continue;
-        }
-        let Ok(metadata) = entry.metadata() else {
-            continue;
-        };
-        let Ok(modified) = metadata.modified() else {
-            continue;
-        };
-        candidates.push((modified, path));
-    }
-    let allowed = STATIC_CACHE_LIMIT.saturating_sub(pinned);
-    if candidates.len() <= allowed {
-        return;
-    }
-    candidates.sort_by_key(|(modified, _)| *modified);
-    let remove = candidates.len() - allowed;
-    for (_, path) in candidates.into_iter().take(remove) {
-        let _ = fs::remove_file(path);
-    }
 }
 
 /// Sidecar that remembers the user's real background. It cannot live in the
@@ -473,30 +364,6 @@ fn host_gsettings_get(key: &str) -> Option<String> {
     Some(unquoted.to_string())
 }
 
-fn probe_duration(video: &Path) -> Option<f64> {
-    let mut child = Command::new(paths::tool("ffprobe"))
-        .args([
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-        ])
-        .arg(video)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
-    let status = util::wait_with_timeout(&mut child, PROBE_TIMEOUT)?;
-    if !status.success() {
-        return None;
-    }
-    let mut stdout = Vec::new();
-    child.stdout.take()?.read_to_end(&mut stdout).ok()?;
-    String::from_utf8_lossy(&stdout).trim().parse().ok()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -610,42 +477,6 @@ mod tests {
         for uri in ["resource:///org/gnome/shell/theme/bg.png", "none"] {
             assert!(is_restorable(uri, &cache), "{uri} should be restorable");
         }
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn pruning_keeps_protected_frames_and_stays_within_the_limit() {
-        let root = temp_dir("prune");
-        let cache = root.join("static");
-        fs::create_dir_all(&cache).unwrap();
-        let mut names = Vec::new();
-        for index in 0..STATIC_CACHE_LIMIT + 3 {
-            let name = format!("frame{index:02}.png");
-            fs::write(cache.join(&name), b"x").unwrap();
-            // Oldest first so the sort order is deterministic.
-            names.push(name);
-        }
-        let newest = "newest.png";
-        fs::write(cache.join(newest), b"x").unwrap();
-        // One existing frame is the user's recorded original and must survive.
-        let protected_name = "frame00.png";
-        let protected = vec![cache.join(protected_name)];
-        prune_static_cache(&cache, &cache.join(newest), &protected);
-
-        assert!(cache.join(newest).is_file(), "the kept frame vanished");
-        assert!(
-            cache.join(protected_name).is_file(),
-            "a protected frame was pruned"
-        );
-        let remaining = fs::read_dir(&cache)
-            .unwrap()
-            .flatten()
-            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "png"))
-            .count();
-        assert!(
-            remaining <= STATIC_CACHE_LIMIT,
-            "cache not bounded: {remaining} files"
-        );
         let _ = fs::remove_dir_all(root);
     }
 

@@ -100,10 +100,27 @@ pub fn display_ids_path() -> PathBuf {
     config_dir().join("display-ids.json")
 }
 
+#[cfg(target_os = "windows")]
+pub fn autostart_dir() -> PathBuf {
+    // Windows uses the per-user Run key, not a desktop-autostart folder. The
+    // Startup folder is still the human-facing location, so diagnostics and
+    // documentation point there rather than at a directory we never write.
+    config_base()
+        .join("Microsoft/Windows/Start Menu/Programs/Startup")
+        .join("Ferramari")
+}
+
+#[cfg(not(target_os = "windows"))]
 pub fn autostart_dir() -> PathBuf {
     config_base().join("autostart")
 }
 
+#[cfg(target_os = "windows")]
+pub fn autostart_path() -> PathBuf {
+    autostart_dir().join("Ferramari.lnk")
+}
+
+#[cfg(not(target_os = "windows"))]
 pub fn autostart_path() -> PathBuf {
     autostart_dir().join(format!("{APP_ID}.desktop"))
 }
@@ -204,6 +221,40 @@ pub fn is_gnome() -> bool {
     #[cfg(not(target_os = "linux"))]
     {
         false
+    }
+}
+
+/// Directory containing `<language>/LC_MESSAGES/ferramari.mo`.
+///
+/// `FERRAMARI_LOCALEDIR` wins; otherwise look next to the executable so a
+/// non-default `PREFIX` (`/usr/local`, a staged install, Guix, Nix, the
+/// Windows installer) finds its own catalogs. A system install keeps them one
+/// level up in `share/locale`; Unix falls back to `/usr/share/locale`.
+pub fn locale_dir() -> PathBuf {
+    if let Some(dir) = env::var_os("FERRAMARI_LOCALEDIR") {
+        return dir.into();
+    }
+    if let Ok(exe) = env::current_exe() {
+        if let Some(bin) = exe.parent() {
+            let local = bin.join("locale");
+            if local.is_dir() {
+                return local;
+            }
+            if let Some(prefix) = bin.parent() {
+                let candidate = prefix.join("share/locale");
+                if candidate.is_dir() {
+                    return candidate;
+                }
+            }
+        }
+    }
+    #[cfg(unix)]
+    {
+        PathBuf::from("/usr/share/locale")
+    }
+    #[cfg(not(unix))]
+    {
+        PathBuf::new()
     }
 }
 

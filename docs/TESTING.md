@@ -5,7 +5,8 @@ need a live session. This document contains historical live-session results
 for the 1.9.x GTK build. They are not evidence that the 2.0.0 Iced migration
 has passed equivalent smoke tests. The 2.0 workspace must be tested separately
 using the checklist below; do not carry forward old “tested” labels as 2.0
-certification.
+certification. Windows has its own checklist at the end; a green Windows CI
+job proves the build and unit tests, not wallpaper playback.
 
 ## Environment matrix
 
@@ -16,6 +17,8 @@ certification.
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |
 | GNOME with the Flatpak bundle | **tested** 2026-10-31, 0.7.0 | Built and launched from a local bundle; host mpv/ffmpeg bridge, XWayland, WebKitGTK; 0.8 uses the same manifest; tray/autostart not verified |
+| Windows 11 23H2, Explorer desktop | **partial** 2026-11-12 | Release build, full unit suite, `--doctor`, live display/desktop/session probes and one Explorer-hosted surface passed; mpv/ffmpeg/yt-dlp absent, so playback and the multi-monitor matrix are unchecked |
+| Windows 10/11 with the installer | not tested | Installer script is built in CI; install/uninstall has not been exercised on a clean machine |
 | Native Wayland (no XWayland) | not supported | No wallpaper surface or `--wid` embedding yet |
 
 Do not mark an environment as supported until the checklist below has been run
@@ -212,6 +215,102 @@ The shipped threshold is five minutes; the test only shortened the timer.
 - [ ] D-Bus `video`, `volume`, `reload_config` and `quit` work.
 - [ ] Language switch applies after restart.
 - [ ] Corrupt `config.json`; the app starts from `config.json.bak`.
+
+## Windows smoke checklist
+
+Run on a Windows 10/11 desktop with Explorer, at least one monitor, and mpv,
+ffmpeg/ffprobe and yt-dlp installed. Start from the release build or the
+installer; use a disposable Windows account for the first run so the original
+wallpaper sidecar and autostart key can be removed without touching a real
+profile.
+
+### Startup, control and shutdown
+- [ ] `ferramari --doctor` prints `session: Windows desktop`, the Explorer
+      host, display identities, tool versions and capability levels without
+      starting a window.
+- [ ] `ferramari` starts the server and opens `ferramari-ui`; both `.exe`
+      files are in the same folder and the UI finds the endpoint file.
+- [ ] A second `ferramari` launch asks the first instance to show the UI and
+      exits; only one server process remains.
+- [ ] Closing the UI leaves the server and wallpaper running.
+- [ ] Quit from the tray and from Settings; no `mpv`, `ffmpeg` or `ffprobe`
+      child remains.
+- [ ] Ctrl-C, Ctrl-Break, console close, logoff and shutdown each end the
+      server cleanly; the original wallpaper is restored.
+- [ ] A stale `control-endpoint.json` from a killed server is replaced on the
+      next start and does not block the UI.
+
+### Wallpaper host and Explorer restarts
+- [ ] Apply a local video to one monitor; it appears behind the desktop icons
+      and the icons stay clickable.
+- [ ] Restart Explorer (`taskkill /F /IM explorer.exe` then start it again):
+      playback is recreated within the restart backoff and the new surface is
+      attached to the new `WorkerW`.
+- [ ] Kill `mpv`; the supervisor recreates it and the surface stays alive.
+- [ ] Change the desktop wallpaper in Windows Settings while Ferramari is
+      playing; the live wallpaper is unaffected and the original record is not
+      overwritten by a generated frame.
+- [ ] Close Ferramari and confirm the user's original desktop image is back.
+
+### Displays and DPI
+- [ ] Two monitors at different scales: each surface covers its own monitor
+      with no offset, stretching or gap.
+- [ ] Move the primary-display setting and change resolution; both surfaces
+      follow without a restart.
+- [ ] Disconnect and reconnect a monitor; its configured source is restored
+      and the other monitor keeps playing.
+- [ ] Rotate a display; the surface geometry follows the rotation.
+- [ ] Unplug the monitor whose video is playing; no error dialog storm and the
+      remaining monitor continues.
+
+### Static wallpaper, tray and autostart
+- [ ] Enable static wallpaper; a blurred frame appears and
+      `%APPDATA%\ferramari\background-original.json` records the previous path.
+- [ ] Disable it; the recorded original is restored.
+- [ ] Delete the recorded original file and disable again; no missing-file
+      background is installed.
+- [ ] Tray menu: Show, mute, pause, reload, lucky and quit all act on the
+      running server; the icon disappears when “Run in background” is off.
+- [ ] Autostart creates `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+      value `Ferramari` with a quoted `-b` command; disabling removes it.
+- [ ] Sign out and back in; the wallpaper starts in background mode without
+      opening the control window.
+
+### Session and Eco events
+- [ ] Lock the session (Win+L); playback pauses, and unlock resumes it.
+- [ ] Sleep/resume; playback resumes without restarting the process.
+- [ ] Unplug/plug the charger on a laptop; the AC/battery state changes and
+      “Pause on battery” acts without waiting for the 30 s poll.
+- [ ] Cover a monitor with a maximized or fullscreen window; only that monitor
+      pauses. Close it; that monitor resumes.
+- [ ] Leave the desktop idle past the Eco delay; playback pauses and resumes
+      on input.
+- [ ] A UWP window on another virtual desktop does not count as occlusion.
+
+### Installer and packaging
+- [ ] `installer\build.ps1` produces a setup `.exe` and a portable `.zip` in
+      `installer\Output`.
+- [ ] Install per-user without elevation; Start-menu shortcut starts both
+      binaries and the UI is translated (ru/ja) when the locale is selected.
+- [ ] Uninstall removes binaries, shortcuts and locale files but leaves
+      `%APPDATA%\ferramari` and `%LOCALAPPDATA%\ferramari` intact.
+- [ ] Extract the portable ZIP to a folder with a space in its path; both
+      binaries start and find their locale catalogs.
+
+Record the Windows build number, GPU, monitor layout and mpv/ffmpeg versions
+next to the results. Do not mark the Windows row in the environment matrix as
+`tested` until every section above has been run.
+
+Recorded 2026-11-12 on Windows 11 23H2, one 1920×1080 display, Explorer:
+`cargo test --workspace` passed (14 binary + 339 core + 17 media + 46 platform
++ 14 UI/integration tests), the release workspace produced both `.exe` files,
+and `ferramari --doctor` reported the Win32 backend, one `DISPLAY1` with its
+monitor device interface, Explorer wallpaper host = yes, every capability
+supported, and the expected “not found” tool lines. A live background server
+answered `ping`, returned a complete `snapshot`, accepted `quit`, exited
+cleanly and removed `control-endpoint.json`; ten immediate snapshot requests
+during startup all succeeded. The installer itself was not run on this
+machine; CI builds it. This is a partial result, not the full smoke matrix.
 
 ## Reproducible local run
 

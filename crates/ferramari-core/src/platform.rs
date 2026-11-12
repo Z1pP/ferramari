@@ -82,6 +82,17 @@ pub trait PlatformEventSource {
 /// is owned by the selected media/platform adapter and must never be persisted.
 pub trait WallpaperSurface {
     fn embedding_handle(&self) -> u64;
+
+    /// Whether the native surface still exists.
+    ///
+    /// Explorer can restart on Windows and destroy the wallpaper host, which
+    /// takes the embedded window with it. The player may still be alive with
+    /// a stale handle, so the media layer asks the surface rather than
+    /// guessing from the player process alone. Backends that never lose a
+    /// surface keep the default.
+    fn is_alive(&self) -> bool {
+        true
+    }
 }
 
 /// Creates and owns native wallpaper surfaces for a platform backend.

@@ -1,14 +1,16 @@
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
 //! Ferramari — Iced control surface.
 //!
-//! The window is a plain D-Bus client of the running wallpaper server
-//! (`io.github.ferramari.Ferramari.server`). It never touches X11 or mpv
-//! directly, so the same binary works whether the server was started by the
-//! desktop session, the tray, or a terminal.
+//! The window is a plain client of the running wallpaper server: D-Bus on
+//! Linux (`io.github.ferramari.Ferramari.server`), a loopback JSON channel on
+//! Windows. It never touches the desktop or mpv directly, so the same binary
+//! works whether the server was started by the desktop session, the tray, or a
+//! terminal.
 //!
-//! Reading is a `GetAll` poll on both interfaces once a second; writing is a
-//! property `Set` or a method call. That is deliberately the same contract
-//! existing scripts use: the UI is an ordinary bus client, not a privileged
-//! one.
+//! Reading is a periodic snapshot poll; writing is a property set or a command
+//! call. That is deliberately the same contract existing scripts use: the UI
+//! is an ordinary client, not a privileged one.
 //!
 //! Run: `cargo run -p ferramari-ui` (the server must be running).
 //!
@@ -5065,49 +5067,27 @@ fn open_folder(path: PathBuf) {
 }
 
 fn init_i18n() {
-    // SAFETY: called from the main thread before the event loop starts.
-    unsafe {
-        let _ = gettextrs::setlocale(gettextrs::LocaleCategory::LcAll, "");
-    }
-    let _ = gettextrs::bindtextdomain(paths::TRANSLATION_DOMAIN, locale_dir());
-    let _ = gettextrs::textdomain(paths::TRANSLATION_DOMAIN);
+    // The same MO catalog reader the server uses: no libintl dependency, so
+    // the UI builds and translates identically on Linux and Windows.
+    ferramari_core::i18n::init(paths::locale_dir());
 }
 
-/// Switch the gettext catalog at runtime. `""`/`system` follows the desktop
-/// locale; anything else forces `en`, `ru` or `ja`.
+/// Switch the catalog at runtime. `""`/`system` follows the desktop locale;
+/// anything else forces `en`, `ru` or `ja`.
 fn apply_language(code: &str) {
     match code {
         "" | "system" => std::env::remove_var("LANGUAGE"),
         other => std::env::set_var("LANGUAGE", other),
     }
-    // gettext looks the catalog up using the current locale, so re-running
-    // setlocale after touching LANGUAGE is what makes the switch visible.
-    unsafe {
-        let _ = gettextrs::setlocale(gettextrs::LocaleCategory::LcAll, "");
-    }
+    ferramari_core::i18n::reload();
 }
 
-fn locale_dir() -> PathBuf {
-    if let Some(dir) = std::env::var_os("FERRAMARI_LOCALEDIR") {
-        return dir.into();
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(prefix) = exe.parent().and_then(|bin| bin.parent()) {
-            let candidate = prefix.join("share/locale");
-            if candidate.is_dir() {
-                return candidate;
-            }
-        }
-    }
-    PathBuf::from("/usr/share/locale")
-}
-
-const UI_INSTANCE_NAME: &str = "io.github.ferramari.Ferramari.ui";
-
-/// Keep a D-Bus name owned for the lifetime of the UI process. The server may
-/// ask to launch the UI more than once (tray activation, desktop entry, CLI),
-/// but only one control window should exist per session.
+/// Keep the control-window instance owned for the lifetime of the process.
+/// The server may ask to launch the UI more than once (tray activation, the
+/// desktop entry, the CLI), but only one window should exist per session.
+#[cfg(unix)]
 fn acquire_ui_instance() -> Result<zbus::blocking::Connection, String> {
+    const UI_INSTANCE_NAME: &str = "io.github.ferramari.Ferramari.ui";
     let connection = zbus::blocking::Connection::session().map_err(|error| error.to_string())?;
     let flags = zbus::fdo::RequestNameFlags::DoNotQueue.into();
     connection
@@ -5116,14 +5096,19 @@ fn acquire_ui_instance() -> Result<zbus::blocking::Connection, String> {
     Ok(connection)
 }
 
+#[cfg(windows)]
+fn acquire_ui_instance() -> Result<Option<ferramari_platform::ui_instance::UiInstance>, String> {
+    ferramari_platform::ui_instance::acquire()
+}
+
 fn main() -> iced::Result {
     if let Some(language) = Config::language_override() {
         apply_language(&language);
     }
     init_i18n();
 
-    // Keep this connection in scope until Iced exits; dropping it releases
-    // the well-known name so the control surface can be opened again.
+    // Keep the ownership token in scope until Iced exits; dropping it releases
+    // the instance name so the control surface can be opened again.
     let _instance = match acquire_ui_instance() {
         Ok(connection) => connection,
         Err(error) => {
@@ -5145,8 +5130,10 @@ fn main() -> iced::Result {
         // still shows a whole resource row; below that nothing fits honestly.
         min_size: Some(Size::new(900.0, 620.0)),
         decorations: false,
-        // Matches the .desktop basename, which is what makes the window group
-        // with the app in the taskbar and the Activities overview.
+        // Linux only: the application id matches the .desktop basename, which
+        // is what makes the window group with the app in the taskbar and the
+        // Activities overview. Windows and macOS use their own defaults.
+        #[cfg(unix)]
         platform_specific: iced::window::settings::PlatformSpecific {
             application_id: paths::APP_ID.to_string(),
             ..Default::default()

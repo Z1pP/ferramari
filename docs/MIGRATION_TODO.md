@@ -88,24 +88,25 @@ validation are complete. A successful compile alone is not a runtime pass.
 Current boundary progress:
 - Core config, cache, data and video-library roots now resolve to native per-user locations on Linux, macOS and Windows; Linux keeps its XDG/`xdg-user-dir` behavior.
 - Process metrics explicitly report unavailable on platforms without the current `/proc` sampler instead of displaying misleading zeroes.
-- Unix process-group termination and private-key mode bits are cfg-gated; Windows currently falls back to terminating the direct child and relies on the user's profile ACL.
+- Unix process-group termination and private-key mode bits are cfg-gated; Windows uses `taskkill /T /F` to end a timed-out `yt-dlp` process tree and relies on the user's profile ACL for key files.
 - Window rectangles and occlusion evaluation now live in ferramari-core.
-- The EWMH watcher now lives in ferramari-platform.
-- A platform-neutral DisplayProvider contract exists; the X11 implementation is injected at startup.
-- WallpaperSurfaceProvider and PowerProvider are injected at startup and into the media/application layers.
-- PlatformEventSource owns Linux session/window/hotplug watcher startup and teardown; it sends normalized core commands.
+- The EWMH watcher now lives in ferramari-platform; its Windows counterpart samples `EnumWindows`.
+- A platform-neutral DisplayProvider contract exists; XRandR and Win32 implementations are injected at startup.
+- WallpaperSurfaceProvider and PowerProvider are injected at startup and into the media/application layers on both platforms.
+- PlatformEventSource owns session/window/hotplug watcher startup and teardown; each backend normalizes native events into core commands.
 - GNOME Shell D-Bus integration and zbus dependency have been moved out of ferramari-core.
 - The obsolete GTK wakeup pipe was removed; std::sync::mpsc already wakes the command loop.
-- Monitor enumeration and wallpaper surface creation are still backed only by Linux/X11.
-- Linux session/window watcher startup and teardown now sit behind an injected PlatformEventSource.
-- Power-supply polling is now a Linux platform provider; desktop background handling and some path/metrics code remain Linux-specific.
+- Windows avoids D-Bus entirely: the control surface uses a token-gated loopback JSON endpoint and the server/UI each hold a named mutex for single-instance semantics.
+- Linux and Windows both implement monitor enumeration, wallpaper surfaces, session/window watchers, tray, autostart and static-background handling behind the shared contracts.
+- Power-supply polling is a platform provider on both operating systems; Windows also receives charger, suspend/resume and lock/unlock notifications through one hidden message window.
 
 ## 4. Finish Linux backend
 
 - [x] Define a platform-neutral wallpaper surface contract in core.
 - [x] Move X11 wallpaper surface creation and native connection ownership into the platform crate.
 - [x] Inject a platform surface provider into the media engine; remove x11rb from media.
-- [ ] Add non-X11 surface providers for macOS and Windows.
+- [x] Add a non-X11 surface provider for Windows.
+- [ ] Add a non-X11 surface provider for macOS.
 - [x] Implement backend capability reporting for X11 and XWayland.
       `desktop::capability_report` decides each capability from its own evidence
       (server reachable, negotiated RandR version, EWMH present, monitors actually
@@ -147,14 +148,53 @@ Current boundary progress:
 
 ## 6. Implement Windows backend
 
-- [ ] Research and document the supported desktop wallpaper host strategy
+- [x] Research and document the supported desktop wallpaper host strategy
       (including Progman/WorkerW behaviour and Explorer restarts).
-- [ ] Implement display discovery and stable display identities.
-- [ ] Implement wallpaper surface creation, embedding and lifecycle.
-- [ ] Implement foreground/fullscreen/occlusion tracking.
-- [ ] Implement lock, suspend/resume and power events.
+      `docs/BACKEND_CONTRACT.md` §9 records the undocumented `0x052C`
+      message that asks Explorer to spawn the wallpaper `WorkerW`, the
+      `SHELLDLL_DefView` sibling lookup, the Progman fallback, and why a
+      hosted child window cannot survive an Explorer restart. The surface
+      reports `is_alive() == false`; the media supervisor rebuilds the player
+      and the provider attaches it to the new host.
+- [x] Implement display discovery and stable display identities.
+      `windows/monitors.rs` enumerates `EnumDisplayMonitors`, reads the device
+      interface string through `EnumDisplayDevicesW` as `identity.native_id`,
+      reports physical pixels plus the effective DPI as `scale_factor`, and
+      exposes physical panel size from `GetDeviceCaps(HORZSIZE/VERTSIZE)`.
+      `WM_DISPLAYCHANGE` drives the debounced hotplug path.
+- [x] Implement wallpaper surface creation, embedding and lifecycle.
+      One `WS_CHILD` window per monitor is parented to the `WorkerW` behind
+      the desktop icons, moved into host coordinates with
+      `MapWindowPoints`, made click-through with `HTTRANSPARENT`, and embedded
+      into mpv through the HWND passed as `--wid`. `Drop` destroys the child;
+      a missing Explorer host is an explicit error rather than a hidden
+      failure.
+- [x] Implement foreground/fullscreen/occlusion tracking.
+      `windows/window_state.rs` samples the complete top-level window list
+      every 750 ms, filters invisible, minimized, DWM-cloaked, tool and
+      owned windows, and emits commands only when the normalized geometry
+      changes. `ferramari-core` owns the visibility rule; the backend only
+      reports rectangles.
+- [x] Implement lock, suspend/resume and power events.
+      One hidden message window receives WTS session notifications, power
+      broadcasts, end-session messages and charger changes
+      (`RegisterPowerSettingNotification`). Idle comes from
+      `GetLastInputInfo`, power state from `GetSystemPowerStatus`, and
+      Ctrl/Ctrl-Break/close/logoff/shutdown are translated by
+      `SetConsoleCtrlHandler` into `Command::Quit` with a 1500 ms grace
+      period for the terminal events.
 - [ ] Test multiple monitors, mixed DPI, Explorer restart and GPU variants.
-- [ ] Add Windows CI and installer packaging.
+      Automated tests cover the geometry, identity, lifecycle and event edge
+      cases, and one display has been exercised live on Windows 11. The
+      remaining scenarios need hardware that this checkout does not have;
+      they stay unclaimed in `docs/TESTING.md` until run.
+- [x] Add Windows CI and installer packaging.
+      `.github/workflows/ci.yml` builds, lints, tests and runs `--doctor` on
+      `windows-latest`; `installer/build.ps1` produces an Inno Setup
+      installer and a portable ZIP, both uploaded as artifacts and attached
+      to tagged releases. The installer is per-user by default, installs
+      both binaries with their locale catalogs, and never deletes user data
+      on uninstall.
 
 ## 7. Media and web wallpaper engine
 
@@ -223,7 +263,15 @@ Current boundary progress:
       `ldd`, both binaries present and executable, translations installed. The host gsettings
       path works through `flatpak-spawn --host`. Full export produces a ~36 MB bundle.
       See flatpak/README.md for environment traps (FUSE, extension version pinning).
-- [ ] Define macOS app bundle and Windows installer layouts.
+- [x] Define the Windows installer layout.
+      `installer/ferramari.iss` installs both binaries plus
+      `<app>\locale\<lang>\LC_MESSAGES\ferramari.mo`, creates Start-menu and
+      optional desktop shortcuts, and defaults to a per-user install under
+      `%LOCALAPPDATA%\Programs\Ferramari` so no elevation is needed. The
+      portable ZIP has the same `ferramari.exe` + `ferramari-ui.exe` + `locale`
+      shape. Uninstall removes only installed files; config, cache, library,
+      packages and signing keys stay in the user profile.
+- [ ] Define the macOS app bundle layout.
 - [ ] Verify upgrades from 1.9.x preserve config, library, packages and signing keys.
 - [ ] Verify clean uninstall does not delete user data without explicit consent.
 - [x] Update README, architecture docs, troubleshooting and user-facing limitations.

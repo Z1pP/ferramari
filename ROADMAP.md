@@ -24,7 +24,17 @@ bundle uses host media tools.
 
 ## After 1.0
 
-### 1.9 — Creator Engine completion (current)
+### 2.1 — Windows backend
+
+- [x] Win32 wallpaper host behind Explorer's icons, with Explorer-restart detection
+- [x] Display discovery, stable device identities and physical-pixel geometry
+- [x] Foreground/fullscreen/occlusion tracking
+- [x] Lock, suspend/resume, charger, idle and console shutdown events
+- [x] Tray, autostart, static wallpaper and loopback control transport
+- [x] Windows CI, Inno Setup installer and portable ZIP
+- [ ] Live multi-monitor, mixed-DPI, Explorer-restart and GPU-variant matrix
+
+### 1.9 — Creator Engine completion
 
 - [x] SHA-256 checksums per package file, verified on import and on demand
 - [x] Ed25519 package signatures with a local trust store

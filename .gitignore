@@ -11,6 +11,9 @@ repo/
 __pycache__/
 *.pyc
 
+# Inno Setup / portable archive output
+installer/Output/
+
 # Local scratch, never committed
 backup/
 

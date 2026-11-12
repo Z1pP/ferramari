@@ -8,7 +8,36 @@ permissions:
   contents: write
 
 jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check tag matches the manifest version
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME -replace '^v', ''
+          $match = Select-String -Path Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1
+          $version = $match.Matches[0].Groups[1].Value
+          if ($tag -ne $version) { throw "tag $tag does not match Cargo.toml $version" }
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Build server and Iced UI
+        run: cargo build --workspace --release --locked
+      - name: Install packaging tools
+        run: choco install innosetup gettext -y --no-progress
+      - name: Build installer and portable archive
+        run: .\installer\build.ps1 -NoBuild
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ferramari-windows
+          path: |
+            installer/Output/*.exe
+            installer/Output/*.zip
+          if-no-files-found: error
+
   release:
+    needs: windows
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -46,9 +75,15 @@ jobs:
           done
           tar -czf "${package}.tar.gz" -C dist "${package}"
           sha256sum "${package}.tar.gz" > "${package}.tar.gz.sha256"
+      - uses: actions/download-artifact@v4
+        with:
+          name: ferramari-windows
+          path: windows-dist
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             ferramari-*.tar.gz
             ferramari-*.tar.gz.sha256
+            windows-dist/*.exe
+            windows-dist/*.zip
           generate_release_notes: true

@@ -14,6 +14,7 @@ pub mod display_ids;
 pub mod eco;
 pub mod error;
 pub mod hwdec;
+pub mod i18n;
 pub mod library;
 pub mod lint;
 pub mod metrics;

@@ -37,7 +37,7 @@ use crate::signing;
 use crate::supervisor::{RestartPolicy, Retry, MAX_RETRIES};
 use crate::tray;
 use crate::util;
-use crate::wallpaper::GnomeBackground;
+use crate::wallpaper::StaticBackground;
 use crate::window::{MonitorVisibility as WindowVisibility, WindowState};
 use crate::ytdlp;
 
@@ -95,7 +95,7 @@ pub struct App {
     last_plans: HashMap<String, eco::Plan>,
     stream: Option<ytdlp::StreamInfo>,
     stream_resolving: bool,
-    background_wallpaper: GnomeBackground,
+    background_wallpaper: StaticBackground,
     library: Rc<RefCell<Library>>,
     last_rotation: HashMap<String, Instant>,
     on_battery: bool,
@@ -154,7 +154,7 @@ impl App {
         let mut display_ids = DisplayIdRegistry::load();
         let names = bind_display_ids(&mut monitors, &mut display_ids);
         let config = Config::load(&names);
-        let background_wallpaper = GnomeBackground::capture();
+        let background_wallpaper = StaticBackground::capture();
         // Read the power supply once: two separate `status()` calls can
         // observe different states while a charger is being plugged in.
         let power_status = power_provider.status();
@@ -1879,19 +1879,13 @@ impl App {
     }
 }
 
-/// Start the Iced control surface next to this executable. It is a normal
-/// D-Bus client, so the server never has to know about its widgets.
+/// Start the Iced control surface next to this executable. It is an ordinary
+/// client of the local control API (D-Bus on Linux, loopback JSON on Windows),
+/// so the server never has to know about its widgets.
 fn launch_control_surface() -> anyhow::Result<()> {
-    let exe = std::env::current_exe()?;
-    let dir = exe
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("executable has no directory"))?;
-    let candidate = dir.join("ferramari-ui");
-    let program = if candidate.is_file() {
-        candidate
-    } else {
-        PathBuf::from("ferramari-ui")
-    };
+    // `paths::tool` already prefers a sibling binary and appends `.exe` on
+    // Windows; falling back to PATH keeps a source-tree `cargo run` working.
+    let program = paths::tool("ferramari-ui");
     // A second `show_gui` while one window is open must not stack windows;
     // `ferramari-ui` exits immediately when another instance owns its name.
     // Spawning a process is quick and returning the error here lets
@@ -2222,14 +2216,16 @@ mod tests {
 
     #[test]
     fn local_webpages_accept_paths_and_file_uris() {
-        assert_eq!(
-            local_webpage_path("/tmp/a.html"),
-            Some(PathBuf::from("/tmp/a.html"))
+        #[cfg(unix)]
+        let (plain, uri, decoded) = ("/tmp/a.html", "file:///tmp/a%20b.html", "/tmp/a b.html");
+        #[cfg(windows)]
+        let (plain, uri, decoded) = (
+            r"C:\tmp\a.html",
+            "file:///C:/tmp/a%20b.html",
+            r"C:\tmp\a b.html",
         );
-        assert_eq!(
-            local_webpage_path("file:///tmp/a%20b.html"),
-            Some(PathBuf::from("/tmp/a b.html"))
-        );
+        assert_eq!(local_webpage_path(plain), Some(PathBuf::from(plain)));
+        assert_eq!(local_webpage_path(uri), Some(PathBuf::from(decoded)));
         assert_eq!(local_webpage_path("file://evil.example/a.html"), None);
     }
 

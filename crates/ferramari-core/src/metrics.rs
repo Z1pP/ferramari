@@ -9,6 +9,7 @@
 //! the very first sample, makes an unmeasurable thing look like an idle one —
 //! which is the opposite of what the Eco work is trying to prove.
 
+#[cfg(target_os = "linux")]
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -166,12 +167,14 @@ struct Tree {
     processes: u32,
 }
 
+#[cfg(target_os = "linux")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Stat {
     ppid: u32,
     ticks: u64,
 }
 
+#[cfg(target_os = "linux")]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct Status {
     rss_kb: u64,
@@ -243,6 +246,7 @@ fn read_tree(_root: u32) -> Option<Tree> {
 /// Parse `/proc/<pid>/stat`. The command name can contain spaces and `)`, so
 /// split after the last `)` instead of using `split_whitespace` on the whole
 /// line.
+#[cfg(target_os = "linux")]
 fn parse_stat(text: &str) -> Option<Stat> {
     let close = text.rfind(')')?;
     let fields: Vec<&str> = text[close + 1..].split_whitespace().collect();
@@ -256,6 +260,7 @@ fn parse_stat(text: &str) -> Option<Stat> {
     })
 }
 
+#[cfg(target_os = "linux")]
 fn parse_status(text: &str) -> Status {
     let mut status = Status::default();
     for line in text.lines() {
@@ -338,6 +343,7 @@ mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn stat_parser_handles_spaces_and_parentheses_in_the_command() {
         // comm = "a) b c", then state S, ppid 42, nine fields, utime 100,
@@ -351,6 +357,7 @@ mod tests {
         assert_eq!(stat.ticks, 150);
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn status_parser_reads_rss_and_threads() {
         let status = parse_status("Name:\tferramari\nVmRSS:\t  12345 kB\nThreads:\t7\n");
@@ -418,6 +425,7 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn the_first_sample_has_no_rate_to_report() {
         let mut monitor = Monitor::default();
@@ -432,6 +440,17 @@ mod tests {
         assert!(sample.threads.is_value());
     }
 
+    #[cfg(not(target_os = "linux"))]
+    #[test]
+    fn a_platform_without_a_process_sampler_says_so() {
+        let sample = Monitor::default().sample();
+        assert_eq!(sample.cpu, Metric::Unsupported);
+        assert_eq!(sample.memory, Metric::Unsupported);
+        assert_eq!(sample.processes, Metric::Unsupported);
+        assert_eq!(sample.threads, Metric::Unsupported);
+    }
+
+    #[cfg(target_os = "linux")]
     #[test]
     fn current_process_tree_contains_this_test() {
         let mut monitor = Monitor::default();
@@ -466,10 +485,13 @@ mod tests {
         assert!(!matches!(sample.gpu, Metric::Pending));
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_gone_server_resets_the_cpu_interval() {
         // Otherwise the next live sample would divide by the elapsed time
-        // across the gap and report a meaningless spike.
+        // across the gap and report a meaningless spike. Windows has no
+        // process-tree sampler yet, so every reading there is Unsupported and
+        // this Linux-only invariant does not apply.
         let mut monitor = Monitor::default();
         monitor.sample();
         let _ = monitor.sample_of(u32::MAX);

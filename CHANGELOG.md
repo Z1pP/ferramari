@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased - Windows backend
+
+**Ferramari runs on Windows 10/11.** The same two binaries, the same core
+policy and the same Iced control surface now have a Win32 backend: a wallpaper
+window behind Explorer's desktop icons, physical-pixel monitor discovery,
+foreground/occlusion tracking, lock and power events, a tray icon, autostart
+and static-wallpaper handling. **430 tests** pass (14 binary + 339 core + 17
+media + 46 platform + 14 UI).
+
+- **Wallpaper hosting.** A child window is parented to the `WorkerW` behind
+  `SHELLDLL_DefView` (with `Progman` as fallback) and embedded into mpv through
+  `--wid`. Explorer restarts destroy that host; `WallpaperSurface::is_alive`
+  lets the media supervisor rebuild the player and attach a fresh surface.
+- **No D-Bus on Windows.** The server listens on `127.0.0.1` at an ephemeral
+  port and publishes a per-process token in `control-endpoint.json`. The Iced
+  UI and the second-launch handshake use newline-delimited JSON over that
+  endpoint; named mutexes provide single-instance semantics for both binaries.
+- **Native event sources.** WTS notifications cover lock/unlock, power
+  broadcasts cover suspend/resume, `RegisterPowerSettingNotification` covers
+  charger changes, `GetLastInputInfo` covers idle, and `SetConsoleCtrlHandler`
+  turns Ctrl/Ctrl-Break/close/logoff/shutdown into the same `Command::Quit`
+  path with a 1500 ms grace period. Occlusion is sampled from `EnumWindows`
+  every 750 ms and only changes are emitted.
+- **Media and helpers.** mpv IPC uses a Windows named pipe instead of a Unix
+  socket; timed-out yt-dlp/ffmpeg trees are terminated with
+  `taskkill /T /F` so a wrapper cannot leave its child holding the pipe.
+- **Translations without libintl.** `gettext-rs` and `gettext-sys` are gone.
+  `ferramari-core::i18n` reads GNU MO files and evaluates each catalog's own
+  `Plural-Forms` expression, so both binaries build on Windows without a C
+  gettext dependency. Startup no longer deadlocks on the translator lock while
+  resolving the initial language.
+- **Packaging.** `installer/build.ps1` builds an Inno Setup installer and a
+  portable ZIP with both binaries and their locale catalogs. CI now lints,
+  tests, builds and runs `--doctor` on `windows-latest`, then uploads both
+  artifacts; tagged releases attach them to the GitHub release.
+- **Docs.** `docs/BACKEND_CONTRACT.md` gains the Windows backend notes and
+  checklist status, `docs/MIGRATION_TODO.md` records what is done and what
+  still needs hardware, and `docs/TESTING.md` has a Windows smoke checklist.
+  Live playback, multi-monitor, mixed-DPI and Explorer-restart scenarios stay
+  unchecked until they are run on suitable hardware.
+
 ## 2.1.0 — 2026-11-10
 
 **The control surface redrawn to the reference design, and the shutdown path

@@ -6,11 +6,16 @@
 //! Exits after a few seconds; the mpv child is terminated via its Drop impl,
 //! which kills only the process this example spawned.
 
+// The probe talks to a live X server; it has no Windows counterpart.
+#[cfg(target_os = "linux")]
 use std::time::Duration;
 
+#[cfg(target_os = "linux")]
 use x11rb::connection::Connection as _;
+#[cfg(target_os = "linux")]
 use x11rb::protocol::xproto::ConnectionExt as _;
 
+#[cfg(target_os = "linux")]
 fn root_monitor() -> anyhow::Result<ferramari_core::MonitorInfo> {
     let (connection, screen) = x11rb::connect(None)?;
     let info = &connection.setup().roots[screen];
@@ -28,6 +33,7 @@ fn root_monitor() -> anyhow::Result<ferramari_core::MonitorInfo> {
     })
 }
 
+#[cfg(target_os = "linux")]
 fn main() -> anyhow::Result<()> {
     let video = std::env::args()
         .nth(1)
@@ -78,4 +84,10 @@ fn main() -> anyhow::Result<()> {
     drop(surface);
     println!("done");
     Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn main() {
+    eprintln!("probe_mpv_surface needs a live X11 server and only runs on Linux");
+    std::process::exit(2);
 }

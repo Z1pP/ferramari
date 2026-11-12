@@ -788,10 +788,12 @@ mod tests {
         let valid =
             std::env::temp_dir().join(format!("ferramari-config-test-{}.mp4", std::process::id()));
         std::fs::write(&valid, b"not really a video").unwrap();
+        // Encode the path as JSON: Windows paths contain backslashes, which
+        // are escape characters in a hand-written JSON string.
+        let valid_json = serde_json::to_string(&valid.to_string_lossy()).unwrap();
         let text = format!(
             r#"{{"version": 4, "mode": "MODE_VIDEO",
-                 "data_source": {{"Default": "/does/not/exist.mp4", "eDP-1": "{}"}}}}"#,
-            valid.display()
+                 "data_source": {{"Default": "/does/not/exist.mp4", "eDP-1": {valid_json}}}}}"#
         );
         let (config, changed) = Config::parse(&text, &monitors());
         assert!(changed);

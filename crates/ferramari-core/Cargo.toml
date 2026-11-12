@@ -10,7 +10,6 @@ description = "Ferramari core library: paths, configuration, business logic"
 anyhow = "1"
 base64 = "0.22"
 clap = { version = "4", features = ["derive"] }
-gettext-rs = { version = "0.8", features = ["gettext-system"] }
 libc = "0.2"
 log = "0.4"
 rand = "0.8"

@@ -12,9 +12,9 @@ Companion documents: `docs/archive/UI_ACTION_INVENTORY.md` (what the product doe
 
 ```
 ferramari-ui (Iced)          ferramari (server binary)
-      |  D-Bus client              |
+      |  D-Bus (Linux) / loopback JSON (Windows)
       +-----------------------------+
-                D-Bus API  (ferramari-platform::dbus)
+                control API  (platform::dbus)
                     |
               App (src/app.rs)  — owns all playback state
           /         |          \        \
@@ -35,19 +35,18 @@ ferramari-ui (Iced)          ferramari (server binary)
 
 Startup injection (`src/main.rs`), each one a `Box<dyn …>` from core:
 
-| Contract | Responsibility | Linux implementation |
-| --- | --- | --- |
-| `DisplayProvider` | enumerate connected displays | XRandR (`monitors::list`) |
-| `WallpaperSurfaceProvider` / `WallpaperSurface` | create and own a surface fit for embedding | X11 desktop-type window |
-| `PowerProvider` | current power-supply state | sysfs polling |
+| Contract | Responsibility | Linux implementation | Windows implementation |
+| --- | --- | --- | --- |
+| `DisplayProvider` | enumerate connected displays | XRandR (`monitors::list`) | `EnumDisplayMonitors` + `EnumDisplayDevicesW` (`windows/monitors.rs`) |
+| `WallpaperSurfaceProvider` / `WallpaperSurface` | create and own a surface fit for embedding | X11 desktop-type window | `WorkerW`-hosted child window (`windows/surface.rs`) |
+| `PowerProvider` | current power-supply state | sysfs polling | `GetSystemPowerStatus` (`windows/power.rs`) |
+| `PlatformEventSource` / `PlatformWatchers` | start OS event sources, hand back a teardown token | X11 EWMH + RandR watchers, D-Bus session/lock/sleep/idle watchers | hidden Win32 message windows + `EnumWindows` sampler (`windows/event_source.rs`) |
+| `PlatformCapabilities` | what is actually reachable in this session | `desktop::platform_capabilities` | `windows/desktop::platform_capabilities` |
 
-Power *events* have no contract yet. `PowerStatus` is a snapshot; there is no
-typed way for a backend to report a charger change it learned from UPower or
-logind rather than from a poll, so a signal-based platform cannot express what
-it knows and the capability stays `Partial`. Adding that contract is open work,
-not a limitation of the Linux backend.
-| `PlatformEventSource` / `PlatformWatchers` | start OS event sources, hand back a teardown token | X11 EWMH + RandR watchers, D-Bus session/lock/sleep/idle watchers |
-| `PlatformCapabilities` | what is actually reachable in this session | `desktop::platform_capabilities` |
+`PowerProvider::subscribe()` exists as an optional contract: a backend may
+deliver charger transitions as `Command::PowerEvent`, and the Linux inotify
+watcher does. Windows keeps polling as the single source of truth and reports
+charger changes through the same command bus, so the two paths cannot race.
 
 Capability levels are decided per capability from probed evidence, never by
 applying one session-wide label: under XWayland the surface is Partial (the
@@ -177,7 +176,10 @@ A config key is user-visible data, so it must not follow enumeration order.
 
 Under XWayland EDID is hidden by the compositor, so the identity is
 connector-based: a wallpaper follows the socket, not the panel. A backend with
-a stronger identity source is expected to use it.
+a stronger identity source is expected to use it. Windows reports the monitor
+device interface string as `native_id`, which follows the panel across
+connector reassignment; `DISPLAY1`-style names remain the user-visible config
+fallback.
 
 ## 7. Data locations
 
@@ -188,17 +190,62 @@ sandboxed or non-default prefix still works.
 
 ## 8. Before a second backend is accepted
 
-- [ ] Implements every contract in §2 without a `cfg` branch inside core or media.
-- [ ] Capability probing returns `Partial` wherever coverage is a subset, and
+Windows is the second backend. Its status against this checklist:
+
+- [x] Implements every contract in §2 without a `cfg` branch inside core or media.
+- [x] Capability probing returns `Partial` wherever coverage is a subset, and
       `--doctor` shows the reason.
-- [ ] Stable display ids use the strongest identity the OS exposes; the
+- [x] Stable display ids use the strongest identity the OS exposes; the
       fallback rule and its limits are recorded in §6.
-- [ ] Event sources can be stopped, and §5 has no "only at process exit" case.
-- [ ] Surface lifecycle survives a player crash and a surface destruction and
+- [x] Event sources can be stopped, and §5 has no "only at process exit" case
+      for the session/window/monitor watchers. The control listener is tied to
+      process lifetime, like the Linux bus connection.
+- [x] Surface lifecycle survives a player crash and a surface destruction and
       re-creation without leaking native handles.
-- [ ] Contract tests run against the fake providers in
+- [x] Contract tests run against the fake providers in
       `ferramari-core/src/platform.rs`, then against the real backend.
 - [ ] Smoke matrix recorded: multiple displays, reconfiguration, sleep/wake,
-      lock/unlock, session restart, mixed DPI.
-- [ ] `docs/MIGRATION_TODO.md` sections 3–6 updated with what is and is not
+      lock/unlock, session restart, mixed DPI. One display, the live event
+      probes and an Explorer-hosted surface have been exercised; the matrix
+      itself still needs multi-monitor and mixed-DPI hardware.
+- [x] `docs/MIGRATION_TODO.md` sections 3–6 updated with what is and is not
       supported; a limitation stays documented until it is removed.
+
+## 9. Windows backend notes
+
+- **Control transport.** Windows has no session D-Bus. The server listens on
+  `127.0.0.1` at an ephemeral port, writes
+  `%APPDATA%\ferramari\control-endpoint.json` with `{protocol, pid, port,
+  token}`, and checks the per-process token on every request. One
+  newline-delimited JSON request per connection; the server answers from a
+  snapshot mutex and sends commands to the same bus. A stale endpoint is
+  detected with `ping` before it is replaced.
+- **Single instance.** The server claims
+  `Local\io.github.ferramari.Ferramari.server`; a second launch probes the
+  endpoint and asks the owner to show the UI. The control surface claims
+  `Local\io.github.ferramari.Ferramari.ui` before creating its window. Both are
+  per-session named mutexes.
+- **Desktop host.** `Progman` is sent the undocumented `0x052C` message to
+  spawn `WorkerW`; the surface becomes a child of the `WorkerW` next to
+  `SHELLDLL_DefView`, with `Progman` as fallback. Explorer restarts destroy the
+  host and the child, which `WallpaperSurface::is_alive` detects so the media
+  supervisor can rebuild.
+- **Display geometry.** All rectangles are physical pixels; `scale_factor` is
+  `DPI/96`. This differs from the X11 backend's logical pixels and is why core
+  never derives scale from a rectangle.
+- **Static wallpaper.** `SystemParametersInfoW` reads and writes the desktop
+  image. The previous path is saved in
+  `%APPDATA%\ferramari\background-original.json` before our first frame is
+  installed; generated frames live in `%LOCALAPPDATA%\ferramari\static` and
+  are never mistaken for the original.
+- **Media.** mpv is controlled through a named pipe; `--wid` receives the
+  surface HWND. The handle crosses the boundary as `u64` like the X11 window
+  id. Timed-out yt-dlp/ffmpeg trees are killed with `taskkill /T /F`.
+- **Locale.** Catalogs are read from `<exe>\locale` (portable and installer
+  layout) or `<exe>\..\share\locale`; `FERRAMARI_LOCALEDIR` still wins.
+  Translation is pure Rust, so the server and UI need no libintl.
+- **Known gap.** Live playback, Explorer-restart recovery and mixed-DPI
+  behaviour have not been exercised on hardware in this checkout because mpv,
+  ffmpeg and yt-dlp are absent. The unit and live-probe tests pass and the
+  capability report is explicit; `docs/TESTING.md` keeps those scenarios
+  unchecked until they are run.

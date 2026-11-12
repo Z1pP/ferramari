@@ -1,13 +1,12 @@
-//! Minimal libmpv control through its JSON IPC socket.
+//! Minimal libmpv control through its JSON IPC channel.
 //!
-//! mpv is started as a child process and draws directly into the X11 window
+//! mpv is started as a child process and draws directly into the native window
 //! identified by `--wid`, so no C headers or FFI are required. All commands go
 //! through `--input-ipc-server`, which keeps the interface tiny: the rest of
 //! the program only sees `set_volume`, `pause`, `set_position`, and friends.
+//! On Linux that channel is a Unix socket; on Windows it is a named pipe.
 
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -16,6 +15,253 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
+
+/// The connected end of mpv's IPC channel: a Unix socket on Linux, a byte-mode
+/// named pipe on Windows. Both behave as a duplex byte stream; only the
+/// connect call and the native object differ.
+#[cfg(unix)]
+mod transport {
+    use std::io::{self, Read, Write};
+    use std::os::unix::net::UnixStream;
+    use std::path::Path;
+    use std::time::Duration;
+
+    pub struct PipeStream(UnixStream);
+
+    impl PipeStream {
+        pub fn connect(path: &Path) -> io::Result<Self> {
+            UnixStream::connect(path).map(Self)
+        }
+
+        pub fn try_clone(&self) -> io::Result<Self> {
+            self.0.try_clone().map(Self)
+        }
+
+        pub fn set_read_timeout(&mut self, timeout: Option<Duration>) -> io::Result<()> {
+            self.0.set_read_timeout(timeout)
+        }
+
+        pub fn set_write_timeout(&mut self, timeout: Option<Duration>) -> io::Result<()> {
+            self.0.set_write_timeout(timeout)
+        }
+
+        #[cfg(test)]
+        pub fn from_stream(stream: UnixStream) -> Self {
+            Self(stream)
+        }
+    }
+
+    impl Read for PipeStream {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            self.0.read(buffer)
+        }
+    }
+
+    impl Write for PipeStream {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            self.0.write(buffer)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            self.0.flush()
+        }
+    }
+}
+
+#[cfg(windows)]
+mod transport {
+    use std::fs::{File, OpenOptions};
+    use std::io::{self, Read, Write};
+    use std::os::windows::io::AsRawHandle;
+    use std::path::Path;
+    use std::time::{Duration, Instant};
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::Pipes::PeekNamedPipe;
+
+    /// A client connection to mpv's named pipe. The `windows` crate has no
+    /// stream wrapper, so the raw handle is adapted to `Read`/`Write`. Reads
+    /// poll `PeekNamedPipe` first and honour the same timeout the Unix socket
+    /// uses; without that, a wedged mpv would block the IPC worker forever.
+    pub struct PipeStream {
+        file: File,
+        read_timeout: Option<Duration>,
+    }
+
+    impl PipeStream {
+        pub fn connect(path: &Path) -> io::Result<Self> {
+            // Opening read+write gives the duplex handle mpv's server expects.
+            // `OpenOptions` shares read/write/delete by default, so a second
+            // probe from a diagnostics tool cannot lock the player out.
+            let file = OpenOptions::new().read(true).write(true).open(path)?;
+            Ok(Self {
+                file,
+                read_timeout: None,
+            })
+        }
+
+        pub fn try_clone(&self) -> io::Result<Self> {
+            Ok(Self {
+                file: self.file.try_clone()?,
+                read_timeout: self.read_timeout,
+            })
+        }
+
+        pub fn set_read_timeout(&mut self, timeout: Option<Duration>) -> io::Result<()> {
+            self.read_timeout = timeout;
+            Ok(())
+        }
+
+        pub fn set_write_timeout(&mut self, _timeout: Option<Duration>) -> io::Result<()> {
+            // Command payloads are far smaller than a pipe buffer, so a write
+            // to a live mpv cannot block long enough to need a deadline.
+            Ok(())
+        }
+    }
+
+    impl Read for PipeStream {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            let deadline = self.read_timeout.map(|timeout| Instant::now() + timeout);
+            loop {
+                let mut available = 0u32;
+                unsafe {
+                    PeekNamedPipe(
+                        HANDLE(self.file.as_raw_handle() as _),
+                        None,
+                        0,
+                        None,
+                        Some(&mut available),
+                        None,
+                    )
+                }
+                .map_err(|err| io::Error::other(err.to_string()))?;
+                if available > 0 {
+                    return self.file.read(buffer);
+                }
+                if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "mpv IPC read timed out",
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        }
+    }
+
+    impl Write for PipeStream {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            self.file.write(buffer)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            self.file.flush()
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::fs::File;
+        use std::io::{BufRead, BufReader, Read, Write};
+        use std::os::windows::io::FromRawHandle;
+        use std::path::Path;
+        use std::time::Duration;
+
+        use windows::core::PCWSTR;
+        use windows::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
+        use windows::Win32::Storage::FileSystem::PIPE_ACCESS_DUPLEX;
+        use windows::Win32::System::Pipes::{
+            ConnectNamedPipe, CreateNamedPipeW, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_WAIT,
+        };
+
+        use super::PipeStream;
+
+        fn wide(text: &str) -> Vec<u16> {
+            text.encode_utf16().chain(std::iter::once(0)).collect()
+        }
+
+        fn unique_pipe_name() -> String {
+            // A monotonic-ish suffix keeps parallel test runs and repeated
+            // invocations from colliding on the same pipe instance.
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|time| time.as_nanos())
+                .unwrap_or(0);
+            format!(r"\\.\pipe\ferramari-test-{}-{nanos}", std::process::id())
+        }
+
+        fn server_pipe(name: &str) -> HANDLE {
+            let name = wide(name);
+            let handle = unsafe {
+                CreateNamedPipeW(
+                    PCWSTR(name.as_ptr()),
+                    PIPE_ACCESS_DUPLEX,
+                    PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+                    1,
+                    4096,
+                    4096,
+                    0,
+                    None,
+                )
+            };
+            assert_ne!(handle, INVALID_HANDLE_VALUE);
+            handle
+        }
+
+        /// The whole point of the wrapper: a reply written by mpv's server
+        /// must arrive through the byte stream `BufReader` reads. `HANDLE` is
+        /// `!Send`, so the server side crosses the thread boundary as a raw
+        /// value, exactly like the window handles in the platform crate.
+        #[test]
+        fn a_reply_crosses_a_real_named_pipe() {
+            let name = unique_pipe_name();
+            let server = server_pipe(&name);
+            let raw = server.0 as isize;
+            let peer = std::thread::spawn(move || {
+                let server = HANDLE(raw as *mut core::ffi::c_void);
+                // The client may already be connected when this runs.
+                let _ = unsafe { ConnectNamedPipe(server, None) };
+                let mut file = unsafe { File::from_raw_handle(server.0) };
+                file.write_all(b"{\"request_id\":0,\"error\":\"success\"}\n")
+                    .unwrap();
+                file.flush().unwrap();
+            });
+
+            let mut client = PipeStream::connect(Path::new(&name)).unwrap();
+            client
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut reader = BufReader::new(client.try_clone().unwrap());
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            assert!(line.contains("\"request_id\":0"), "{line}");
+            peer.join().unwrap();
+        }
+
+        #[test]
+        fn a_silent_pipe_times_out_instead_of_blocking() {
+            let name = unique_pipe_name();
+            let server = server_pipe(&name);
+            let raw = server.0 as isize;
+            let peer = std::thread::spawn(move || {
+                let server = HANDLE(raw as *mut core::ffi::c_void);
+                let _ = unsafe { ConnectNamedPipe(server, None) };
+                // Hold the connection open without writing.
+                std::thread::sleep(Duration::from_secs(2));
+            });
+
+            let mut client = PipeStream::connect(Path::new(&name)).unwrap();
+            client
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .unwrap();
+            let mut buffer = [0u8; 32];
+            let error = client.read(&mut buffer).unwrap_err();
+            assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+            peer.join().unwrap();
+        }
+    }
+}
+
+use transport::PipeStream;
 
 static SOCKET_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -31,7 +277,8 @@ const SOCKET_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone, Default)]
 pub struct Options {
-    /// X11 window id to render into. `None` opens mpv's own window.
+    /// Native window to render into: an X11 window id on Linux, an HWND on
+    /// Windows. `None` opens mpv's own window.
     pub wid: Option<u64>,
     pub source: String,
     /// Separate audio track (yt-dlp streams).
@@ -84,7 +331,8 @@ fn profile_args(profile: &str) -> &'static [&'static str] {
 
 pub struct Mpv {
     child: Child,
-    socket: PathBuf,
+    /// Unix socket path or Windows named-pipe path, kept for cleanup/logging.
+    endpoint: String,
     requests: Sender<Request>,
     shared: Arc<Shared>,
     stop: Arc<AtomicBool>,
@@ -142,29 +390,19 @@ enum Request {
 /// replies on the same stream, so the reader has to be persistent: creating a
 /// `BufReader` per command would buffer (and drop) replies that arrived early.
 struct Ipc {
-    reader: BufReader<UnixStream>,
-    /// Second handle on the same socket: `BufReader` does not implement
+    reader: BufReader<PipeStream>,
+    /// Second handle on the same channel: `BufReader` does not implement
     /// `Write`, and replies must be read through the buffered reader.
-    writer: UnixStream,
+    writer: PipeStream,
     next_request: u64,
 }
 
 impl Mpv {
     pub fn spawn(options: &Options) -> anyhow::Result<Self> {
         let unique = SOCKET_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let socket_dir = ferramari_core::paths::mpv_socket_dir();
-        let _ = std::fs::create_dir_all(&socket_dir);
-        let socket = socket_dir.join(format!(
-            "ferramari-mpv-{}-{unique}.sock",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_file(&socket);
+        let endpoint = ipc_endpoint(unique);
 
         let mut command = Command::new(ferramari_core::paths::tool("mpv"));
-        // mpv must render through X11 even on a Wayland session: it is given
-        // an XWayland window id, and its GPU context auto-detection would
-        // otherwise pick a Wayland surface that does not belong to our window.
-        command.env_remove("WAYLAND_DISPLAY");
         command
             .arg("--no-terminal")
             .arg("--really-quiet")
@@ -182,13 +420,21 @@ impl Mpv {
             .arg("--keepaspect=yes")
             .arg("--panscan=1.0")
             .arg(format!("--hwdec={}", hwdec_arg(&options.hwdec)))
-            .arg("--gpu-context=x11egl")
             .arg("--no-border");
+        #[cfg(unix)]
+        {
+            // mpv must render through X11 even on a Wayland session: it is
+            // given an XWayland window id, and its GPU context
+            // auto-detection would otherwise pick a Wayland surface that does
+            // not belong to our window.
+            command.env_remove("WAYLAND_DISPLAY");
+            command.arg("--gpu-context=x11egl");
+        }
         for argument in profile_args(&options.profile) {
             command.arg(argument);
         }
         command
-            .arg(format!("--input-ipc-server={}", socket.display()))
+            .arg(format!("--input-ipc-server={endpoint}"))
             .arg(format!("--volume={}", options.volume.clamp(0, 100)))
             .arg(format!(
                 "--mute={}",
@@ -244,12 +490,12 @@ impl Mpv {
         let stop = Arc::new(AtomicBool::new(false));
         let (requests, receiver) = mpsc::channel();
         let worker = {
-            let socket = socket.clone();
+            let endpoint = endpoint.clone();
             let shared = Arc::clone(&shared);
             let stop = Arc::clone(&stop);
             match std::thread::Builder::new()
                 .name("ferramari-mpv-ipc".to_string())
-                .spawn(move || run_ipc_worker(&socket, receiver, &shared, &stop))
+                .spawn(move || run_ipc_worker(&endpoint, receiver, &shared, &stop))
             {
                 Ok(worker) => worker,
                 Err(err) => {
@@ -264,7 +510,7 @@ impl Mpv {
 
         Ok(Self {
             child,
-            socket,
+            endpoint,
             requests,
             shared,
             stop,
@@ -423,7 +669,11 @@ impl Drop for Mpv {
                 }
             }
         }
-        let _ = std::fs::remove_file(&self.socket);
+        log::debug!("[mpv] stopping {}", self.endpoint);
+        // Named pipes disappear with their last handle; only the Unix socket
+        // leaves a filesystem entry behind.
+        #[cfg(unix)]
+        let _ = std::fs::remove_file(&self.endpoint);
         // The worker exits on `Quit`, on a closed request channel or after a
         // failed connection; the stop flag only wakes its connect loop.
         // Joining it reaps the IPC thread without a long wait.
@@ -433,15 +683,32 @@ impl Drop for Mpv {
     }
 }
 
-/// Wait for mpv's IPC socket, then serve requests until the channel closes or
-/// a fatal I/O error occurs. Runs on its own worker thread.
-fn run_ipc_worker(
-    socket: &std::path::Path,
-    receiver: Receiver<Request>,
-    shared: &Shared,
-    stop: &AtomicBool,
-) {
-    let Some(ipc) = connect_ipc(socket, stop) else {
+/// The address mpv should listen on for this player instance.
+///
+/// Unix gets a per-process socket under the user cache directory; Windows a
+/// named pipe in the local pipe namespace. Neither is persisted, and the
+/// counter keeps several monitors' players apart within one process.
+#[cfg(unix)]
+fn ipc_endpoint(unique: usize) -> String {
+    let socket_dir = ferramari_core::paths::mpv_socket_dir();
+    let _ = std::fs::create_dir_all(&socket_dir);
+    let socket = socket_dir.join(format!(
+        "ferramari-mpv-{}-{unique}.sock",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&socket);
+    socket.to_string_lossy().into_owned()
+}
+
+#[cfg(windows)]
+fn ipc_endpoint(unique: usize) -> String {
+    format!(r"\\.\pipe\ferramari-mpv-{}-{unique}", std::process::id())
+}
+
+/// Wait for mpv's IPC endpoint, then serve requests until the channel closes
+/// or a fatal I/O error occurs. Runs on its own worker thread.
+fn run_ipc_worker(endpoint: &str, receiver: Receiver<Request>, shared: &Shared, stop: &AtomicBool) {
+    let Some(ipc) = connect_ipc(endpoint, stop) else {
         shared.ipc_dead.store(true, Ordering::Relaxed);
         return;
     };
@@ -664,18 +931,19 @@ fn record_failure(error: &anyhow::Error, report: bool, shared: &Shared) -> bool 
     false
 }
 
-fn connect_ipc(socket: &std::path::Path, stop: &AtomicBool) -> Option<Ipc> {
+fn connect_ipc(endpoint: &str, stop: &AtomicBool) -> Option<Ipc> {
     let deadline = Instant::now() + SOCKET_TIMEOUT;
+    let path = std::path::Path::new(endpoint);
     loop {
         if stop.load(Ordering::Relaxed) {
             return None;
         }
-        match UnixStream::connect(socket) {
-            Ok(stream) => {
+        match PipeStream::connect(path) {
+            Ok(mut stream) => {
                 stream.set_read_timeout(Some(IPC_TIMEOUT)).ok()?;
                 stream.set_write_timeout(Some(IPC_TIMEOUT)).ok()?;
                 let reader = stream.try_clone().ok()?;
-                log::debug!("[mpv] IPC connected: {}", socket.display());
+                log::debug!("[mpv] IPC connected: {endpoint}");
                 return Some(Ipc {
                     reader: BufReader::new(reader),
                     writer: stream,
@@ -687,10 +955,7 @@ fn connect_ipc(socket: &std::path::Path, stop: &AtomicBool) -> Option<Ipc> {
                 std::thread::sleep(Duration::from_millis(25));
             }
             Err(err) => {
-                log::warn!(
-                    "[mpv] IPC socket {} never appeared: {err}",
-                    socket.display()
-                );
+                log::warn!("[mpv] IPC endpoint {endpoint} never appeared: {err}");
                 return None;
             }
         }
@@ -756,6 +1021,12 @@ fn next_response(line: &str, request_id: u64) -> anyhow::Result<Option<Value>> {
 mod tests {
     use super::*;
 
+    // The IPC tests drive a real bidirectional byte stream. On Unix that is a
+    // socket pair; `PipeStream` is exercised on Windows by the named-pipe test
+    // inside the transport module.
+    #[cfg(unix)]
+    use std::os::unix::net::UnixStream;
+
     #[test]
     fn power_profiles_add_only_their_own_flags() {
         assert!(profile_args("balanced").is_empty());
@@ -803,6 +1074,7 @@ mod tests {
 
     /// End-to-end: events written before the reply must not desync the stream,
     /// and the reply must be read even though it arrives after them.
+    #[cfg(unix)]
     #[test]
     fn exchange_reads_past_events() {
         let (client, mut server) = UnixStream::pair().unwrap();
@@ -810,8 +1082,8 @@ mod tests {
             .set_read_timeout(Some(Duration::from_secs(1)))
             .unwrap();
         let mut ipc = Ipc {
-            reader: BufReader::new(client.try_clone().unwrap()),
-            writer: client,
+            reader: BufReader::new(PipeStream::from_stream(client.try_clone().unwrap())),
+            writer: PipeStream::from_stream(client),
             next_request: 0,
         };
 
@@ -835,17 +1107,19 @@ mod tests {
         assert_eq!(response["error"], "success");
     }
 
+    #[cfg(unix)]
     fn test_ipc(client: UnixStream) -> Ipc {
         client
             .set_read_timeout(Some(Duration::from_secs(1)))
             .unwrap();
         Ipc {
-            reader: BufReader::new(client.try_clone().unwrap()),
-            writer: client,
+            reader: BufReader::new(PipeStream::from_stream(client.try_clone().unwrap())),
+            writer: PipeStream::from_stream(client),
             next_request: 0,
         }
     }
 
+    #[cfg(unix)]
     fn test_shared() -> Shared {
         Shared {
             volume: AtomicI64::new(50),
@@ -860,6 +1134,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn worker_executes_commands_in_order_and_survives_a_rejection() {
         let (client, mut server) = UnixStream::pair().unwrap();
@@ -918,6 +1193,7 @@ mod tests {
         assert!(error.contains("loading failed"), "{error}");
     }
 
+    #[cfg(unix)]
     #[test]
     fn worker_parks_and_unparks_at_the_saved_position() {
         let (client, mut server) = UnixStream::pair().unwrap();
@@ -982,6 +1258,7 @@ mod tests {
 
     /// A successful probe records the decoder the player picked, which is the
     /// only way to learn that a requested API silently fell back.
+    #[cfg(unix)]
     #[test]
     fn a_hwdec_probe_records_the_reported_decoder() {
         let (client, mut server) = UnixStream::pair().unwrap();
@@ -1084,6 +1361,7 @@ mod tests {
     /// mpv reports `hwdec-current` as *unavailable* until a file is decoded.
     /// That is the normal answer while starting up or parked, so it must not
     /// be treated as an error and must not destroy the reading or the socket.
+    #[cfg(unix)]
     #[test]
     fn an_unavailable_hwdec_reading_is_not_a_failure() {
         let (client, mut server) = UnixStream::pair().unwrap();

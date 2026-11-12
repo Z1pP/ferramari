@@ -17,7 +17,7 @@ job proves the build and unit tests, not wallpaper playback.
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |
 | GNOME with the Flatpak bundle | **tested** 2026-10-31, 0.7.0 | Built and launched from a local bundle; host mpv/ffmpeg bridge, XWayland, WebKitGTK; 0.8 uses the same manifest; tray/autostart not verified |
-| Windows 11 23H2, Explorer desktop | **partial** 2026-11-12 | Release build, full unit suite, `--doctor`, live display/desktop/session probes and one Explorer-hosted surface passed; mpv/ffmpeg/yt-dlp absent, so playback and the multi-monitor matrix are unchecked |
+| Windows 11 23H2, Explorer desktop | **partial** 2026-11-12 | Release build, full unit suite, `--doctor`, live display/desktop/session probes and one Explorer-hosted surface passed; live 1080p playback behind the icons with mpv 0.42, ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`), plus automatic mpv recreation after a kill. Multi-monitor, mixed-DPI and Explorer-restart scenarios are unchecked |
 | Windows 10/11 with the installer | not tested | Installer script is built in CI; install/uninstall has not been exercised on a clean machine |
 | Native Wayland (no XWayland) | not supported | No wallpaper surface or `--wid` embedding yet |
 
@@ -225,14 +225,14 @@ wallpaper sidecar and autostart key can be removed without touching a real
 profile.
 
 ### Startup, control and shutdown
-- [ ] `ferramari --doctor` prints `session: Windows desktop`, the Explorer
+- [x] `ferramari --doctor` prints `session: Windows desktop`, the Explorer
       host, display identities, tool versions and capability levels without
       starting a window.
-- [ ] `ferramari` starts the server and opens `ferramari-ui`; both `.exe`
+- [x] `ferramari` starts the server and opens `ferramari-ui`; both `.exe`
       files are in the same folder and the UI finds the endpoint file.
 - [ ] A second `ferramari` launch asks the first instance to show the UI and
       exits; only one server process remains.
-- [ ] Closing the UI leaves the server and wallpaper running.
+- [x] Closing the UI leaves the server and wallpaper running.
 - [ ] Quit from the tray and from Settings; no `mpv`, `ffmpeg` or `ffprobe`
       child remains.
 - [ ] Ctrl-C, Ctrl-Break, console close, logoff and shutdown each end the
@@ -241,16 +241,16 @@ profile.
       next start and does not block the UI.
 
 ### Wallpaper host and Explorer restarts
-- [ ] Apply a local video to one monitor; it appears behind the desktop icons
+- [x] Apply a local video to one monitor; it appears behind the desktop icons
       and the icons stay clickable.
 - [ ] Restart Explorer (`taskkill /F /IM explorer.exe` then start it again):
       playback is recreated within the restart backoff and the new surface is
       attached to the new `WorkerW`.
-- [ ] Kill `mpv`; the supervisor recreates it and the surface stays alive.
+- [x] Kill `mpv`; the supervisor recreates it and the surface stays alive.
 - [ ] Change the desktop wallpaper in Windows Settings while Ferramari is
       playing; the live wallpaper is unaffected and the original record is not
       overwritten by a generated frame.
-- [ ] Close Ferramari and confirm the user's original desktop image is back.
+- [x] Close Ferramari and confirm the user's original desktop image is back.
 
 ### Displays and DPI
 - [ ] Two monitors at different scales: each surface covers its own monitor
@@ -301,16 +301,24 @@ Record the Windows build number, GPU, monitor layout and mpv/ffmpeg versions
 next to the results. Do not mark the Windows row in the environment matrix as
 `tested` until every section above has been run.
 
-Recorded 2026-11-12 on Windows 11 23H2, one 1920×1080 display, Explorer:
-`cargo test --workspace` passed (14 binary + 339 core + 17 media + 46 platform
+Recorded 2026-11-12 on Windows 11 23H2, one 1920×1080 display at 125%,
+Explorer, with mpv 0.42.0, ffmpeg/ffprobe 9.0.2 and yt-dlp 2026.10.26:
+`cargo test --workspace` passed (14 binary + 341 core + 17 media + 46 platform
 + 14 UI/integration tests), the release workspace produced both `.exe` files,
 and `ferramari --doctor` reported the Win32 backend, one `DISPLAY1` with its
 monitor device interface, Explorer wallpaper host = yes, every capability
-supported, and the expected “not found” tool lines. A live background server
-answered `ping`, returned a complete `snapshot`, accepted `quit`, exited
-cleanly and removed `control-endpoint.json`; ten immediate snapshot requests
-during startup all succeeded. The installer itself was not run on this
-machine; CI builds it. This is a partial result, not the full smoke matrix.
+supported, and all four tool versions. A live background server answered
+`ping`, returned a complete `snapshot`, accepted `quit`, exited cleanly and
+removed `control-endpoint.json`; ten immediate snapshot requests during
+startup all succeeded. A local 1080p video then played behind the desktop
+icons (`is_playing=true`, `d3d11va`); `WindowFromPoint` over an icon returned
+`SysListView32`, so the icons stay on top and clickable. `paths::tool` found
+mpv at `C:\Program Files\MPV Player\mpv.exe` while `mpv` was absent from
+`PATH`. Killing that process made the supervisor spawn a new mpv after the
+one-second backoff, attach a fresh surface and resume playback. Quitting the
+server restored the recorded original wallpaper. The installer itself was not
+run on this machine; CI builds it. This is a partial result, not the full
+smoke matrix.
 
 ## Reproducible local run
 

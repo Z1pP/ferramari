@@ -63,9 +63,15 @@ impl RestartPolicy {
 
     /// If a retry is scheduled and due, mark it as consumed and return true.
     pub fn retry_is_due(&mut self, now: Instant) -> bool {
-        if self.failures > 0 && now.duration_since(self.started_at) >= STABLE_AFTER {
+        // Only clear the failure history while no retry is pending. After an
+        // exit, `started_at` still points at the player that just died; a
+        // stability check here would erase the retry that `on_exit` scheduled
+        // for a player that had been running longer than `STABLE_AFTER`.
+        if self.retry_at.is_none()
+            && self.failures > 0
+            && now.duration_since(self.started_at) >= STABLE_AFTER
+        {
             self.failures = 0;
-            self.retry_at = None;
         }
         if self.retry_at.is_some_and(|at| now >= at) {
             self.retry_at = None;
@@ -133,5 +139,17 @@ mod tests {
         assert!(!policy.retry_is_due(start + Duration::from_millis(500)));
         assert!(policy.retry_is_due(start + Duration::from_secs(1)));
         assert!(!policy.waits_before_start(start + Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn a_player_that_ran_for_a_while_still_restarts_after_exit() {
+        let start = Instant::now();
+        let mut policy = RestartPolicy::new(start);
+        let crashed = start + STABLE_AFTER + Duration::from_secs(10);
+        assert_eq!(
+            policy.on_exit(crashed),
+            Retry::Scheduled(Duration::from_secs(1))
+        );
+        assert!(policy.retry_is_due(crashed + Duration::from_secs(1)));
     }
 }

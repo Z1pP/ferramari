@@ -169,6 +169,13 @@ Current boundary progress:
       into mpv through the HWND passed as `--wid`. `Drop` destroys the child;
       a missing Explorer host is an explicit error rather than a hidden
       failure.
+- [x] Verify live playback on one Explorer-hosted display.
+      With mpv 0.42, ffmpeg 9.0.2 and yt-dlp 2026.10.26 installed through
+      winget, a local 1080p video played behind the desktop icons with
+      `d3d11va`; killing mpv recreated the player after the one-second
+      backoff and playback resumed. `paths::tool` finds mpv under
+      `Program Files\MPV Player` even when the installer leaves it off
+      `PATH`.
 - [x] Implement foreground/fullscreen/occlusion tracking.
       `windows/window_state.rs` samples the complete top-level window list
       every 750 ms, filters invisible, minimized, DWM-cloaked, tool and

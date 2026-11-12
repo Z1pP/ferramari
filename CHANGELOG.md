@@ -6,7 +6,7 @@
 policy and the same Iced control surface now have a Win32 backend: a wallpaper
 window behind Explorer's desktop icons, physical-pixel monitor discovery,
 foreground/occlusion tracking, lock and power events, a tray icon, autostart
-and static-wallpaper handling. **430 tests** pass (14 binary + 339 core + 17
+and static-wallpaper handling. **432 tests** pass (14 binary + 341 core + 17
 media + 46 platform + 14 UI).
 
 - **Wallpaper hosting.** A child window is parented to the `WorkerW` behind
@@ -26,6 +26,15 @@ media + 46 platform + 14 UI).
 - **Media and helpers.** mpv IPC uses a Windows named pipe instead of a Unix
   socket; timed-out yt-dlp/ffmpeg trees are terminated with
   `taskkill /T /F` so a wrapper cannot leave its child holding the pipe.
+  `paths::tool` also checks the standard Windows install locations
+  (`Program Files\MPV Player`, the winget `Links` folder and per-user
+  `Programs`) before falling back to a bare `PATH` lookup, because mpv's
+  installer does not add itself to `PATH`.
+- **Restart policy.** A player that ran longer than `STABLE_AFTER` and then
+  exited had its scheduled retry erased by the stability reset on the next
+  tick, so the supervisor never recreated it. The reset now only runs while no
+  retry is pending; killing mpv during playback starts a fresh process after
+  the one-second backoff and resumes on the same surface.
 - **Translations without libintl.** `gettext-rs` and `gettext-sys` are gone.
   `ferramari-core::i18n` reads GNU MO files and evaluates each catalog's own
   `Plural-Forms` expression, so both binaries build on Windows without a C
@@ -38,8 +47,11 @@ media + 46 platform + 14 UI).
 - **Docs.** `docs/BACKEND_CONTRACT.md` gains the Windows backend notes and
   checklist status, `docs/MIGRATION_TODO.md` records what is done and what
   still needs hardware, and `docs/TESTING.md` has a Windows smoke checklist.
-  Live playback, multi-monitor, mixed-DPI and Explorer-restart scenarios stay
-  unchecked until they are run on suitable hardware.
+  Live playback on one Explorer-hosted display was verified with mpv 0.42,
+  ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`, playback behind the icons,
+  automatic recreation after killing mpv). Multi-monitor, mixed-DPI and
+  Explorer-restart scenarios stay unchecked until they are run on suitable
+  hardware.
 
 ## 2.1.0 — 2026-11-10
 

@@ -186,11 +186,25 @@ mod tests {
         (format!("http://{address}/v1"), handle)
     }
 
-    // serve_status exists in case we need to test non-200 responses later.
-    // It is currently only needed by server_error_status_returns_error which uses
-    // its own inline server instead of this helper.
-    #[allow(dead_code)]
-    fn serve_status(_status: &'static str, _body: &str) {}
+    /// Serve one raw HTTP response, draining the request before replying.
+    ///
+    /// Closing a socket that still has unread request bytes makes Windows
+    /// send an RST instead of a FIN; the reset can discard the response
+    /// before the client parses the status line. Reading the request first
+    /// keeps the close graceful on every platform.
+    fn serve_raw_once(response: &str) -> (String, std::thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let response = response.to_string();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 4096];
+            let read = stream.read(&mut request).unwrap_or(0);
+            write!(stream, "{response}").unwrap();
+            String::from_utf8_lossy(&request[..read]).into_owned()
+        });
+        (format!("http://{address}/v1"), handle)
+    }
 
     #[test]
     fn fetches_and_validates_a_page() {
@@ -598,22 +612,16 @@ mod tests {
     /// Server returns HTTP 4xx — client reports error with status code.
     #[test]
     fn server_error_status_returns_error() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
-        std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            write!(
-                stream,
-                "HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"
-            )
-            .unwrap();
-        });
-        let client = Client::new(&format!("http://{address}/v1")).unwrap();
+        let (base, request) = serve_raw_once(
+            "HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+        );
+        let client = Client::new(&base).unwrap();
         let err = client.list(1, None, None).unwrap_err();
         assert!(
             err.contains("404") || err.contains("HTTP"),
             "error was: {err}"
         );
+        request.join().unwrap();
     }
 
     /// Server response exceeding MAX_BODY_BYTES is rejected.
@@ -621,8 +629,6 @@ mod tests {
     fn oversized_server_response_is_rejected() {
         // We don't know whether the response gets truncated by ureq first
         // or parsed as invalid JSON. Either rejection path is acceptable.
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
         let big_body = serde_json::json!({
             "page": 1,
             "items": vec![serde_json::json!({
@@ -633,20 +639,18 @@ mod tests {
             })]
         });
         let body_str = big_body.to_string();
-        std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let _ = write!(
-                stream,
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                body_str.len(),
-                body_str
-            );
-        });
-        let client = Client::new(&format!("http://{address}/v1")).unwrap();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body_str.len(),
+            body_str
+        );
+        let (base, request) = serve_raw_once(&response);
+        let client = Client::new(&base).unwrap();
         let err = client.list(1, None, None).unwrap_err();
         // Any error means rejection; which specific message depends on
         // whether ureq truncates or serde parses first.
         assert!(!err.is_empty());
+        request.join().unwrap();
     }
 
     /// WallpaperItem serialises deterministically.

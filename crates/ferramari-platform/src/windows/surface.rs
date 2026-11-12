@@ -164,8 +164,15 @@ fn find_host() -> Option<HWND> {
     let worker_class = wide("WorkerW");
     let mut previous: Option<HWND> = None;
     loop {
-        let worker =
-            unsafe { FindWindowExW(None, previous, PCWSTR(worker_class.as_ptr()), None) }.ok()?;
+        // Reaching the end of the WorkerW list is not an error: Explorer
+        // keeps the desktop under Progman on systems where it never creates
+        // the separate wallpaper worker. Treating "no more windows" as a
+        // failure here used to skip the Progman fallback entirely.
+        let Ok(worker) =
+            (unsafe { FindWindowExW(None, previous, PCWSTR(worker_class.as_ptr()), None) })
+        else {
+            break;
+        };
         let defview =
             unsafe { FindWindowExW(Some(worker), None, PCWSTR(defview_class.as_ptr()), None) };
         if defview.is_ok() {

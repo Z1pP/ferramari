@@ -95,7 +95,12 @@ pub fn request_show_gui() -> anyhow::Result<()> {
         control::read_endpoint().ok_or_else(|| anyhow::anyhow!("the server is not running"))?;
     control::call(&endpoint, "command", json!({ "name": "show_gui" }))
         .map(|_| ())
-        .map_err(anyhow::Error::msg)
+        .map_err(anyhow::Error::msg)?;
+    // `show_gui` spawns a UI process; when a window is already open that
+    // process loses the instance mutex and exits. Raise the existing window
+    // from this freshly launched process, which still has foreground rights.
+    crate::ui_instance::focus_existing_window();
+    Ok(())
 }
 
 /// The decoder the running server reports, for `--doctor`.

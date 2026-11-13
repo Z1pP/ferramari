@@ -1905,11 +1905,18 @@ impl App {
 /// client of the local control API (D-Bus on Linux, loopback JSON on Windows),
 /// so the server never has to know about its widgets.
 fn launch_control_surface() -> anyhow::Result<()> {
+    // A second `show_gui` while one window is open must not stack windows;
+    // `ferramari-ui` exits immediately when another instance owns its name.
+    // On Windows, raise the existing window here as well: the tray's Show
+    // command reaches this process, and the tray click already gave it
+    // foreground rights.
+    #[cfg(target_os = "windows")]
+    if ferramari_platform::ui_instance::focus_existing_window() {
+        return Ok(());
+    }
     // `paths::tool` already prefers a sibling binary and appends `.exe` on
     // Windows; falling back to PATH keeps a source-tree `cargo run` working.
     let program = paths::tool("ferramari-ui");
-    // A second `show_gui` while one window is open must not stack windows;
-    // `ferramari-ui` exits immediately when another instance owns its name.
     // Spawning a process is quick and returning the error here lets
     // show_gui() report a missing or non-executable UI binary to the log.
     let mut child = std::process::Command::new(&program)

@@ -6,6 +6,7 @@
 //! StatusNotifierItem menu.
 
 use std::sync::mpsc;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use ferramari_core::util::tr;
@@ -17,10 +18,10 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, DefWindowProcW, DestroyMenu, DestroyWindow, GetCursorPos,
-    GetWindowLongPtrW, LoadIconW, PostMessageW, PostQuitMessage, SetForegroundWindow,
-    SetWindowLongPtrW, TrackPopupMenu, GWLP_USERDATA, IDI_APPLICATION, MF_SEPARATOR, MF_STRING,
-    TPM_RIGHTBUTTON, WM_CLOSE, WM_COMMAND, WM_LBUTTONUP, WM_NCDESTROY, WM_NULL, WM_RBUTTONUP,
-    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    GetWindowLongPtrW, LoadIconW, PostMessageW, PostQuitMessage, RegisterWindowMessageW,
+    SetForegroundWindow, SetWindowLongPtrW, TrackPopupMenu, GWLP_USERDATA, IDI_APPLICATION,
+    MF_SEPARATOR, MF_STRING, TPM_RIGHTBUTTON, WM_CLOSE, WM_COMMAND, WM_LBUTTONUP, WM_NCDESTROY,
+    WM_NULL, WM_RBUTTONUP, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
 };
 
 use crate::win32util::{create_window, hwnd_from_raw, hwnd_raw, register_class, wide};
@@ -172,6 +173,15 @@ fn add_icon(hwnd: HWND) -> bool {
     unsafe { Shell_NotifyIconW(NIM_ADD, &data).as_bool() }
 }
 
+/// The shell broadcasts this message after it rebuilds the notification area,
+/// which happens on every Explorer restart. The icon must be added again or it
+/// disappears until the next process start.
+fn taskbar_created_message() -> u32 {
+    static MESSAGE: OnceLock<u32> = OnceLock::new();
+    *MESSAGE
+        .get_or_init(|| unsafe { RegisterWindowMessageW(PCWSTR(wide("TaskbarCreated").as_ptr())) })
+}
+
 fn delete_icon(hwnd: HWND) {
     let data = NOTIFYICONDATAW {
         cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
@@ -211,6 +221,15 @@ unsafe extern "system" fn wndproc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    let taskbar_created = taskbar_created_message();
+    if taskbar_created != 0 && message == taskbar_created {
+        if add_icon(hwnd) {
+            log::info!("[Systray] Restored the icon after an Explorer restart");
+        } else {
+            log::warn!("[Systray] Could not restore the icon after an Explorer restart");
+        }
+        return LRESULT(0);
+    }
     match message {
         CALLBACK_MESSAGE => match lparam.0 as u32 {
             WM_LBUTTONUP => {
@@ -336,5 +355,13 @@ mod tests {
         if let Some(handle) = spawn(tx) {
             handle.shutdown().wait();
         }
+    }
+
+    #[test]
+    fn the_taskbar_created_message_is_registered() {
+        // The shell may be absent in CI, but RegisterWindowMessageW itself
+        // does not need Explorer and must always return a valid id.
+        assert_ne!(taskbar_created_message(), 0);
+        assert_eq!(taskbar_created_message(), taskbar_created_message());
     }
 }

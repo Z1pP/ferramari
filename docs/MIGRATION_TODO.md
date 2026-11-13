@@ -190,7 +190,15 @@ Current boundary progress:
       Ctrl/Ctrl-Break/close/logoff/shutdown are translated by
       `SetConsoleCtrlHandler` into `Command::Quit` with a 1500 ms grace
       period for the terminal events.
-- [ ] Test multiple monitors, mixed DPI, Explorer restart and GPU variants.
+- [x] Verify Explorer restart recovery.
+      Killing `explorer.exe` twice on the test machine made the surface report
+      the lost host within a second; the supervisor retried while `Progman`
+      was missing, then created a new mpv with a new `--wid` and resumed
+      playback. The stale child window is detected through its parent link and
+      the host's owning PID, because Windows does not destroy cross-process
+      children. The tray re-adds its icon on `TaskbarCreated`, verified with a
+      broadcast to `HWND_BROADCAST`.
+- [ ] Test multiple monitors, mixed DPI and GPU variants.
       Automated tests cover the geometry, identity, lifecycle and event edge
       cases, and one display has been exercised live on Windows 11. The
       remaining scenarios need hardware that this checkout does not have;

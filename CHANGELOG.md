@@ -6,13 +6,21 @@
 policy and the same Iced control surface now have a Win32 backend: a wallpaper
 window behind Explorer's desktop icons, physical-pixel monitor discovery,
 foreground/occlusion tracking, lock and power events, a tray icon, autostart
-and static-wallpaper handling. **432 tests** pass (14 binary + 341 core + 17
-media + 46 platform + 14 UI).
+and static-wallpaper handling. **435 tests** pass (14 binary + 343 core + 17
+media + 47 platform + 14 UI).
 
 - **Wallpaper hosting.** A child window is parented to the `WorkerW` behind
   `SHELLDLL_DefView` (with `Progman` as fallback) and embedded into mpv through
-  `--wid`. Explorer restarts destroy that host; `WallpaperSurface::is_alive`
-  lets the media supervisor rebuild the player and attach a fresh surface.
+  `--wid`. Explorer restarts destroy that host; Windows leaves a cross-process
+  child alive, so `WallpaperSurface::is_alive` checks the parent link and the
+  host's owning process rather than only `IsWindow`. The media supervisor
+  drops the stale engine and rebuilds against the new host, retrying every
+  second while Explorer is gone; a lost host is not counted as a player
+  failure.
+- **Notification area.** The tray owns a hidden top-level window and re-adds
+  its `Shell_NotifyIconW` entry when the shell broadcasts `TaskbarCreated`, so
+  the icon comes back after an Explorer restart. The registration is cached in
+  a `OnceLock` and covered by a unit test.
 - **No D-Bus on Windows.** The server listens on `127.0.0.1` at an ephemeral
   port and publishes a per-process token in `control-endpoint.json`. The Iced
   UI and the second-launch handshake use newline-delimited JSON over that
@@ -49,9 +57,10 @@ media + 46 platform + 14 UI).
   still needs hardware, and `docs/TESTING.md` has a Windows smoke checklist.
   Live playback on one Explorer-hosted display was verified with mpv 0.42,
   ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`, playback behind the icons,
-  automatic recreation after killing mpv). Multi-monitor, mixed-DPI and
-  Explorer-restart scenarios stay unchecked until they are run on suitable
-  hardware.
+  automatic recreation after killing mpv). Killing Explorer twice rebuilt the
+  surface through the `Progman` fallback and kept the icons clickable, and a
+  `TaskbarCreated` broadcast re-added the tray icon. Multi-monitor and
+  mixed-DPI scenarios stay unchecked until they are run on suitable hardware.
 
 ## 2.1.0 — 2026-11-10
 

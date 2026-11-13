@@ -227,9 +227,16 @@ Windows is the second backend. Its status against this checklist:
   per-session named mutexes.
 - **Desktop host.** `Progman` is sent the undocumented `0x052C` message to
   spawn `WorkerW`; the surface becomes a child of the `WorkerW` next to
-  `SHELLDLL_DefView`, with `Progman` as fallback. Explorer restarts destroy the
-  host and the child, which `WallpaperSurface::is_alive` detects so the media
-  supervisor can rebuild.
+  `SHELLDLL_DefView`, with `Progman` as fallback. Windows does not destroy a
+  cross-process child when its parent dies, so after an Explorer restart the
+  old surface window still answers `IsWindow`. `WallpaperSurface::is_alive`
+  therefore checks the parent link and the host's process as well; the media
+  supervisor drops the stale engine and rebuilds against the new host. A lost
+  host is not counted as a player failure: the retry keeps running until
+  Explorer is back.
+- **Notification area.** The tray owns a hidden top-level window and re-adds
+  its `Shell_NotifyIconW` entry when the shell broadcasts `TaskbarCreated`,
+  which is how the icon survives an Explorer restart.
 - **Display geometry.** All rectangles are physical pixels; `scale_factor` is
   `DPI/96`. This differs from the X11 backend's logical pixels and is why core
   never derives scale from a rectangle.
@@ -244,8 +251,10 @@ Windows is the second backend. Its status against this checklist:
 - **Locale.** Catalogs are read from `<exe>\locale` (portable and installer
   layout) or `<exe>\..\share\locale`; `FERRAMARI_LOCALEDIR` still wins.
   Translation is pure Rust, so the server and UI need no libintl.
-- **Known gap.** Live playback, Explorer-restart recovery and mixed-DPI
-  behaviour have not been exercised on hardware in this checkout because mpv,
-  ffmpeg and yt-dlp are absent. The unit and live-probe tests pass and the
-  capability report is explicit; `docs/TESTING.md` keeps those scenarios
-  unchecked until they are run.
+- **Known gap.** Live playback and Explorer-restart recovery were exercised on
+  one 1920×1080 display at 125%: a local video played behind the icons with
+  `d3d11va`, killing Explorer rebuilt the surface through the `Progman`
+  fallback, and killing mpv recreated the player. Multi-monitor and mixed-DPI
+  behaviour still need suitable hardware. The unit and live-probe tests pass
+  and the capability report is explicit; `docs/TESTING.md` keeps the remaining
+  scenarios unchecked until they are run.

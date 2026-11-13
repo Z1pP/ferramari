@@ -17,7 +17,7 @@ job proves the build and unit tests, not wallpaper playback.
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |
 | GNOME with the Flatpak bundle | **tested** 2026-10-31, 0.7.0 | Built and launched from a local bundle; host mpv/ffmpeg bridge, XWayland, WebKitGTK; 0.8 uses the same manifest; tray/autostart not verified |
-| Windows 11 23H2, Explorer desktop | **partial** 2026-11-12 | Release build, full unit suite, `--doctor`, live display/desktop/session probes and one Explorer-hosted surface passed; live 1080p playback behind the icons with mpv 0.42, ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`), plus automatic mpv recreation after a kill. Multi-monitor, mixed-DPI and Explorer-restart scenarios are unchecked |
+| Windows 11 23H2, Explorer desktop | **partial** 2026-11-12 | Release build, full unit suite, `--doctor`, live display/desktop/session probes and one Explorer-hosted surface passed; live 1080p playback behind the icons with mpv 0.42, ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`), plus automatic mpv recreation after a kill, Explorer-restart recovery through the `Progman` fallback, and tray re-registration on `TaskbarCreated`. Multi-monitor and mixed-DPI scenarios are unchecked |
 | Windows 10/11 with the installer | not tested | Installer script is built in CI; install/uninstall has not been exercised on a clean machine |
 | Native Wayland (no XWayland) | not supported | No wallpaper surface or `--wid` embedding yet |
 
@@ -243,9 +243,13 @@ profile.
 ### Wallpaper host and Explorer restarts
 - [x] Apply a local video to one monitor; it appears behind the desktop icons
       and the icons stay clickable.
-- [ ] Restart Explorer (`taskkill /F /IM explorer.exe` then start it again):
+- [x] Restart Explorer (`taskkill /F /IM explorer.exe` then start it again):
       playback is recreated within the restart backoff and the new surface is
-      attached to the new `WorkerW`.
+      attached to the new `WorkerW` or to `Progman` when Explorer keeps the
+      desktop there. Verified twice: the host loss was reported one second
+      after the kill, failed rebuilds kept retrying while the shell was down,
+      and a fresh mpv with a new `--wid` resumed playback. Icons stayed on top
+      and clickable after they finished loading.
 - [x] Kill `mpv`; the supervisor recreates it and the surface stays alive.
 - [ ] Change the desktop wallpaper in Windows Settings while Ferramari is
       playing; the live wallpaper is unaffected and the original record is not
@@ -271,6 +275,12 @@ profile.
       background is installed.
 - [ ] Tray menu: Show, mute, pause, reload, lucky and quit all act on the
       running server; the icon disappears when “Run in background” is off.
+- [x] Restart Explorer while the tray is enabled; the icon is re-added when
+      the shell broadcasts `TaskbarCreated`. The Explorer started manually in
+      this test session did not broadcast that message (the shell also did not
+      auto-restart), so the handler was verified by sending the registered
+      `TaskbarCreated` id to `HWND_BROADCAST`; the icon was re-added and the
+      server logged `[Systray] Restored the icon after an Explorer restart`.
 - [ ] Autostart creates `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
       value `Ferramari` with a quoted `-b` command; disabling removes it.
 - [ ] Sign out and back in; the wallpaper starts in background mode without
@@ -303,7 +313,7 @@ next to the results. Do not mark the Windows row in the environment matrix as
 
 Recorded 2026-11-12 on Windows 11 23H2, one 1920×1080 display at 125%,
 Explorer, with mpv 0.42.0, ffmpeg/ffprobe 9.0.2 and yt-dlp 2026.10.26:
-`cargo test --workspace` passed (14 binary + 341 core + 17 media + 46 platform
+`cargo test --workspace` passed (14 binary + 343 core + 17 media + 47 platform
 + 14 UI/integration tests), the release workspace produced both `.exe` files,
 and `ferramari --doctor` reported the Win32 backend, one `DISPLAY1` with its
 monitor device interface, Explorer wallpaper host = yes, every capability
@@ -315,10 +325,18 @@ icons (`is_playing=true`, `d3d11va`); `WindowFromPoint` over an icon returned
 `SysListView32`, so the icons stay on top and clickable. `paths::tool` found
 mpv at `C:\Program Files\MPV Player\mpv.exe` while `mpv` was absent from
 `PATH`. Killing that process made the supervisor spawn a new mpv after the
-one-second backoff, attach a fresh surface and resume playback. Quitting the
-server restored the recorded original wallpaper. The installer itself was not
-run on this machine; CI builds it. This is a partial result, not the full
-smoke matrix.
+one-second backoff, attach a fresh surface and resume playback. Killing
+Explorer twice produced the expected sequence: `[Player] DISPLAY1 lost its
+wallpaper host; rebuilding in 1s`, one or two rebuild attempts rejected while
+`Progman` was still missing, then a new mpv with a new `--wid` and
+`is_playing=true`. The surface uses the `Progman` fallback in this session
+because Explorer keeps `SHELLDLL_DefView` there; desktop icons finished
+loading and stayed clickable over the video. The tray is disabled in the
+profile used for the run; enabling it spawned the icon (`[Systray] Ready`),
+and a `TaskbarCreated` broadcast re-added it after the notification area was
+rebuilt. Quitting the server restored the recorded original wallpaper. The
+installer itself was not run on this machine; CI builds it. This is a partial
+result, not the full smoke matrix.
 
 ## Reproducible local run
 

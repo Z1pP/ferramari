@@ -265,6 +265,14 @@ impl Engine {
         }
     }
 
+    /// True while the platform surface still exists. A player can outlive its
+    /// host window: Explorer restarts destroy the wallpaper host on Windows
+    /// while mpv keeps decoding into a stale handle, so the supervisor asks
+    /// the surface instead of trusting the process.
+    pub fn surface_alive(&self) -> bool {
+        self.surface.is_alive()
+    }
+
     pub fn play_fade(&mut self, target: i64, duration: f64, interval: f64) {
         self.paused_at = None;
         self.pause_timer.cancel();

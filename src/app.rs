@@ -1213,9 +1213,31 @@ impl App {
         }
 
         let mut crashed = Vec::new();
+        let mut lost_hosts = Vec::new();
         for window in &mut self.windows {
             if !window.player_alive() {
                 crashed.push(window.key().clone());
+            } else if !window.surface_alive() {
+                // mpv can keep decoding into a window whose host is gone:
+                // Explorer restarts destroy WorkerW/Progman but not our
+                // cross-process child. Rebuild the engine against the new
+                // host instead of waiting for a player that will never die.
+                lost_hosts.push(window.key().clone());
+            }
+        }
+        if !lost_hosts.is_empty() {
+            self.windows
+                .retain(|window| !lost_hosts.iter().any(|key| key == window.key()));
+            for key in lost_hosts {
+                let delay = self
+                    .policies
+                    .entry(key.clone())
+                    .or_insert_with(|| RestartPolicy::new(now))
+                    .on_host_lost(now);
+                log::warn!(
+                    "[Player] {} lost its wallpaper host; rebuilding in {delay:?}",
+                    key.monitor
+                );
             }
         }
         if !crashed.is_empty() {

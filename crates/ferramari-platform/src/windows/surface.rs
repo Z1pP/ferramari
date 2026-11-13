@@ -15,10 +15,10 @@ use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::MapWindowPoints;
 use windows::Win32::UI::WindowsAndMessaging::{
-    DefWindowProcW, DestroyWindow, FindWindowExW, FindWindowW, IsWindow, SendMessageTimeoutW,
-    SetWindowPos, ShowWindow, HTTRANSPARENT, HWND_BOTTOM, SMTO_NORMAL, SWP_NOACTIVATE, SWP_NOMOVE,
-    SWP_NOSIZE, SW_SHOWNOACTIVATE, WM_ERASEBKGND, WM_NCHITTEST, WS_CHILD, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_VISIBLE,
+    DefWindowProcW, DestroyWindow, FindWindowExW, FindWindowW, GetParent, GetWindowThreadProcessId,
+    IsWindow, SendMessageTimeoutW, SetWindowPos, ShowWindow, HTTRANSPARENT, HWND_BOTTOM,
+    SMTO_NORMAL, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_SHOWNOACTIVATE, WM_ERASEBKGND,
+    WM_NCHITTEST, WS_CHILD, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_VISIBLE,
 };
 
 use ferramari_core::platform::{WallpaperSurface, WallpaperSurfaceProvider};
@@ -35,9 +35,13 @@ const SPAWN_WORKERW: u32 = 0x052C;
 
 pub struct Surface {
     hwnd: HWND,
-    /// Kept for diagnostics; the window itself is destroyed by Explorer on
-    /// restart, which is exactly what `is_alive` detects.
+    /// The Explorer window that owns this child. Windows does not destroy a
+    /// cross-process child when the parent dies, so the stale window keeps
+    /// answering `IsWindow`; `is_alive` compares this handle and its process.
     host: HWND,
+    /// Explorer's process at creation time. A restarted Explorer is a new
+    /// process, so a recycled host handle still fails the liveness check.
+    host_pid: u32,
 }
 
 impl WallpaperSurface for Surface {
@@ -46,10 +50,16 @@ impl WallpaperSurface for Surface {
     }
 
     fn is_alive(&self) -> bool {
-        // The host is destroyed before its child when Explorer restarts, so
-        // both checks matter: a stale child handle can still answer `IsWindow`
-        // for the moment between the two.
-        unsafe { IsWindow(Some(self.hwnd)).as_bool() && IsWindow(Some(self.host)).as_bool() }
+        // Cross-process children survive their parent being destroyed: after
+        // an Explorer restart our window still answers `IsWindow`, but its
+        // parent handle is dead. Check the parent link and the owning process
+        // as well, because Windows may recycle an old handle value.
+        unsafe {
+            IsWindow(Some(self.hwnd)).as_bool()
+                && IsWindow(Some(self.host)).as_bool()
+                && GetParent(self.hwnd).ok() == Some(self.host)
+                && window_process(self.host) == Some(self.host_pid)
+        }
     }
 }
 
@@ -88,6 +98,8 @@ pub fn create(monitor: &MonitorInfo) -> anyhow::Result<Surface> {
         }
         std::thread::sleep(Duration::from_millis(100));
     };
+    let host_pid = window_process(host)
+        .ok_or_else(|| anyhow::anyhow!("Explorer's wallpaper host has no owning process"))?;
 
     // WorkerW uses the virtual-screen coordinate space, so move the monitor
     // rectangle into the host's client coordinates before creating the child.
@@ -139,7 +151,18 @@ pub fn create(monitor: &MonitorInfo) -> anyhow::Result<Surface> {
         );
     }
 
-    Ok(Surface { hwnd, host })
+    Ok(Surface {
+        hwnd,
+        host,
+        host_pid,
+    })
+}
+
+/// The process that owns `hwnd`, or `None` when the handle is dead.
+fn window_process(hwnd: HWND) -> Option<u32> {
+    let mut pid = 0u32;
+    let thread = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+    (thread != 0).then_some(pid)
 }
 
 /// Find the WorkerW behind the desktop icons, falling back to Progman. The

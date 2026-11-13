@@ -224,7 +224,9 @@ Windows is the second backend. Its status against this checklist:
   `Local\io.github.ferramari.Ferramari.server`; a second launch probes the
   endpoint and asks the owner to show the UI. The control surface claims
   `Local\io.github.ferramari.Ferramari.ui` before creating its window. Both are
-  per-session named mutexes.
+  per-session named mutexes. `show_gui` looks for the existing visible,
+  non-tool window titled `Ferramari`, restores it when minimized and raises it;
+  a new UI process that loses the mutex exits without stacking a second window.
 - **Desktop host.** `Progman` is sent the undocumented `0x052C` message to
   spawn `WorkerW`; the surface becomes a child of the `WorkerW` next to
   `SHELLDLL_DefView`, with `Progman` as fallback. Windows does not destroy a

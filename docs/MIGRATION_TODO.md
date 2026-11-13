@@ -190,6 +190,12 @@ Current boundary progress:
       Ctrl/Ctrl-Break/close/logoff/shutdown are translated by
       `SetConsoleCtrlHandler` into `Command::Quit` with a 1500 ms grace
       period for the terminal events.
+- [x] Implement the Windows control transport and single-instance semantics.
+      The server listens on a token-gated loopback endpoint and replaces a
+      stale `control-endpoint.json` after a failed ping. Named mutexes keep one
+      server and one control window per session; `show_gui` restores and raises
+      the existing visible, non-tool window, so a second launch or the tray's
+      Show command does not stack or strand a minimized window.
 - [x] Verify Explorer restart recovery.
       Killing `explorer.exe` twice on the test machine made the surface report
       the lost host within a second; the supervisor retried while `Progman`

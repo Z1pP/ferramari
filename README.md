@@ -208,7 +208,7 @@ ferramari --catalog https://catalog.example.org/v1  # inspect a Catalog API
 ferramari package --help    # checksum, sign and verify .ferramari packages
 ```
 
-A second `ferramari` invocation does not start another wallpaper server: it asks the running server to launch the separate `ferramari-ui` control-surface binary and exits. Both binaries must be installed side by side. On Windows the installer puts both `.exe` files in the same folder; the portable ZIP has the same layout.
+A second `ferramari` invocation does not start another wallpaper server: it asks the running server to show the separate `ferramari-ui` control surface and exits. If the window is already open it is restored and raised rather than duplicated. Both binaries must be installed side by side. On Windows the installer puts both `.exe` files in the same folder; the portable ZIP has the same layout.
 
 Local videos and images are read from `$XDG_VIDEOS_DIR/Ferramari` (usually
 `~/Videos/Ferramari`) on Linux and from `%USERPROFILE%\Videos\Ferramari` on

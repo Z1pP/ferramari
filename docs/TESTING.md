@@ -17,7 +17,7 @@ job proves the build and unit tests, not wallpaper playback.
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |
 | GNOME with the Flatpak bundle | **tested** 2026-10-31, 0.7.0 | Built and launched from a local bundle; host mpv/ffmpeg bridge, XWayland, WebKitGTK; 0.8 uses the same manifest; tray/autostart not verified |
-| Windows 11 23H2, Explorer desktop | **partial** 2026-11-12 | Release build, full unit suite, `--doctor`, live display/desktop/session probes and one Explorer-hosted surface passed; live 1080p playback behind the icons with mpv 0.42, ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`), plus automatic mpv recreation after a kill, Explorer-restart recovery through the `Progman` fallback, and tray re-registration on `TaskbarCreated`. Multi-monitor and mixed-DPI scenarios are unchecked |
+| Windows 11 23H2, Explorer desktop | **partial** 2026-11-12 | Release build, full unit suite, `--doctor`, live display/desktop/session probes and one Explorer-hosted surface passed; live 1080p playback behind the icons with mpv 0.42, ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`), plus automatic mpv recreation after a kill, Explorer-restart recovery through the `Progman` fallback, tray re-registration on `TaskbarCreated`, second-launch focus, tray commands, autostart and static-wallpaper toggles. Multi-monitor and mixed-DPI scenarios are unchecked |
 | Windows 10/11 with the installer | not tested | Installer script is built in CI; install/uninstall has not been exercised on a clean machine |
 | Native Wayland (no XWayland) | not supported | No wallpaper surface or `--wid` embedding yet |
 
@@ -230,15 +230,20 @@ profile.
       starting a window.
 - [x] `ferramari` starts the server and opens `ferramari-ui`; both `.exe`
       files are in the same folder and the UI finds the endpoint file.
-- [ ] A second `ferramari` launch asks the first instance to show the UI and
-      exits; only one server process remains.
+- [x] A second `ferramari` launch asks the first instance to show the UI and
+      exits; only one server process remains. Verified with the control window
+      minimized: the second launch restored and raised it (the log shows
+      `[GUI] Raised the existing control window`) and exited in about one
+      second.
 - [x] Closing the UI leaves the server and wallpaper running.
-- [ ] Quit from the tray and from Settings; no `mpv`, `ffmpeg` or `ffprobe`
-      child remains.
+- [x] Quit from the tray; no `mpv`, `ffmpeg` or `ffprobe` child remains and the
+      original wallpaper is restored.
+- [ ] Quit from Settings; no `mpv`, `ffmpeg` or `ffprobe` child remains.
 - [ ] Ctrl-C, Ctrl-Break, console close, logoff and shutdown each end the
       server cleanly; the original wallpaper is restored.
-- [ ] A stale `control-endpoint.json` from a killed server is replaced on the
-      next start and does not block the UI.
+- [x] A stale `control-endpoint.json` from a killed server is replaced on the
+      next start and does not block the UI. A file pointing at a closed port
+      was replaced with the new port and token, and the UI connected.
 
 ### Wallpaper host and Explorer restarts
 - [x] Apply a local video to one monitor; it appears behind the desktop icons
@@ -268,20 +273,26 @@ profile.
       remaining monitor continues.
 
 ### Static wallpaper, tray and autostart
-- [ ] Enable static wallpaper; a blurred frame appears and
+- [x] Enable static wallpaper; a blurred frame appears and
       `%APPDATA%\ferramari\background-original.json` records the previous path.
-- [ ] Disable it; the recorded original is restored.
+- [x] Disable it; the recorded original is restored. Verified with the real
+      theme image (`c:\windows\web\wallpaper\themeb\img25.jpg`), then enabled
+      again to apply the generated frame.
 - [ ] Delete the recorded original file and disable again; no missing-file
       background is installed.
-- [ ] Tray menu: Show, mute, pause, reload, lucky and quit all act on the
+- [x] Tray menu: Show, mute, pause, reload, lucky and quit all act on the
       running server; the icon disappears when “Run in background” is off.
+      Verified by posting the menu command ids to the tray window: mute and
+      pause toggled, reload recreated the player, lucky logged `[Lucky]`, Show
+      restored and raised the minimized control window, and quit stopped the
+      server and restored the wallpaper. The popup itself was not clicked.
 - [x] Restart Explorer while the tray is enabled; the icon is re-added when
       the shell broadcasts `TaskbarCreated`. The Explorer started manually in
       this test session did not broadcast that message (the shell also did not
       auto-restart), so the handler was verified by sending the registered
       `TaskbarCreated` id to `HWND_BROADCAST`; the icon was re-added and the
       server logged `[Systray] Restored the icon after an Explorer restart`.
-- [ ] Autostart creates `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+- [x] Autostart creates `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
       value `Ferramari` with a quoted `-b` command; disabling removes it.
 - [ ] Sign out and back in; the wallpaper starts in background mode without
       opening the control window.
@@ -313,7 +324,7 @@ next to the results. Do not mark the Windows row in the environment matrix as
 
 Recorded 2026-11-12 on Windows 11 23H2, one 1920×1080 display at 125%,
 Explorer, with mpv 0.42.0, ffmpeg/ffprobe 9.0.2 and yt-dlp 2026.10.26:
-`cargo test --workspace` passed (14 binary + 343 core + 17 media + 47 platform
+`cargo test --workspace` passed (14 binary + 343 core + 17 media + 48 platform
 + 14 UI/integration tests), the release workspace produced both `.exe` files,
 and `ferramari --doctor` reported the Win32 backend, one `DISPLAY1` with its
 monitor device interface, Explorer wallpaper host = yes, every capability
@@ -337,6 +348,20 @@ and a `TaskbarCreated` broadcast re-added it after the notification area was
 rebuilt. Quitting the server restored the recorded original wallpaper. The
 installer itself was not run on this machine; CI builds it. This is a partial
 result, not the full smoke matrix.
+
+Recorded 2026-11-13 on the same machine: a stale `control-endpoint.json`
+pointing at a closed port was replaced on startup and the UI connected. A
+second `ferramari` launch exited in about one second and restored and raised
+the minimized control window (`[GUI] Raised the existing control window`).
+Tray command ids toggled mute and pause, reload recreated the player, lucky
+logged `[Lucky]`, Show raised the minimized window, and quit stopped the
+server, removed the endpoint and restored the wallpaper. Autostart wrote the
+quoted `-b` command to the `Run` key and removed it again. Enabling static
+wallpaper applied the generated frame and disabling restored
+`c:\windows\web\wallpaper\themeb\img25.jpg`. Synthetic `WM_WTSSESSION_CHANGE`
+and `WM_POWERBROADCAST` messages produced `[ScreenLock] active=true/false` and
+`[Power] Suspend=true/false`; a real Win+L lock, sleep/resume and sign-out were
+not exercised in this session.
 
 ## Reproducible local run
 

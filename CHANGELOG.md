@@ -6,8 +6,8 @@
 policy and the same Iced control surface now have a Win32 backend: a wallpaper
 window behind Explorer's desktop icons, physical-pixel monitor discovery,
 foreground/occlusion tracking, lock and power events, a tray icon, autostart
-and static-wallpaper handling. **435 tests** pass (14 binary + 343 core + 17
-media + 47 platform + 14 UI).
+and static-wallpaper handling. **436 tests** pass (14 binary + 343 core + 17
+media + 48 platform + 14 UI).
 
 - **Wallpaper hosting.** A child window is parented to the `WorkerW` behind
   `SHELLDLL_DefView` (with `Progman` as fallback) and embedded into mpv through
@@ -25,6 +25,9 @@ media + 47 platform + 14 UI).
   port and publishes a per-process token in `control-endpoint.json`. The Iced
   UI and the second-launch handshake use newline-delimited JSON over that
   endpoint; named mutexes provide single-instance semantics for both binaries.
+  A stale endpoint is probed and replaced, and `show_gui` restores and raises
+  an already-open control window instead of leaving it minimized behind the
+  new launch.
 - **Native event sources.** WTS notifications cover lock/unlock, power
   broadcasts cover suspend/resume, `RegisterPowerSettingNotification` covers
   charger changes, `GetLastInputInfo` covers idle, and `SetConsoleCtrlHandler`
@@ -59,8 +62,12 @@ media + 47 platform + 14 UI).
   ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`, playback behind the icons,
   automatic recreation after killing mpv). Killing Explorer twice rebuilt the
   surface through the `Progman` fallback and kept the icons clickable, and a
-  `TaskbarCreated` broadcast re-added the tray icon. Multi-monitor and
-  mixed-DPI scenarios stay unchecked until they are run on suitable hardware.
+  `TaskbarCreated` broadcast re-added the tray icon. A second launch restored
+  and raised a minimized control window; tray mute, pause, reload, lucky, Show
+  and quit acted on the running server; autostart wrote and removed its `Run`
+  key; static wallpaper applied a frame and restored the recorded original.
+  Multi-monitor and mixed-DPI scenarios stay unchecked until they are run on
+  suitable hardware.
 
 ## 2.1.0 — 2026-11-10
 

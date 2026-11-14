@@ -18,7 +18,7 @@ job proves the build and unit tests, not wallpaper playback.
 | KDE Plasma, Wayland | not tested | XWayland path only |
 | GNOME with the Flatpak bundle | **tested** 2026-10-31, 0.7.0 | Built and launched from a local bundle; host mpv/ffmpeg bridge, XWayland, WebKitGTK; 0.8 uses the same manifest; tray/autostart not verified |
 | Windows 11 23H2, Explorer desktop | **partial** 2026-11-12 | Release build, full unit suite, `--doctor`, live display/desktop/session probes and one Explorer-hosted surface passed; live 1080p playback behind the icons with mpv 0.42, ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`), plus automatic mpv recreation after a kill, Explorer-restart recovery through the `Progman` fallback, tray re-registration on `TaskbarCreated`, second-launch focus, tray commands, autostart and static-wallpaper toggles. Multi-monitor and mixed-DPI scenarios are unchecked |
-| Windows 10/11 with the installer | not tested | Installer script is built in CI; install/uninstall has not been exercised on a clean machine |
+| Windows 10/11 with the installer | **partial** 2026-11-14 | Per-user silent install, Start-menu launch of both binaries and mpv, `--doctor`, ru/ja catalogs, portable ZIP from a path with a space and silent uninstall preserving user data passed on one Windows 11 account; not yet run on a clean machine or through an upgrade |
 | Native Wayland (no XWayland) | not supported | No wallpaper surface or `--wid` embedding yet |
 
 Do not mark an environment as supported until the checklist below has been run

@@ -309,13 +309,13 @@ profile.
 - [ ] A UWP window on another virtual desktop does not count as occlusion.
 
 ### Installer and packaging
-- [ ] `installer\build.ps1` produces a setup `.exe` and a portable `.zip` in
+- [x] `installer\build.ps1` produces a setup `.exe` and a portable `.zip` in
       `installer\Output`.
-- [ ] Install per-user without elevation; Start-menu shortcut starts both
+- [x] Install per-user without elevation; Start-menu shortcut starts both
       binaries and the UI is translated (ru/ja) when the locale is selected.
-- [ ] Uninstall removes binaries, shortcuts and locale files but leaves
+- [x] Uninstall removes binaries, shortcuts and locale files but leaves
       `%APPDATA%\ferramari` and `%LOCALAPPDATA%\ferramari` intact.
-- [ ] Extract the portable ZIP to a folder with a space in its path; both
+- [x] Extract the portable ZIP to a folder with a space in its path; both
       binaries start and find their locale catalogs.
 
 Record the Windows build number, GPU, monitor layout and mpv/ffmpeg versions
@@ -346,8 +346,8 @@ loading and stayed clickable over the video. The tray is disabled in the
 profile used for the run; enabling it spawned the icon (`[Systray] Ready`),
 and a `TaskbarCreated` broadcast re-added it after the notification area was
 rebuilt. Quitting the server restored the recorded original wallpaper. The
-installer itself was not run on this machine; CI builds it. This is a partial
-result, not the full smoke matrix.
+installer was not run during this first pass; it was built and exercised on
+2026-11-14 (below). This is a partial result, not the full smoke matrix.
 
 Recorded 2026-11-13 on the same machine: a stale `control-endpoint.json`
 pointing at a closed port was replaced on startup and the UI connected. A
@@ -362,6 +362,25 @@ wallpaper applied the generated frame and disabling restored
 and `WM_POWERBROADCAST` messages produced `[ScreenLock] active=true/false` and
 `[Power] Suspend=true/false`; a real Win+L lock, sleep/resume and sign-out were
 not exercised in this session.
+
+Recorded 2026-11-14 on the same machine, with Inno Setup 6.7.3 and gettext
+1.0+iconv 1.19 installed per user through winget: `installer\build.ps1 -NoBuild`
+found both tools under `%LOCALAPPDATA%\Programs`, compiled the ru/ja catalogs
+with `msgfmt --check` and produced a 9.1 MB setup executable and a 10.5 MB
+portable ZIP. A silent per-user install into `%TEMP%\ferramari-install-test`
+placed both executables, README, LICENSE and the locale catalogs and created
+the Start-menu shortcuts; the installed `ferramari --doctor` reported the Win32
+backend and every capability supported. Launching the Start-menu shortcut
+started `ferramari`, `ferramari-ui` and mpv; a `quit` request over the control
+endpoint stopped the server and mpv, and closing the control window ended the
+UI. The portable ZIP extracted to a path containing a space and its
+`ferramari.exe --doctor` ran. Silent uninstall removed the installation
+directory and shortcuts and left `%APPDATA%\ferramari\config.json`
+byte-identical. The UI was opened with `LANGUAGE=ru` and `LANGUAGE=ja` against
+the compiled catalogs: the rail, page titles, Settings sections and their
+descriptions were Russian and Japanese with no clipped labels. The offline
+banner was the only English text in those runs; it now uses the translated
+“Daemon offline” string.
 
 ## Reproducible local run
 

@@ -52,9 +52,18 @@ media + 48 platform + 14 UI).
   gettext dependency. Startup no longer deadlocks on the translator lock while
   resolving the initial language.
 - **Packaging.** `installer/build.ps1` builds an Inno Setup installer and a
-  portable ZIP with both binaries and their locale catalogs. CI now lints,
+  portable ZIP with both binaries and their locale catalogs. It finds Inno
+  Setup and `msgfmt` on `PATH`, in `Program Files` or under the per-user
+  `%LOCALAPPDATA%\Programs` tree where winget installs them. CI now lints,
   tests, builds and runs `--doctor` on `windows-latest`, then uploads both
-  artifacts; tagged releases attach them to the GitHub release.
+  artifacts; tagged releases attach them to the GitHub release. Locally, a
+  silent per-user install placed both binaries, docs and ru/ja catalogs and
+  created Start-menu shortcuts; the shortcut started the server, the control
+  surface and mpv, and a control `quit` stopped them. Uninstall removed the
+  installation and shortcuts while leaving `%APPDATA%\ferramari` and
+  `%LOCALAPPDATA%\ferramari` untouched, and the portable ZIP ran from a path
+  containing a space. The control surface
+  showed the Russian and Japanese catalogs without clipped labels.
 - **Docs.** `docs/BACKEND_CONTRACT.md` gains the Windows backend notes and
   checklist status, `docs/MIGRATION_TODO.md` records what is done and what
   still needs hardware, and `docs/TESTING.md` has a Windows smoke checklist.

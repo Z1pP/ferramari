@@ -39,6 +39,10 @@ function Find-InnoSetup {
     if ($env:ProgramFiles) {
         $candidates += Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe"
     }
+    if ($env:LOCALAPPDATA) {
+        # winget installs Inno Setup per user by default.
+        $candidates += Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"
+    }
     foreach ($candidate in $candidates) {
         if (Test-Path -LiteralPath $candidate) {
             return $candidate
@@ -47,6 +51,24 @@ function Find-InnoSetup {
     $command = Get-Command iscc.exe -ErrorAction SilentlyContinue
     if ($command) {
         return $command.Source
+    }
+    return $null
+}
+
+function Find-Msgfmt {
+    $command = Get-Command msgfmt.exe -ErrorAction SilentlyContinue
+    if (-not $command) {
+        $command = Get-Command msgfmt -ErrorAction SilentlyContinue
+    }
+    if ($command) {
+        return $command.Source
+    }
+    if ($env:LOCALAPPDATA) {
+        # The mlocati gettext build installs here when winget is not elevated.
+        $candidate = Join-Path $env:LOCALAPPDATA "Programs\gettext-iconv\bin\msgfmt.exe"
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
     }
     return $null
 }
@@ -92,16 +114,13 @@ try {
     Copy-Item -LiteralPath (Join-Path $root "README.md") -Destination $bin
     Copy-Item -LiteralPath (Join-Path $root "LICENSE") -Destination $bin
 
-    $msgfmt = Get-Command msgfmt.exe -ErrorAction SilentlyContinue
-    if (-not $msgfmt) {
-        $msgfmt = Get-Command msgfmt -ErrorAction SilentlyContinue
-    }
+    $msgfmt = Find-Msgfmt
     if ($msgfmt) {
         foreach ($po in Get-ChildItem -LiteralPath (Join-Path $root "po") -Filter "*.po") {
             $language = $po.BaseName
             $destination = Join-Path $locale "$language\LC_MESSAGES"
             New-Item -ItemType Directory -Path $destination -Force | Out-Null
-            & $msgfmt.Source --check -c -o (Join-Path $destination "ferramari.mo") $po.FullName
+            & $msgfmt --check -c -o (Join-Path $destination "ferramari.mo") $po.FullName
             if ($LASTEXITCODE -ne 0) {
                 throw "msgfmt failed for $($po.Name)"
             }

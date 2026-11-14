@@ -15,6 +15,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
+use ferramari_core::util::tr;
 use ferramari_platform::control;
 
 pub use crate::client_state::ServerState;
@@ -27,8 +28,7 @@ pub struct Server {
 
 impl Server {
     pub async fn connect() -> Result<Self, String> {
-        let endpoint = control::read_endpoint()
-            .ok_or_else(|| "the Ferramari server is not running".to_string())?;
+        let endpoint = control::read_endpoint().ok_or_else(|| tr("Daemon offline"))?;
         if endpoint.protocol != control::PROTOCOL_VERSION {
             return Err(format!(
                 "the server speaks control protocol {}, this control surface speaks {}",

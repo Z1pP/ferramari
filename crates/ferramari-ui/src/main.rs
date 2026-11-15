@@ -2607,10 +2607,15 @@ impl App {
                 )
                 .push(s::chip(state_label(&state, sem), sem))
                 .push(
-                    pick_list(rotation_options, selected, move |choice| {
+                    // The label is the collection name, so the control sizes
+                    // itself to its widest option instead of a fixed 150 px
+                    // that clipped `ローテーションなし` under the arrow. The
+                    // cap keeps an unusually long name from squeezing the
+                    // monitor name out of the row.
+                    container(pick_list(rotation_options, selected, move |choice| {
                         Message::SetMonitorRotation(monitor_name.clone(), choice.id)
-                    })
-                    .width(Length::Fixed(150.0)),
+                    }))
+                    .max_width(220.0),
                 );
 
             body = body.push(s::inset(row, sem, 10.0));
@@ -5145,6 +5150,12 @@ fn main() -> iced::Result {
         .title("Ferramari")
         .theme(App::theme)
         .subscription(App::subscription)
+        // The rail glyphs are Font Awesome codepoints in the Private Use Area.
+        // The exact 4.7 file the codepoints were taken from is embedded on
+        // every platform, so the UI does not depend on a system icon font
+        // being installed. Its internal family name is `FontAwesome`, which
+        // is what `style::ICON_FONT` asks for.
+        .font(include_bytes!("../assets/fontawesome-webfont.ttf").as_slice())
         .window(window)
         .centered()
         .run()

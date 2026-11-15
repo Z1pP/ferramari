@@ -176,6 +176,13 @@ Current boundary progress:
       backoff and playback resumed. `paths::tool` finds mpv under
       `Program Files\MPV Player` even when the installer leaves it off
       `PATH`.
+- [x] Fix the Windows IPC stall that froze switching and controls.
+      mpv's IPC server writes events and reads commands on one thread, so a
+      client that drained the pipe only between commands let the 4 KiB buffer
+      fill and blocked mpv in `WriteFile`. A dedicated reader thread now drains
+      continuously, replies are matched by `request_id` with a timeout, and
+      `worker_alive` reports a stopped worker. Verified live by switching
+      videos, pausing/resuming, muting and watching `time-pos` advance.
 - [x] Implement foreground/fullscreen/occlusion tracking.
       `windows/window_state.rs` samples the complete top-level window list
       every 750 ms, filters invisible, minimized, DWM-cloaked, tool and

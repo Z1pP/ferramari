@@ -6,8 +6,8 @@
 policy and the same Iced control surface now have a Win32 backend: a wallpaper
 window behind Explorer's desktop icons, physical-pixel monitor discovery,
 foreground/occlusion tracking, lock and power events, a tray icon, autostart
-and static-wallpaper handling. **436 tests** pass (14 binary + 343 core + 17
-media + 48 platform + 14 UI).
+and static-wallpaper handling. **438 tests** pass (14 binary + 344 core + 17
+media + 49 platform + 8 UI library + 6 UI binary).
 
 - **Wallpaper hosting.** A child window is parented to the `WorkerW` behind
   `SHELLDLL_DefView` (with `Progman` as fallback) and embedded into mpv through
@@ -41,6 +41,35 @@ media + 48 platform + 14 UI).
   (`Program Files\MPV Player`, the winget `Links` folder and per-user
   `Programs`) before falling back to a bare `PATH` lookup, because mpv's
   installer does not add itself to `PATH`.
+- **Playback no longer wedges on Windows.** mpv's IPC server writes events and
+  reads commands on one thread. A client that only read between commands let
+  the 4 KiB pipe buffer fill, so mpv blocked in `WriteFile` and never read the
+  next command: playback started but switching, pause, mute and statistics
+  stopped answering. A dedicated reader thread now drains the stream
+  continuously, replies are matched by `request_id` with a timeout, and `Drop`
+  joins the reader before the pipe closes. A separate `worker_alive` flag makes
+  a stopped or panicked worker report the player as dead instead of healthy.
+  Verified live: switching `Power-Dancing-1080p.mp4` → `arcane-jinx.mp4`,
+  pause/resume, master mute and advancing `time-pos` all answered while
+  playback continued.
+- **Occlusion ignores the shell.** `Progman`, `WorkerW`, taskbars and
+  Explorer's XAML island are excluded from the `EnumWindows` sample; otherwise
+  the desktop's own host windows counted as covering the wallpaper and Eco
+  paused it.
+- **The icon font is embedded.** Font Awesome 4.7 ships as
+  `crates/ferramari-ui/assets/fontawesome-webfont.ttf` (SIL OFL 1.1, licence
+  beside it) and is registered under the family name `FontAwesome`. The rail
+  and every page draw their glyphs on a machine with no icon font installed;
+  `scripts/glyph-check.py` reads the bundled face instead of a system one.
+- **Counted nouns translate again.** GNU MO stores a plural entry under
+  `singular\0plural`, and the pure-Rust reader keyed the whole msgid, so
+  `tr_n` never matched and "1 display" stayed English in every catalog. The
+  parser now keys by the singular and a regression test covers it; Russian
+  renders `1 монитор` and Japanese `1 台`.
+- **Rotation picker width.** The monitor card's rotation control sizes to its
+  widest option with a 220 px cap instead of a fixed 150 px, which had put the
+  Japanese `ローテーションなし` label under the arrow. Checked in light and dark,
+  Russian and Japanese, at 1180 and 900 px wide.
 - **Restart policy.** A player that ran longer than `STABLE_AFTER` and then
   exited had its scheduled retry erased by the stability reset on the next
   tick, so the supervisor never recreated it. The reset now only runs while no
@@ -75,8 +104,11 @@ media + 48 platform + 14 UI).
   and raised a minimized control window; tray mute, pause, reload, lucky, Show
   and quit acted on the running server; autostart wrote and removed its `Run`
   key; static wallpaper applied a frame and restored the recorded original.
-  Multi-monitor and mixed-DPI scenarios stay unchecked until they are run on
-  suitable hardware.
+  A second live pass on 2026-11-15 switched between two videos, paused,
+  resumed and muted through the control API while `time-pos` advanced, and
+  checked the embedded icons and ru/ja counted nouns in light and dark themes
+  at 1180 and 900 px. Multi-monitor and mixed-DPI scenarios stay unchecked
+  until they are run on suitable hardware.
 
 ## 2.1.0 — 2026-11-10
 

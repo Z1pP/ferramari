@@ -17,7 +17,7 @@ job proves the build and unit tests, not wallpaper playback.
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |
 | GNOME with the Flatpak bundle | **tested** 2026-10-31, 0.7.0 | Built and launched from a local bundle; host mpv/ffmpeg bridge, XWayland, WebKitGTK; 0.8 uses the same manifest; tray/autostart not verified |
-| Windows 11 23H2, Explorer desktop | **partial** 2026-11-12 | Release build, full unit suite, `--doctor`, live display/desktop/session probes and one Explorer-hosted surface passed; live 1080p playback behind the icons with mpv 0.42, ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`), plus automatic mpv recreation after a kill, Explorer-restart recovery through the `Progman` fallback, tray re-registration on `TaskbarCreated`, second-launch focus, tray commands, autostart and static-wallpaper toggles. Multi-monitor and mixed-DPI scenarios are unchecked |
+| Windows 11 23H2, Explorer desktop | **partial** 2026-11-15 | Release build, full unit suite, `--doctor`, live display/desktop/session probes and one Explorer-hosted surface passed; live 1080p playback behind the icons with mpv 0.42, ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`), plus automatic mpv recreation after a kill, Explorer-restart recovery through the `Progman` fallback, tray re-registration on `TaskbarCreated`, second-launch focus, tray commands, autostart and static-wallpaper toggles. A later pass fixed the IPC reader stall and verified live switching, pause/resume, mute and advancing playback, the embedded icon font, and ru/ja counted nouns in light/dark themes at 1180 and 900 px. Multi-monitor and mixed-DPI scenarios are unchecked |
 | Windows 10/11 with the installer | **partial** 2026-11-14 | Per-user silent install, Start-menu launch of both binaries and mpv, `--doctor`, ru/ja catalogs, portable ZIP from a path with a space and silent uninstall preserving user data passed on one Windows 11 account; not yet run on a clean machine or through an upgrade |
 | Native Wayland (no XWayland) | not supported | No wallpaper surface or `--wid` embedding yet |
 
@@ -324,9 +324,9 @@ next to the results. Do not mark the Windows row in the environment matrix as
 
 Recorded 2026-11-12 on Windows 11 23H2, one 1920×1080 display at 125%,
 Explorer, with mpv 0.42.0, ffmpeg/ffprobe 9.0.2 and yt-dlp 2026.10.26:
-`cargo test --workspace` passed (14 binary + 343 core + 17 media + 48 platform
-+ 14 UI/integration tests), the release workspace produced both `.exe` files,
-and `ferramari --doctor` reported the Win32 backend, one `DISPLAY1` with its
+`cargo test --workspace` passed (14 binary + 344 core + 17 media + 49 platform
++ 8 UI library + 6 UI binary tests), the release workspace produced both `.exe`
+files, and `ferramari --doctor` reported the Win32 backend, one `DISPLAY1` with its
 monitor device interface, Explorer wallpaper host = yes, every capability
 supported, and all four tool versions. A live background server answered
 `ping`, returned a complete `snapshot`, accepted `quit`, exited cleanly and
@@ -381,6 +381,25 @@ the compiled catalogs: the rail, page titles, Settings sections and their
 descriptions were Russian and Japanese with no clipped labels. The offline
 banner was the only English text in those runs; it now uses the translated
 “Daemon offline” string.
+
+Recorded 2026-11-15 on the same machine: the playback stall was traced to
+mpv's IPC server blocking in `WriteFile` when the client stopped draining
+events between commands. After the reader thread and liveness flag landed, a
+live control session switched `Power-Dancing-1080p.mp4` → `arcane-jinx.mp4`,
+reported the new `path` and a `duration` of 29.77 s, paused and resumed
+(`pause=true`/`false`), set `mute=true` through `is_mute`, and showed
+`time-pos` advancing (3.67 → 5.70 s) with snapshot `position` moving. The
+same run confirmed the embedded Font Awesome face draws every rail, page and
+action glyph with no system font, `1 монитор` and `1 台` in the compiled
+ru/ja catalogs, and the monitor-card rotation picker fitting
+`ローテーションなし`. Screenshots were checked in dark and light themes in
+English, Russian and Japanese at 1180×780 and at the 900×620 minimum width.
+Occlusion still reports `Occluded` when a maximized window covers the
+display; with `is_pause_when_maximized=false` playback stays active. The
+earlier application-loop freeze did not recur; trace markers around
+`watch_players`, rotation, Eco and snapshot publishing are in place for the
+next occurrence. Real lock, sleep/resume, sign-out and multi-monitor scenarios
+remain unchecked.
 
 ## Reproducible local run
 

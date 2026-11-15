@@ -249,14 +249,24 @@ Windows is the second backend. Its status against this checklist:
   are never mistaken for the original.
 - **Media.** mpv is controlled through a named pipe; `--wid` receives the
   surface HWND. The handle crosses the boundary as `u64` like the X11 window
-  id. Timed-out yt-dlp/ffmpeg trees are killed with `taskkill /T /F`.
+  id. A dedicated reader thread drains events continuously: mpv's Windows IPC
+  server writes events and reads commands on the same thread, so a client that
+  reads only between commands fills the 4 KiB pipe and blocks mpv in
+  `WriteFile`. Replies are correlated by `request_id` with a timeout, `Drop`
+  joins the reader, and a `worker_alive` flag makes a stopped worker report
+  the player as dead. Timed-out yt-dlp/ffmpeg trees are killed with
+  `taskkill /T /F`.
 - **Locale.** Catalogs are read from `<exe>\locale` (portable and installer
   layout) or `<exe>\..\share\locale`; `FERRAMARI_LOCALEDIR` still wins.
-  Translation is pure Rust, so the server and UI need no libintl.
+  Translation is pure Rust, so the server and UI need no libintl. Plural MO
+  entries are keyed by their singular msgid (`singular\0plural`), which is
+  what `tr_n` looks up.
 - **Known gap.** Live playback and Explorer-restart recovery were exercised on
   one 1920×1080 display at 125%: a local video played behind the icons with
   `d3d11va`, killing Explorer rebuilt the surface through the `Progman`
-  fallback, and killing mpv recreated the player. Multi-monitor and mixed-DPI
-  behaviour still need suitable hardware. The unit and live-probe tests pass
-  and the capability report is explicit; `docs/TESTING.md` keeps the remaining
+  fallback, and killing mpv recreated the player. A later pass verified
+  switching between two videos, pause/resume, mute and advancing playback
+  statistics after the IPC reader fix. Multi-monitor and mixed-DPI behaviour
+  still need suitable hardware. The unit and live-probe tests pass and the
+  capability report is explicit; `docs/TESTING.md` keeps the remaining
   scenarios unchecked until they are run.

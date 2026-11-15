@@ -270,6 +270,11 @@ static SOCKET_COUNTER: AtomicUsize = AtomicUsize::new(0);
 /// IPC worker thread, never on the main application event loop.
 const IPC_TIMEOUT: Duration = Duration::from_secs(1);
 
+/// How often the reader wakes to notice `reader_stop`. Shorter than
+/// [`IPC_TIMEOUT`] so dropping a player does not stall the supervisor for a
+/// whole command timeout; the command wait is independent of this poll.
+const READER_POLL: Duration = Duration::from_millis(100);
+
 /// How long to wait for the `--input-ipc-server` socket to appear. mpv usually
 /// creates it in ~120 ms; a missing socket points at a broken binary or a
 /// severely wedged process.
@@ -349,6 +354,9 @@ struct Shared {
     /// Set when the IPC worker loses the connection. The child may still be
     /// alive but can no longer be controlled, so the caller restarts it.
     ipc_dead: AtomicBool,
+    /// True while the worker thread is running. A panic or an early return
+    /// must not look like a healthy player just because the child is alive.
+    worker_alive: AtomicBool,
     /// Last command-level error worth showing to the user (for example a
     /// `loadfile` of a corrupt file). The UI polls this on the supervision
     /// tick instead of blocking on the reply.
@@ -389,12 +397,83 @@ enum Request {
 /// One JSON IPC connection. mpv interleaves unsolicited events with command
 /// replies on the same stream, so the reader has to be persistent: creating a
 /// `BufReader` per command would buffer (and drop) replies that arrived early.
+///
+/// The reader also runs on its own thread. mpv's Windows IPC server writes
+/// events from the same thread that reads commands; if the client stops
+/// reading between commands, the 4 KiB pipe buffer fills and mpv blocks in
+/// `WriteFile`, so it never reads the next command. Draining the stream
+/// continuously is what keeps both directions moving. On Unix the same shape
+/// costs one thread per player and removes the same class of stall.
 struct Ipc {
-    reader: BufReader<PipeStream>,
     /// Second handle on the same channel: `BufReader` does not implement
     /// `Write`, and replies must be read through the buffered reader.
     writer: PipeStream,
+    /// Lines forwarded by the reader thread. A disconnected channel means the
+    /// reader hit EOF or an I/O error.
+    lines: Receiver<String>,
+    reader_stop: Arc<AtomicBool>,
+    reader: Option<JoinHandle<()>>,
     next_request: u64,
+}
+
+impl Ipc {
+    fn new(mut stream: PipeStream) -> anyhow::Result<Self> {
+        // The reader must wake periodically so it can notice `reader_stop`;
+        // without a timeout a dropped connection would keep it blocked and
+        // `Drop` would join it forever.
+        stream.set_read_timeout(Some(READER_POLL))?;
+        let reader_stream = stream.try_clone()?;
+        let (lines, incoming) = mpsc::channel();
+        let reader_stop = Arc::new(AtomicBool::new(false));
+        let stop = Arc::clone(&reader_stop);
+        let reader = std::thread::Builder::new()
+            .name("ferramari-mpv-reader".to_string())
+            .spawn(move || {
+                let mut reader = BufReader::new(reader_stream);
+                let mut line = String::new();
+                loop {
+                    match reader.read_line(&mut line) {
+                        Ok(0) => break,
+                        Ok(_) => {
+                            if lines.send(std::mem::take(&mut line)).is_err() {
+                                break;
+                            }
+                        }
+                        // The socket timeout is the worker's idle tick, not a
+                        // failure: keep a partial line and wait for the rest.
+                        Err(err) if err.kind() == std::io::ErrorKind::TimedOut => {
+                            if stop.load(Ordering::Relaxed) {
+                                break;
+                            }
+                        }
+                        Err(err) => {
+                            if !stop.load(Ordering::Relaxed) {
+                                log::debug!("[mpv] IPC reader stopped: {err}");
+                            }
+                            break;
+                        }
+                    }
+                }
+            })?;
+        Ok(Self {
+            writer: stream,
+            lines: incoming,
+            reader_stop,
+            reader: Some(reader),
+            next_request: 0,
+        })
+    }
+}
+
+impl Drop for Ipc {
+    fn drop(&mut self) {
+        // The reader wakes on its next socket timeout and exits; joining here
+        // reaps it instead of leaving a thread behind after a restart.
+        self.reader_stop.store(true, Ordering::Relaxed);
+        if let Some(reader) = self.reader.take() {
+            let _ = reader.join();
+        }
+    }
 }
 
 impl Mpv {
@@ -481,6 +560,7 @@ impl Mpv {
             muted: AtomicBool::new(options.muted),
             paused: AtomicBool::new(options.paused),
             ipc_dead: AtomicBool::new(false),
+            worker_alive: AtomicBool::new(true),
             last_error: Mutex::new(None),
             parked_position: Mutex::new(None),
             parked: AtomicBool::new(false),
@@ -632,6 +712,10 @@ impl Mpv {
             log::warn!("[mpv] IPC connection lost unexpectedly");
             return false;
         }
+        if !self.shared.worker_alive.load(Ordering::Relaxed) {
+            log::warn!("[mpv] IPC worker stopped unexpectedly");
+            return false;
+        }
         match self.child.try_wait() {
             Ok(None) => true,
             Ok(Some(status)) => {
@@ -708,6 +792,15 @@ fn ipc_endpoint(unique: usize) -> String {
 /// Wait for mpv's IPC endpoint, then serve requests until the channel closes
 /// or a fatal I/O error occurs. Runs on its own worker thread.
 fn run_ipc_worker(endpoint: &str, receiver: Receiver<Request>, shared: &Shared, stop: &AtomicBool) {
+    // Covers every exit path, including a panic: `is_running` must never
+    // report a player whose command channel is gone as healthy.
+    struct AliveGuard<'a>(&'a AtomicBool);
+    impl Drop for AliveGuard<'_> {
+        fn drop(&mut self) {
+            self.0.store(false, Ordering::Relaxed);
+        }
+    }
+    let _alive = AliveGuard(&shared.worker_alive);
     let Some(ipc) = connect_ipc(endpoint, stop) else {
         shared.ipc_dead.store(true, Ordering::Relaxed);
         return;
@@ -942,13 +1035,16 @@ fn connect_ipc(endpoint: &str, stop: &AtomicBool) -> Option<Ipc> {
             Ok(mut stream) => {
                 stream.set_read_timeout(Some(IPC_TIMEOUT)).ok()?;
                 stream.set_write_timeout(Some(IPC_TIMEOUT)).ok()?;
-                let reader = stream.try_clone().ok()?;
-                log::debug!("[mpv] IPC connected: {endpoint}");
-                return Some(Ipc {
-                    reader: BufReader::new(reader),
-                    writer: stream,
-                    next_request: 0,
-                });
+                match Ipc::new(stream) {
+                    Ok(ipc) => {
+                        log::debug!("[mpv] IPC connected: {endpoint}");
+                        return Some(ipc);
+                    }
+                    Err(err) => {
+                        log::warn!("[mpv] could not start the IPC reader: {err}");
+                        return None;
+                    }
+                }
             }
             Err(err) if Instant::now() < deadline => {
                 let _ = err;
@@ -977,13 +1073,19 @@ fn exchange(ipc: &mut Ipc, args: Value) -> anyhow::Result<Value> {
     writeln!(ipc.writer, "{request}")?;
     ipc.writer.flush()?;
     loop {
-        let mut line = String::new();
-        if ipc.reader.read_line(&mut line)? == 0 {
-            anyhow::bail!(
-                "mpv closed the IPC socket: {}",
-                std::io::Error::from(std::io::ErrorKind::UnexpectedEof)
-            );
-        }
+        let line = match ipc.lines.recv_timeout(IPC_TIMEOUT) {
+            Ok(line) => line,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("mpv did not answer request {request_id} within {IPC_TIMEOUT:?}"),
+                )
+                .into());
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(std::io::Error::from(std::io::ErrorKind::UnexpectedEof).into());
+            }
+        };
         let Some(response) = next_response(&line, request_id)? else {
             continue;
         };
@@ -1078,14 +1180,7 @@ mod tests {
     #[test]
     fn exchange_reads_past_events() {
         let (client, mut server) = UnixStream::pair().unwrap();
-        client
-            .set_read_timeout(Some(Duration::from_secs(1)))
-            .unwrap();
-        let mut ipc = Ipc {
-            reader: BufReader::new(PipeStream::from_stream(client.try_clone().unwrap())),
-            writer: PipeStream::from_stream(client),
-            next_request: 0,
-        };
+        let mut ipc = Ipc::new(PipeStream::from_stream(client)).unwrap();
 
         let peer = std::thread::spawn(move || {
             {
@@ -1109,14 +1204,7 @@ mod tests {
 
     #[cfg(unix)]
     fn test_ipc(client: UnixStream) -> Ipc {
-        client
-            .set_read_timeout(Some(Duration::from_secs(1)))
-            .unwrap();
-        Ipc {
-            reader: BufReader::new(PipeStream::from_stream(client.try_clone().unwrap())),
-            writer: PipeStream::from_stream(client),
-            next_request: 0,
-        }
+        Ipc::new(PipeStream::from_stream(client)).unwrap()
     }
 
     #[cfg(unix)]
@@ -1126,6 +1214,7 @@ mod tests {
             muted: AtomicBool::new(false),
             paused: AtomicBool::new(true),
             ipc_dead: AtomicBool::new(false),
+            worker_alive: AtomicBool::new(true),
             last_error: Mutex::new(None),
             parked_position: Mutex::new(None),
             parked: AtomicBool::new(false),

@@ -254,13 +254,17 @@ impl App {
             let now = Instant::now();
             if now >= next_player {
                 next_player = now + PLAYER_WATCH_EVERY;
+                log::trace!("[Loop] watch_players start");
                 let mut state = app.borrow_mut();
                 state.watch_players();
+                log::trace!("[Loop] watch_players done");
                 state.flush_config_if_due();
             }
             if now >= next_rotation {
                 next_rotation = now + ROTATION_WATCH_EVERY;
+                log::trace!("[Loop] rotate_wallpapers start");
                 app.borrow_mut().rotate_wallpapers();
+                log::trace!("[Loop] rotate_wallpapers done");
             }
             if now >= next_power {
                 next_power = now + POWER_WATCH_EVERY;
@@ -307,6 +311,7 @@ impl App {
     }
 
     fn handle(&mut self, command: Command) {
+        log::trace!("[Command] {command:?}");
         match command {
             Command::ShowGui => self.show_gui(),
             Command::Null => {
@@ -1284,7 +1289,9 @@ impl App {
         // and mpv falls back to the CPU without saying so. One probe per
         // second is enough for the settings page and costs the command loop
         // nothing, because the reply is read on the IPC worker.
+        log::trace!("[Player] probing decoder");
         self.poll_hwdec();
+        log::trace!("[Player] decoder probed");
 
         // Free decoders that have been paused out of sight for a while. The
         // decision is checked every second so a monitor that becomes visible
@@ -1298,6 +1305,7 @@ impl App {
             window.set_park_allowed(allowed);
             window.park_if_due(now, DECODER_PARK_AFTER);
         }
+        log::trace!("[Player] parking checked");
 
         let desired = self.desired_windows();
         let pending_stream = self.config.mode == Mode::Stream && self.stream.is_none();
@@ -1310,8 +1318,10 @@ impl App {
             .filter_map(|(key, policy)| policy.retry_is_due(now).then(|| key.clone()))
             .collect();
         if due.is_empty() {
+            log::trace!("[Player] no retries due");
             return;
         }
+        log::trace!("[Player] creating {} window(s)", due.len());
 
         let volume = self.config.volume;
         let duration = self.config.fade_duration_sec;
@@ -1499,6 +1509,7 @@ impl App {
     }
 
     fn apply_playback_states(&mut self) {
+        log::trace!("[Eco] apply_playback_states start");
         let plans: Vec<(String, eco::Plan, bool)> = self
             .windows
             .iter()
@@ -1533,12 +1544,14 @@ impl App {
             window.set_fps_cap(plan.fps);
             self.last_plans.insert(monitor, plan);
         }
+        log::trace!("[Eco] apply_playback_states done");
         self.sync_snapshot();
     }
 
     /// Apply master mute and the per-monitor "mute when covered" rule. This
     /// also reaches Web wallpapers, which have no mpv volume.
     fn apply_mute_states(&mut self) {
+        log::trace!("[Eco] apply_mute_states start");
         let master = self.config.is_mute;
         let mute_when_covered = self.config.is_mute_when_maximized;
         let target = self.config.volume;
@@ -1559,6 +1572,7 @@ impl App {
             }
             window.set_mute(muted);
         }
+        log::trace!("[Eco] apply_mute_states done");
     }
 
     fn any_playing(&self) -> bool {
@@ -1823,6 +1837,7 @@ impl App {
     }
 
     fn sync_snapshot(&self) {
+        log::trace!("[Snapshot] publishing");
         let snapshot = Snapshot {
             mode: self.config.mode,
             volume: self.config.volume,
@@ -1894,6 +1909,7 @@ impl App {
         if let Ok(mut shared) = self.snapshot.lock() {
             *shared = snapshot;
         }
+        log::trace!("[Snapshot] published");
     }
 
     fn notify_user_error(&self, error: UserError) {

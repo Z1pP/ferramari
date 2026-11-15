@@ -236,12 +236,17 @@ impl Catalog {
                 }
                 continue;
             }
+            // A plural entry's msgid is `singular\0plural`; `tr_n` looks the
+            // message up by its singular form, so the key must be split at
+            // the first NUL. Keeping the raw msgid silently disabled every
+            // counted noun in a translated catalog.
+            let singular = original.split('\0').next().unwrap_or(&original);
             let forms: Vec<String> = translated
                 .split(|byte| *byte == 0)
                 .filter_map(|form| String::from_utf8(form.to_vec()).ok())
                 .collect();
-            if !forms.is_empty() {
-                messages.insert(original, forms);
+            if !singular.is_empty() && !forms.is_empty() {
+                messages.insert(singular.to_string(), forms);
             }
         }
         Some(Self { messages, plural })
@@ -734,6 +739,28 @@ mod tests {
         ] {
             assert_eq!(rule.index(n), expected, "n = {n}");
         }
+    }
+
+    #[test]
+    fn a_plural_msgid_is_keyed_by_its_singular_form() {
+        // MO stores a plural entry as `singular\0plural`; `tr_n` asks for the
+        // singular. Regression: the raw key never matched, so counted nouns
+        // stayed English in Russian and Japanese.
+        let catalog = Catalog::parse(&mo(
+            &[("display\0displays", "дисплей\0дисплея\0дисплеев")],
+            "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : \
+             n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n",
+        ))
+        .unwrap();
+        assert_eq!(
+            catalog.messages["display"],
+            vec![
+                "дисплей".to_string(),
+                "дисплея".to_string(),
+                "дисплеев".to_string()
+            ]
+        );
+        assert!(!catalog.messages.contains_key("display\0displays"));
     }
 
     #[test]

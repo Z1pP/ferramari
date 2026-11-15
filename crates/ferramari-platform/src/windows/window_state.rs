@@ -22,7 +22,7 @@ use windows::core::BOOL;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, TRUE, WPARAM};
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
 use windows::Win32::UI::WindowsAndMessaging::{
-    DefWindowProcW, DestroyWindow, EnumWindows, GetWindowLongW, GetWindowRect,
+    DefWindowProcW, DestroyWindow, EnumWindows, GetClassNameW, GetWindowLongW, GetWindowRect,
     GetWindowThreadProcessId, IsIconic, IsWindowVisible, IsZoomed, KillTimer, PostMessageW,
     PostQuitMessage, SetTimer, GWL_EXSTYLE, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_TIMER,
     WS_EX_TOOLWINDOW,
@@ -36,6 +36,38 @@ const TIMER_ID: usize = 1;
 /// the user notices a frame and long enough that the enumeration stays off
 /// the CPU profile; the list is compared before anything is sent.
 const SAMPLE_INTERVAL_MS: u32 = 750;
+
+/// Shell windows that cover the desktop by design.
+///
+/// `Progman` and `WorkerW` are the desktop itself and the wallpaper host; when
+/// they appear in `EnumWindows` their rectangles span the whole monitor, so
+/// treating them as applications would pause every wallpaper on a healthy
+/// desktop. The taskbar and Explorer's XAML island are excluded for the same
+/// reason: they belong to the shell, not to a window the user put over the
+/// wallpaper.
+const SHELL_WINDOW_CLASSES: &[&str] = &[
+    "Progman",
+    "WorkerW",
+    "Shell_TrayWnd",
+    "Shell_SecondaryTrayWnd",
+    "XamlExplorerHostIslandWindow_WASDK",
+];
+
+fn is_shell_class(class: &str) -> bool {
+    SHELL_WINDOW_CLASSES
+        .iter()
+        .any(|candidate| candidate.eq_ignore_ascii_case(class))
+}
+
+fn is_shell_window(hwnd: HWND) -> bool {
+    let mut buffer = [0u16; 128];
+    let length = unsafe { GetClassNameW(hwnd, &mut buffer) };
+    if length <= 0 {
+        return false;
+    }
+    let class = String::from_utf16_lossy(&buffer[..length as usize]);
+    is_shell_class(&class)
+}
 
 pub struct Watcher {
     hwnd: HWND,
@@ -212,6 +244,9 @@ fn sample() -> WindowState {
         if !unsafe { IsWindowVisible(hwnd).as_bool() } || unsafe { IsIconic(hwnd).as_bool() } {
             continue;
         }
+        if is_shell_window(hwnd) {
+            continue;
+        }
         let mut pid = 0u32;
         unsafe {
             GetWindowThreadProcessId(hwnd, Some(&mut pid));
@@ -293,6 +328,19 @@ mod tests {
         let mut sorted = state.windows.clone();
         sorted.sort_by_key(|window| (window.x, window.y, window.width, window.height));
         assert_eq!(state.windows, sorted);
+    }
+
+    #[test]
+    fn shell_classes_are_not_treated_as_application_windows() {
+        assert!(is_shell_class("Progman"));
+        assert!(is_shell_class("progman"));
+        assert!(is_shell_class("WorkerW"));
+        assert!(is_shell_class("Shell_TrayWnd"));
+        assert!(is_shell_class("Shell_SecondaryTrayWnd"));
+        assert!(is_shell_class("XamlExplorerHostIslandWindow_WASDK"));
+        assert!(!is_shell_class("ApplicationFrameWindow"));
+        assert!(!is_shell_class("Chrome_WidgetWin_1"));
+        assert!(!is_shell_class(""));
     }
 
     #[test]

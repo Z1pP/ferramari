@@ -32,6 +32,13 @@ use app::App;
 use cli::PackageCommand;
 
 fn main() {
+    // Before any window exists: a DPI-unaware process sees a 1920×1080
+    // display at 125% as 1536×864, which sizes the wallpaper surface too
+    // small. Windows lets a process opt in only once; when the launcher
+    // already made it aware the call fails and is ignored.
+    #[cfg(windows)]
+    desktop::init_dpi_awareness();
+
     let args = cli::Args::parse();
     init_logging(args.debug);
     // GNU gettext gives `LANGUAGE` priority over the system locale. The

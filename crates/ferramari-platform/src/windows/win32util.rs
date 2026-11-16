@@ -4,10 +4,28 @@ use windows::core::PCWSTR;
 use windows::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS, HANDLE, HWND};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::CreateMutexW;
+use windows::Win32::UI::HiDpi::{
+    SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DispatchMessageW, GetMessageW, RegisterClassW, TranslateMessage, MSG,
     WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW, WNDPROC,
 };
+
+/// Make the process per-monitor DPI aware before any window is created.
+///
+/// A process without a manifest inherits its awareness from whatever started
+/// it. When that is "unaware", Windows virtualizes every monitor: a 1920×1080
+/// display at 125% reports 1536×864, so the wallpaper surface is created 20%
+/// too small and the desktop image shows around it. The server has no
+/// manifest of its own, so it asks explicitly. The call can only succeed once
+/// and fails with `ERROR_ACCESS_DENIED` when the process is already aware,
+/// which is the desired state; the result is deliberately ignored.
+pub fn init_dpi_awareness() {
+    unsafe {
+        let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    }
+}
 
 /// UTF-8 to a NUL-terminated UTF-16 buffer for the `W` APIs.
 pub fn wide(text: &str) -> Vec<u16> {

@@ -6,17 +6,33 @@
 policy and the same Iced control surface now have a Win32 backend: a wallpaper
 window behind Explorer's desktop icons, physical-pixel monitor discovery,
 foreground/occlusion tracking, lock and power events, a tray icon, autostart
-and static-wallpaper handling. **438 tests** pass (14 binary + 344 core + 17
+and static-wallpaper handling. **439 tests** pass (15 binary + 344 core + 17
 media + 49 platform + 8 UI library + 6 UI binary).
 
 - **Wallpaper hosting.** A child window is parented to the `WorkerW` behind
   `SHELLDLL_DefView` (with `Progman` as fallback) and embedded into mpv through
-  `--wid`. Explorer restarts destroy that host; Windows leaves a cross-process
-  child alive, so `WallpaperSurface::is_alive` checks the parent link and the
-  host's owning process rather than only `IsWindow`. The media supervisor
-  drops the stale engine and rebuilds against the new host, retrying every
-  second while Explorer is gone; a lost host is not counted as a player
-  failure.
+  `--wid`. On Windows 11 Explorer keeps the icon view directly under `Progman`
+  and paints the desktop image in a visible `WorkerW` below it; the surface is
+  parented into that worker, taking the bottom-most visible one because the
+  dummy created by `0x052C` sits above the real painter. Explorer restarts and
+  wallpaper changes destroy or hide that host; Windows leaves a cross-process
+  child alive, so `WallpaperSurface::is_alive` checks the parent link, the
+  host's owning process and the host's visibility rather than only `IsWindow`.
+  The media supervisor drops the stale engine and rebuilds against the new
+  host, retrying every second while Explorer is gone; a lost host is not
+  counted as a player failure.
+- **Wallpaper changes no longer freeze playback.** `SPI_SETDESKWALLPAPER`
+  makes Explorer replace the wallpaper `WorkerW` and send synchronous messages
+  to the surface. The surface window used to belong to the command loop, which
+  was inside that very call, so the call waited about 105 seconds for a thread
+  that could not answer; mpv died with its host and the generated frame looked
+  as if it had never been applied. Each surface now owns a dedicated
+  message-pumping thread: the call returns in about half a second, the expected
+  host loss rebuilds the player in about two seconds, and a cross-process
+  `WM_NULL` or `SetWindowPos` to the surface returns immediately. The frame
+  freshness check also compares against the primary monitor's own source
+  instead of `Default`, which had discarded every frame after a per-monitor
+  switch and left the previous video's image on the desktop.
 - **Notification area.** The tray owns a hidden top-level window and re-adds
   its `Shell_NotifyIconW` entry when the shell broadcasts `TaskbarCreated`, so
   the icon comes back after an Explorer restart. The registration is cached in
@@ -107,8 +123,15 @@ media + 49 platform + 8 UI library + 6 UI binary).
   A second live pass on 2026-11-15 switched between two videos, paused,
   resumed and muted through the control API while `time-pos` advanced, and
   checked the embedded icons and ru/ja counted nouns in light and dark themes
-  at 1180 and 900 px. Multi-monitor and mixed-DPI scenarios stay unchecked
-  until they are run on suitable hardware.
+  at 1180 and 900 px. A third pass on 2026-11-16 switched
+  `Power-Dancing-1080p.mp4` ↔ `arcane-jinx.mp4` through the same `video`
+  command the control surface sends (with and without a monitor name): the
+  matching static frame was installed in 0.34–0.51 s instead of about 105 s,
+  Explorer replaced its worker as expected, the player rebuilt in about 2.5 s
+  and two desktop captures three seconds apart differed at 30k+ sample points
+  after every switch. A `WM_NULL` and a `SetWindowPos` sent from another
+  process to the surface returned in under a millisecond. Multi-monitor and
+  mixed-DPI scenarios stay unchecked until they are run on suitable hardware.
 
 ## 2.1.0 — 2026-11-10
 

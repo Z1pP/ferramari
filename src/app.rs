@@ -751,10 +751,8 @@ impl App {
                     }
                     return;
                 }
-                let still_current = self.config.mode == Mode::Video
-                    && self.config.is_static_wallpaper
-                    && self.config.default_source() == source
-                    && self.config.blur_radius.max(0) == blur;
+                let still_current =
+                    Self::static_frame_is_current(&self.config, &self.monitors, &source, blur);
                 if !still_current {
                     if let Some(file) = file {
                         let _ = fs::remove_file(file);
@@ -1714,6 +1712,22 @@ impl App {
         }
     }
 
+    /// Whether a rendered static frame still matches the settings it was made
+    /// for. The primary monitor's own video wins over `Default`, so comparing
+    /// the frame with `default_source` discarded every frame after a
+    /// per-monitor switch and left the previous video's image on the desktop.
+    fn static_frame_is_current(
+        config: &Config,
+        monitors: &[MonitorInfo],
+        source: &str,
+        blur: i64,
+    ) -> bool {
+        config.mode == Mode::Video
+            && config.is_static_wallpaper
+            && util::primary_source(config, monitors) == source
+            && config.blur_radius.max(0) == blur
+    }
+
     fn update_static_wallpaper(&mut self) {
         let source = util::primary_source(&self.config, &self.monitors).to_string();
         let blur = self.config.blur_radius.max(0);
@@ -2183,6 +2197,45 @@ mod tests {
             .find(|key| key.monitor == "HDMI-1")
             .expect("HDMI-1 window");
         assert_eq!(hdmi.source, "/videos/HDMI-1.mp4");
+    }
+
+    #[test]
+    fn a_static_frame_matches_the_primary_monitors_source() {
+        let monitors = vec![monitor("eDP-1", 0), monitor("HDMI-1", 1920)];
+        let mut config = Config::template(&["eDP-1".to_string(), "HDMI-1".to_string()]);
+        config.mode = Mode::Video;
+        config.is_static_wallpaper = true;
+        config.blur_radius = 5;
+        config
+            .data_source
+            .insert("Default".to_string(), "/videos/old.mp4".to_string());
+        config
+            .data_source
+            .insert("eDP-1".to_string(), "/videos/new.mp4".to_string());
+        config
+            .data_source
+            .insert("HDMI-1".to_string(), "/videos/new.mp4".to_string());
+
+        // The primary monitor switched to a new file; `Default` still names
+        // the old one and must not reject the new frame.
+        assert!(App::static_frame_is_current(
+            &config,
+            &monitors,
+            "/videos/new.mp4",
+            5
+        ));
+        assert!(!App::static_frame_is_current(
+            &config,
+            &monitors,
+            "/videos/old.mp4",
+            5
+        ));
+        assert!(!App::static_frame_is_current(
+            &config,
+            &monitors,
+            "/videos/new.mp4",
+            4
+        ));
     }
 
     #[test]

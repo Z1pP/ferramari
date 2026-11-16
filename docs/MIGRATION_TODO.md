@@ -150,12 +150,14 @@ Current boundary progress:
 
 - [x] Research and document the supported desktop wallpaper host strategy
       (including Progman/WorkerW behaviour and Explorer restarts).
-      `docs/BACKEND_CONTRACT.md` §9 records the undocumented `0x052C`
-      message that asks Explorer to spawn the wallpaper `WorkerW`, the
-      `SHELLDLL_DefView` sibling lookup, the Progman fallback, and why a
-      hosted child window cannot survive an Explorer restart. The surface
-      reports `is_alive() == false`; the media supervisor rebuilds the player
-      and the provider attaches it to the new host.
+      `docs/BACKEND_CONTRACT.md` §9 records both Explorer layouts: the classic
+      top-level `WorkerW` that owns `SHELLDLL_DefView`, and the Windows 11
+      layout where the icon view stays under `Progman` and a visible `WorkerW`
+      below it paints the desktop image. `0x052C` is sent only when no host
+      exists, because the dummy it creates sits above the real painter and is
+      later hidden. A hosted child window cannot survive an Explorer restart;
+      the surface reports `is_alive() == false`, the media supervisor rebuilds
+      the player and the provider attaches it to the new host.
 - [x] Implement display discovery and stable display identities.
       `windows/monitors.rs` enumerates `EnumDisplayMonitors`, reads the device
       interface string through `EnumDisplayDevicesW` as `identity.native_id`,
@@ -166,9 +168,11 @@ Current boundary progress:
       One `WS_CHILD` window per monitor is parented to the `WorkerW` behind
       the desktop icons, moved into host coordinates with
       `MapWindowPoints`, made click-through with `HTTRANSPARENT`, and embedded
-      into mpv through the HWND passed as `--wid`. `Drop` destroys the child;
-      a missing Explorer host is an explicit error rather than a hidden
-      failure.
+      into mpv through the HWND passed as `--wid`. Each window is created and
+      owned by a dedicated thread that pumps its messages, so Explorer's
+      synchronous messages never wait on the command loop. `Drop` posts
+      `WM_CLOSE`; a missing Explorer host is an explicit error rather than a
+      hidden failure.
 - [x] Verify live playback on one Explorer-hosted display.
       With mpv 0.42, ffmpeg 9.0.2 and yt-dlp 2026.10.26 installed through
       winget, a local 1080p video played behind the desktop icons with
@@ -183,6 +187,16 @@ Current boundary progress:
       continuously, replies are matched by `request_id` with a timeout, and
       `worker_alive` reports a stopped worker. Verified live by switching
       videos, pausing/resuming, muting and watching `time-pos` advance.
+- [x] Fix the wallpaper-change stall that froze the command loop and killed
+      playback. `SPI_SETDESKWALLPAPER` makes Explorer replace its wallpaper
+      `WorkerW` and send synchronous messages to the surface. The surface used
+      to belong to the command loop, which was inside the call, so it waited
+      about 105 s and the player died with its host. Each surface now owns a
+      dedicated message-pumping thread; the same call returns in about 0.5 s,
+      the expected host loss rebuilds the player, and a cross-process
+      `WM_NULL`/`SetWindowPos` returns immediately. Frame freshness compares
+      the primary monitor's source instead of `Default`, so a per-monitor
+      switch replaces the desktop image.
 - [x] Implement foreground/fullscreen/occlusion tracking.
       `windows/window_state.rs` samples the complete top-level window list
       every 750 ms, filters invisible, minimized, DWM-cloaked, tool and

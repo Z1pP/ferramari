@@ -13,6 +13,12 @@ use std::time::Duration;
 
 use ferramari_core::platform::{PlatformCapabilities, SupportLevel};
 
+/// Opt the server into per-monitor DPI awareness before it enumerates
+/// displays or creates a window. See `win32util::init_dpi_awareness`.
+pub fn init_dpi_awareness() {
+    crate::win32util::init_dpi_awareness();
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionKind {
     Windows,

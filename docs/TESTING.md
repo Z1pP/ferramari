@@ -17,7 +17,7 @@ job proves the build and unit tests, not wallpaper playback.
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |
 | GNOME with the Flatpak bundle | **tested** 2026-10-31, 0.7.0 | Built and launched from a local bundle; host mpv/ffmpeg bridge, XWayland, WebKitGTK; 0.8 uses the same manifest; tray/autostart not verified |
-| Windows 11 23H2, Explorer desktop | **partial** 2026-11-15 | Release build, full unit suite, `--doctor`, live display/desktop/session probes and one Explorer-hosted surface passed; live 1080p playback behind the icons with mpv 0.42, ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`), plus automatic mpv recreation after a kill, Explorer-restart recovery through the `Progman` fallback, tray re-registration on `TaskbarCreated`, second-launch focus, tray commands, autostart and static-wallpaper toggles. A later pass fixed the IPC reader stall and verified live switching, pause/resume, mute and advancing playback, the embedded icon font, and ru/ja counted nouns in light/dark themes at 1180 and 900 px. Multi-monitor and mixed-DPI scenarios are unchecked |
+| Windows 11 23H2, Explorer desktop | **partial** 2026-11-16 | Release build, full unit suite, `--doctor`, live display/desktop/session probes and one Explorer-hosted surface passed; live 1080p playback behind the icons with mpv 0.42, ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`), plus automatic mpv recreation after a kill, Explorer-restart recovery, tray re-registration on `TaskbarCreated`, second-launch focus, tray commands, autostart and static-wallpaper toggles. A later pass fixed the IPC reader stall and verified live switching, pause/resume, mute and advancing playback, the embedded icon font, and ru/ja counted nouns in light/dark themes at 1180 and 900 px. The 2026-11-16 pass moved each surface onto its own message-pumping thread, which cut a wallpaper change from a 105 s command-loop stall to about 0.5 s, and verified bidirectional video switching through the control surface's own `video` command. Multi-monitor and mixed-DPI scenarios are unchecked |
 | Windows 10/11 with the installer | **partial** 2026-11-14 | Per-user silent install, Start-menu launch of both binaries and mpv, `--doctor`, ru/ja catalogs, portable ZIP from a path with a space and silent uninstall preserving user data passed on one Windows 11 account; not yet run on a clean machine or through an upgrade |
 | Native Wayland (no XWayland) | not supported | No wallpaper surface or `--wid` embedding yet |
 
@@ -248,6 +248,17 @@ profile.
 ### Wallpaper host and Explorer restarts
 - [x] Apply a local video to one monitor; it appears behind the desktop icons
       and the icons stay clickable.
+- [x] Switch videos through the control surface's own `video` command, with
+      and without a monitor name; the new file plays and the desktop frame is
+      replaced. Verified 2026-11-16 both ways (`Power-Dancing-1080p.mp4` ↔
+      `arcane-jinx.mp4`): the matching static frame was installed in
+      0.34–0.51 s, Explorer replaced its worker, a fresh mpv started in about
+      2.5 s, and two desktop captures three seconds apart differed at 30k+
+      sample points after every switch.
+- [x] Send `WM_NULL` and `SetWindowPos` to the surface from another process;
+      both return in under a millisecond because the surface owns a
+      message-pumping thread. Before the thread, the same calls hung until
+      their timeout.
 - [x] Restart Explorer (`taskkill /F /IM explorer.exe` then start it again):
       playback is recreated within the restart backoff and the new surface is
       attached to the new `WorkerW` or to `Progman` when Explorer keeps the
@@ -400,6 +411,25 @@ earlier application-loop freeze did not recur; trace markers around
 `watch_players`, rotation, Eco and snapshot publishing are in place for the
 next occurrence. Real lock, sleep/resume, sign-out and multi-monitor scenarios
 remain unchecked.
+
+Recorded 2026-11-16 on the same machine: the static-frame path was traced to
+`SPI_SETDESKWALLPAPER` waiting about 105 s for the surface window's thread,
+which was the command loop itself and was inside the call. Each surface now
+has a dedicated message-pumping thread. A debug server then switched
+`arcane-jinx.mp4` → `Power-Dancing-1080p.mp4` → `arcane-jinx.mp4` →
+`Power-Dancing-1080p.mp4` through the control endpoint's `video` command, both
+with an explicit `DISPLAY1` argument and with the empty monitor string the
+control surface sends. Every switch logged `[StaticWallpaper] Applied`
+0.34–0.51 s after `[Mode]`, the expected `[Player] DISPLAY1 lost its wallpaper
+host` / `stopped` rebuild followed, and a new mpv with a new `--wid` started
+about 2.5 s after the command. Two desktop captures three seconds apart
+differed at 30k+ sample points after each switch, and the registry wallpaper
+named the frame for the selected file. `SendMessageTimeoutW(WM_NULL)` and
+`SetWindowPos` from a PowerShell process to the surface returned in 0 ms.
+`cargo test --workspace` passed 439 tests (15 binary + 344 core + 17 media + 49
+platform + 8 UI library + 6 UI binary), including the new
+`a_static_frame_matches_the_primary_monitors_source`. The original source and
+wallpaper were restored at the end.
 
 ## Reproducible local run
 

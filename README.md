@@ -185,6 +185,11 @@ binaries. The installer defaults to a per-user install under
 shortcuts, and keeps user data on uninstall. See
 [`installer/README.md`](installer/README.md).
 
+2.2.0 is the first Windows release: a Win32 wallpaper host behind Explorer's
+icons, per-monitor Eco pause, lock/suspend/charger/idle events, live CPU/RAM/
+GPU metrics, close-to-tray behaviour, the crab icon in both executables and
+the installer, and the same Iced control surface as on Linux.
+
 ### Flatpak
 
 A self-hosted manifest is present in `flatpak/` and has been migrated to the

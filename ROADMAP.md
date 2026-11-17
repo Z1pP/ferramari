@@ -24,7 +24,7 @@ bundle uses host media tools.
 
 ## After 1.0
 
-### 2.1 — Windows backend
+### 2.2 — Windows backend
 
 - [x] Win32 wallpaper host behind Explorer's icons, with Explorer-restart detection
 - [x] Display discovery, stable device identities and physical-pixel geometry
@@ -32,6 +32,7 @@ bundle uses host media tools.
 - [x] Lock, suspend/resume, charger, idle and console shutdown events
 - [x] Tray, autostart, static wallpaper and loopback control transport
 - [x] Windows CI, Inno Setup installer and portable ZIP
+- [x] Windows resource metrics (CPU/RAM/GPU), close-to-tray and product icon
 - [ ] Live multi-monitor, mixed-DPI, Explorer-restart and GPU-variant matrix
 
 ### 1.9 — Creator Engine completion

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased - Windows backend
+## 2.2.0 - 2026-11-17
 
 **Ferramari runs on Windows 10/11.** The same two binaries, the same core
 policy and the same Iced control surface now have a Win32 backend: a wallpaper

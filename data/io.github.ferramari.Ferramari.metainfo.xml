@@ -2,15 +2,15 @@
 <component type="desktop-application">
   <id>io.github.ferramari.Ferramari</id>
   <name>Ferramari</name>
-  <summary>Video wallpapers for Linux desktops</summary>
+  <summary>Video wallpapers for Linux and Windows</summary>
   <developer id="io.github.ferramari">
     <name>Ferramari contributors</name>
   </developer>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <description>
-    <p>Ferramari turns local videos into animated desktop wallpapers on Linux. It provides per-monitor playback, a library, a community catalogue and power-aware playback controls.</p>
-    <p>The application uses mpv for video playback and an Iced control window for managing wallpapers. X11 is supported directly; Wayland sessions currently use XWayland for wallpaper surfaces.</p>
+    <p>Ferramari turns local videos into animated desktop wallpapers on Linux and Windows. It provides per-monitor playback, a library, a community catalogue and power-aware playback controls.</p>
+    <p>The application uses mpv for video playback and an Iced control window for managing wallpapers. Linux uses X11 directly (Wayland sessions currently use XWayland for wallpaper surfaces); Windows hosts the surface behind Explorer's desktop icons.</p>
   </description>
   <launchable type="desktop-id">io.github.ferramari.Ferramari.desktop</launchable>
   <url type="homepage">https://github.com/Z1pP/ferramari</url>
@@ -21,6 +21,18 @@
     <category>Graphics</category>
   </categories>
   <releases>
+    <release version="2.2.0" date="2026-11-17" type="stable">
+      <description>
+        <p>Ferramari now runs on Windows 10/11 with a native Win32 wallpaper host and the same Iced control surface.</p>
+        <ul>
+          <li>Video wallpapers behind Explorer's desktop icons, with per-monitor geometry and Explorer-restart recovery.</li>
+          <li>Lock, suspend/resume, charger, idle and console-shutdown events; Eco pauses a monitor covered by a maximized or fullscreen window.</li>
+          <li>Windows performance metrics: CPU, RAM, threads and processes from the process tree, plus GPU Engine utilization through PDH.</li>
+          <li>Close the control window to the notification area; the tray or a second launch raises the same hidden window.</li>
+          <li>Native tray, per-user autostart, static wallpaper, Inno Setup installer and portable ZIP with the crab icon in both executables.</li>
+        </ul>
+      </description>
+    </release>
     <release version="2.1.0" date="2026-11-10" type="stable">
       <description>
         <p>The control surface redrawn to the reference design, and the shutdown path made real.</p>

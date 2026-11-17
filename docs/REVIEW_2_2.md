@@ -118,9 +118,9 @@ Statuses used below:
 | R-05 | P1 | partially-fixed | Error reporting | Errors now publish to `operation_status`; per-command result semantics remain open |
 | R-06 | P1 | partially-fixed | Playback state | `is_playing` now requires a live player; cold-start decode is still not a separate fact |
 | R-07 | P1 | fixed-unit | Mixed DPI | Windows physical geometry is multiplied by `scale_factor` a second time |
-| R-08 | P1 | partially-fixed | Windows control transport | Unbounded request line fixed; per-client thread cap remains |
+| R-08 | P1 | fixed-unit | Windows control transport | Request line and concurrent client threads are bounded |
 | R-09 | P2 | confirmed-code | UI status | Sticky status banner; one-snapshot optimistic play state |
-| R-10 | P2 | confirmed-code | Config validation | Loaded volume/blur/fade values are not range-checked |
+| R-10 | P2 | fixed-unit | Config validation | Loaded volume/blur/fade values are range-checked and persisted |
 | R-11 | P2 | fixed-unit | Config robustness | A UTF-8 BOM makes the whole config fall back to defaults |
 | R-12 | P2 | fixed-code | Cache management | `catalogue::cleanup_cache()` has no caller |
 | R-13 | P2 | risk | Single instance | Second launch can silently lose the startup race |
@@ -604,7 +604,7 @@ display at scale 2 and asserts the occlusion rectangle stays 1920×1080. The
 ## R-08 — Windows control endpoint accepts an unbounded line and spawns unbounded client threads
 
 **Priority:** P1  
-**Status:** `partially-fixed`
+**Status:** `fixed-unit`
 
 **Where**
 
@@ -640,13 +640,14 @@ tests with an oversized line, a slow client and a burst of connections.
   isolated path inherited SYSTEM/Administrators/user only; no explicit ACL is
   set by the app).
 
-**Resolution (2026-11-18, partial)**
+**Resolution (2026-11-18)**
 
-`read_request_line()` now reads through a `Read::take` limit of 64 KiB plus one
-byte and rejects an oversized line before JSON parsing. The new test
-`control_request_lines_have_a_hard_size_limit` covers a normal line, EOF and an
-oversized line. The per-connection thread count is still unbounded; that
-remains a Phase 1 follow-up.
+`read_request_line()` reads through a `Read::take` limit of 64 KiB plus one byte
+and rejects an oversized line before JSON parsing. The accept loop also admits
+at most `MAX_CLIENTS` (16) concurrent handlers; a rejected connection is
+dropped without spawning a thread, and a `ClientSlot` releases the slot on every
+normal or unwinding exit. The tests cover a normal line, EOF, an oversized line,
+slot exhaustion and slot reuse.
 
 ---
 
@@ -696,7 +697,7 @@ a bounded display time.
 ## R-10 — Loaded numeric settings are not range-checked
 
 **Priority:** P2  
-**Status:** `confirmed-code`
+**Status:** `fixed-unit`
 
 **Where**
 
@@ -727,6 +728,13 @@ bounded independently.
 - Table-driven parse tests for the four fields.
 - A property test over out-of-range integers, asserting the in-memory and
   saved values are in range.
+
+**Resolution (2026-11-18)**
+
+`Config::parse()` now clamps volume to 0–100, blur to 0–20, fade duration to
+0–60 seconds and fade interval to 0.001–10 seconds, marking the document for
+rewrite when a value changes. `out_of_range_numbers_are_clamped_and_persisted`
+covers the negative and oversized cases.
 
 ---
 
@@ -1020,7 +1028,8 @@ the audit and verification results separate.
 | R-05: publish errors to the snapshot | Code path now calls `set_operation_status`; per-command ack still open |
 | R-06: live-player check for `is_playing` | New media liveness test; decode-before-frame state still separate |
 | R-07: physical/logical monitor geometry | New dashboard unit test; live mixed-DPI matrix still open |
-| R-08: bounded control request line | New platform test; per-client thread cap still open |
+| R-08: bounded control transport | New platform tests for line size and client slots |
+| R-10: numeric config ranges | New parse test |
 | R-11: UTF-8 BOM handling | New config test |
 | R-12: catalogue cache cleanup call | Startup call added; fake-root test still open |
 
@@ -1032,8 +1041,8 @@ cargo test --workspace --locked                                 exit 0
 cargo build --workspace --release --locked                      exit 0
 ```
 
-Test totals after the change set: **458 passed, 0 failed** (16 binary + 354
-core + 18 media + 56 platform + 8 UI library + 6 UI binary).
+Test totals after the change set: **460 passed, 0 failed** (16 binary + 355
+core + 18 media + 57 platform + 8 UI library + 6 UI binary).
 
 ## Phase 0 exit
 

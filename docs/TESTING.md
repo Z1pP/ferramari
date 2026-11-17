@@ -370,6 +370,26 @@ profile.
 - [x] Extract the portable ZIP to a folder with a space in its path; both
       binaries start and find their locale catalogs.
 
+### Phase 1 reliability regressions (2026-11-18)
+
+These target the findings in `docs/REVIEW_2_2.md`. They are separate from the
+full matrix above and do not certify the Windows row by themselves.
+
+- [x] With `is_static_wallpaper=false`, apply a local video and wait: the mpv
+      PID stays stable, the log has no `lost its wallpaper host`/restart
+      sequence, and the snapshot reports `player_stats.active=true`.
+      Verified 2026-11-18 on Windows 11 26200, 1920×1080 @125%, after the
+      idempotent-restore fix.
+- [ ] Set the volume through the control endpoint to 77, immediately send
+      `reload_config`, and confirm the snapshot and `config.json` still say 77.
+- [ ] Apply a missing video path through the control endpoint and confirm the
+      UI shows a visible error rather than the command only succeeding in the
+      log.
+- [ ] On a 150% or 200% display, cover the monitor with a fullscreen window and
+      confirm Eco reports `Occluded`; repeat on a mixed-DPI two-monitor layout.
+- [ ] Open more than 16 control connections or send a request over 64 KiB and
+      confirm the server rejects it without spawning unbounded work.
+
 Record the Windows build number, GPU, monitor layout and mpv/ffmpeg versions
 next to the results. Do not mark the Windows row in the environment matrix as
 `tested` until every section above has been run.

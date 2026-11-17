@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, Read};
 use std::net::TcpListener;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
@@ -126,21 +127,48 @@ pub fn register(
     std::thread::Builder::new()
         .name("ferramari-control".to_string())
         .spawn(move || {
+            let active = Arc::new(AtomicUsize::new(0));
             for stream in listener.incoming() {
                 match stream {
                     Ok(stream) => {
+                        let Some(slot) = try_acquire_client(&active) else {
+                            log::debug!("[Control] Rejecting a client: all slots are busy");
+                            drop(stream);
+                            continue;
+                        };
                         let tx = tx.clone();
                         let snapshot = Arc::clone(&snapshot);
                         let token = token.clone();
                         let _ = std::thread::Builder::new()
                             .name("ferramari-control-client".to_string())
-                            .spawn(move || handle_client(stream, &token, &tx, &snapshot));
+                            .spawn(move || {
+                                let _slot = slot;
+                                handle_client(stream, &token, &tx, &snapshot);
+                            });
                     }
                     Err(err) => log::warn!("[Control] Accept failed: {err}"),
                 }
             }
         })?;
     Ok(())
+}
+
+/// Releases one connection slot even if the handler unwinds.
+struct ClientSlot(Arc<AtomicUsize>);
+
+impl Drop for ClientSlot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+fn try_acquire_client(active: &Arc<AtomicUsize>) -> Option<ClientSlot> {
+    if active.fetch_add(1, Ordering::AcqRel) >= control::MAX_CLIENTS {
+        active.fetch_sub(1, Ordering::AcqRel);
+        None
+    } else {
+        Some(ClientSlot(Arc::clone(active)))
+    }
 }
 
 fn handle_client(
@@ -456,6 +484,23 @@ mod tests {
         ] {
             assert!(value.get(key).is_some(), "missing {key}");
         }
+    }
+
+    #[test]
+    fn control_connections_have_a_concurrency_limit() {
+        let active = Arc::new(AtomicUsize::new(0));
+        let mut slots = Vec::new();
+        for _ in 0..control::MAX_CLIENTS {
+            slots.push(try_acquire_client(&active).expect("slot available"));
+        }
+        assert!(try_acquire_client(&active).is_none());
+        assert_eq!(active.load(Ordering::Acquire), control::MAX_CLIENTS);
+
+        slots.pop();
+        let extra = try_acquire_client(&active).expect("slot reused");
+        assert_eq!(active.load(Ordering::Acquire), control::MAX_CLIENTS);
+        drop(extra);
+        assert_eq!(active.load(Ordering::Acquire), control::MAX_CLIENTS - 1);
     }
 
     #[test]

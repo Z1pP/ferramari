@@ -370,6 +370,31 @@ impl Config {
             config.theme = default_theme();
         }
 
+        // Keep the on-disk values inside the same ranges the runtime setters
+        // enforce. A hand-edited or older file must not be able to feed a huge
+        // blur radius or a negative/very small fade interval into the fade and
+        // ffmpeg workers.
+        let volume = config.volume.clamp(0, 100);
+        if volume != config.volume {
+            config.volume = volume;
+            changed = true;
+        }
+        let blur = config.blur_radius.clamp(0, 20);
+        if blur != config.blur_radius {
+            config.blur_radius = blur;
+            changed = true;
+        }
+        let fade_duration = config.fade_duration_sec.clamp(0.0, 60.0);
+        if fade_duration != config.fade_duration_sec {
+            config.fade_duration_sec = fade_duration;
+            changed = true;
+        }
+        let fade_interval = config.fade_interval.clamp(0.001, 10.0);
+        if fade_interval != config.fade_interval {
+            config.fade_interval = fade_interval;
+            changed = true;
+        }
+
         // Monitors come and go; a new monitor inherits the Default source.
         for monitor in monitors {
             if !config.data_source.contains_key(monitor) {
@@ -902,6 +927,24 @@ mod tests {
         let (config, _) = Config::parse(&text, &monitors());
         assert_eq!(config.volume, 21);
         assert!(is_json_object(&text));
+    }
+
+    #[test]
+    fn out_of_range_numbers_are_clamped_and_persisted() {
+        let text = r#"{
+            "version": 4, "mode": "MODE_NULL",
+            "data_source": {"Default": ""},
+            "audio_volume": 999,
+            "static_wallpaper_blur_radius": -4,
+            "fade_duration_sec": 999.0,
+            "fade_interval": 0.0
+        }"#;
+        let (config, changed) = Config::parse(text, &monitors());
+        assert!(changed);
+        assert_eq!(config.volume, 100);
+        assert_eq!(config.blur_radius, 0);
+        assert_eq!(config.fade_duration_sec, 60.0);
+        assert_eq!(config.fade_interval, 0.001);
     }
 
     #[test]

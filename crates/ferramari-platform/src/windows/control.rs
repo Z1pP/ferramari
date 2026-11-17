@@ -43,6 +43,10 @@ pub const IO_TIMEOUT: Duration = Duration::from_secs(5);
 /// line before the token is even checked.
 pub const MAX_REQUEST_BYTES: usize = 64 * 1024;
 
+/// Maximum control connections handled at once. The UI uses one; the spare
+/// slots cover scripts and a reconnect overlapping the old connection.
+pub const MAX_CLIENTS: usize = 16;
+
 /// What `control-endpoint.json` contains.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Endpoint {

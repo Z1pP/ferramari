@@ -368,7 +368,7 @@ next to the results. Do not mark the Windows row in the environment matrix as
 
 Recorded 2026-11-12 on Windows 11 23H2, one 1920×1080 display at 125%,
 Explorer, with mpv 0.42.0, ffmpeg/ffprobe 9.0.2 and yt-dlp 2026.10.26:
-`cargo test --workspace` passed (15 binary + 347 core + 17 media + 54 platform
+`cargo test --workspace` passed (14 binary + 344 core + 17 media + 49 platform
 + 8 UI library + 6 UI binary tests), the release workspace produced both `.exe`
 files, and `ferramari --doctor` reported the Win32 backend, one `DISPLAY1` with its
 monitor device interface, Explorer wallpaper host = yes, every capability

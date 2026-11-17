@@ -416,7 +416,7 @@ test remains to be added with the next app-level test harness.
 ## R-05 — Server-side application errors never reach the control surface
 
 **Priority:** P1  
-**Status:** `confirmed-live`
+**Status:** `partially-fixed`
 
 **Where**
 
@@ -584,7 +584,7 @@ display before claiming mixed-DPI support.
 ## R-08 — Windows control endpoint accepts an unbounded line and spawns unbounded client threads
 
 **Priority:** P1  
-**Status:** `confirmed-code`
+**Status:** `partially-fixed`
 
 **Where**
 
@@ -713,7 +713,7 @@ bounded independently.
 ## R-11 — A UTF-8 BOM resets the whole config
 
 **Priority:** P2 (manual-edit robustness)  
-**Status:** `confirmed-repro`
+**Status:** `fixed-unit`
 
 **Where**
 
@@ -758,7 +758,7 @@ document and preserves its value.
 ## R-12 — `catalogue::cleanup_cache()` has no caller
 
 **Priority:** P2  
-**Status:** `confirmed-code`
+**Status:** `fixed-code` (startup call added; fake-root test open)
 
 **Where**
 

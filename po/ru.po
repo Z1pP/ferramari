@@ -463,7 +463,7 @@ msgstr "Сейчас воспроизводится"
 
 #: crates\ferramari-ui\src\main.rs:458
 msgid "Occluded"
-msgstr "Закрыт окном"
+msgstr "Перекрыт окном"
 
 #: crates\ferramari-ui\src\main.rs:4469 crates\ferramari-ui\src\main.rs:4653
 msgid "Off"

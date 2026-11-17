@@ -112,6 +112,12 @@ media + 54 platform + 8 UI library + 6 UI binary).
   Explorer's XAML island are excluded from the `EnumWindows` sample; otherwise
   the desktop's own host windows counted as covering the wallpaper and Eco
   paused it.
+- **Occlusion pauses the covered monitor.** With "Pause on maximized window"
+  enabled, a maximized, fullscreen or otherwise fully covering window pauses
+  playback on that monitor only; the watcher samples every 750 ms and ignores
+  shell, tool and own-process windows. Verified live on Windows by maximizing
+  the control window (`[Eco] DISPLAY1: Occluded (play=false)`) and restoring
+  it (`Active (play=true)`).
 - **The icon font is embedded.** Font Awesome 4.7 ships as
   `crates/ferramari-ui/assets/fontawesome-webfont.ttf` (SIL OFL 1.1, licence
   beside it) and is registered under the family name `FontAwesome`. The rail

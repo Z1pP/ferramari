@@ -332,7 +332,7 @@ time:
 | --- | --- |
 | `Active` | normal |
 | `Idle` | Balanced caps the frame rate at 30 fps; Eco pauses after the configured idle delay (5 min default) |
-| `Occluded` | paused when **Pause when maximized window** is on (X11 sessions) |
+| `Occluded` | paused when **Pause when maximized window** is on (X11 and Windows sessions) |
 | `Suspended` | paused on lock, suspend, battery rule or explicit pause |
 
 The profiles are **Quality** (smoothness first), **Balanced** (pause hidden

@@ -343,8 +343,11 @@ profile.
 - [ ] Sleep/resume; playback resumes without restarting the process.
 - [ ] Unplug/plug the charger on a laptop; the AC/battery state changes and
       “Pause on battery” acts without waiting for the 30 s poll.
-- [ ] Cover a monitor with a maximized or fullscreen window; only that monitor
-      pauses. Close it; that monitor resumes.
+- [x] Cover a monitor with a maximized or fullscreen window; only that monitor
+      pauses. Close it; that monitor resumes. Verified 2026-11-17 on Windows
+      with `is_pause_when_maximized=true`: maximizing the control window made
+      `[Eco] DISPLAY1: Occluded (play=false)`, and unmaximizing returned
+      `Active (play=true)`.
 - [ ] Leave the desktop idle past the Eco delay; playback pauses and resumes
       on input.
 - [ ] A UWP window on another virtual desktop does not count as occlusion.
@@ -496,7 +499,10 @@ passed 443 tests (15 binary + 344 core + 17 media + 53 platform + 8 UI library
 Recorded 2026-11-17 on the same machine: the Performance page showed live CPU
 (8%), RAM (0.2–0.3 GB of 16 GB, 1–2%), GPU (50–55%), 62–70 threads and 3
 processes for the server tree while a 1080p VP9 video played. The GPU tile
-reads the Windows `GPU Engine` counters through PDH. Closing the
+reads the Windows `GPU Engine` counters through PDH. With
+`is_pause_when_maximized` enabled, maximizing the control window moved
+DISPLAY1 to `Occluded (play=false)` within one 750 ms sample; restoring it
+returned `Active (play=true)`. Closing the
 control window with `WM_CLOSE` left `ferramari-ui` alive and enabled the tray;
 the tray's Show command and a second launch raised the same hidden window, and
 a hidden window exited after the server was quit. `ExtractAssociatedIcon`

@@ -87,7 +87,7 @@ validation are complete. A successful compile alone is not a runtime pass.
 
 Current boundary progress:
 - Core config, cache, data and video-library roots now resolve to native per-user locations on Linux, macOS and Windows; Linux keeps its XDG/`xdg-user-dir` behavior.
-- Process metrics report a value on Linux (`/proc`) and Windows (Toolhelp + `GetProcessTimes`/`GetProcessMemoryInfo`); platforms without a sampler report `Unsupported` instead of misleading zeroes. GPU stays unsupported on Windows.
+- Process metrics report a value on Linux (`/proc`) and Windows (Toolhelp + `GetProcessTimes`/`GetProcessMemoryInfo`); platforms without a sampler report `Unsupported` instead of misleading zeroes. GPU uses the Windows PDH `GPU Engine` counters; Linux keeps the AMDGPU `gpu_busy_percent` sysfs path.
 - Unix process-group termination and private-key mode bits are cfg-gated; Windows uses `taskkill /T /F` to end a timed-out `yt-dlp` process tree and relies on the user's profile ACL for key files.
 - Window rectangles and occlusion evaluation now live in ferramari-core.
 - The EWMH watcher now lives in ferramari-platform; its Windows counterpart samples `EnumWindows`.
@@ -239,8 +239,10 @@ Current boundary progress:
 - [x] Sample Windows resource metrics.
       `ferramari-core::metrics` walks the Toolhelp process table and reads
       `GetProcessTimes`, `GetProcessMemoryInfo` and `GlobalMemoryStatusEx`;
-      the Performance page now shows CPU, RAM, threads and processes for the
-      server tree. GPU remains `N/A` until a portable counter is wired up.
+      the Performance page shows CPU, RAM, threads and processes for the
+      server tree. GPU utilization comes from the PDH `GPU Engine` counters;
+      the busiest engine is reported and `N/A` is kept for a missing counter
+      set.
 - [x] Verify Explorer restart recovery.
       Killing `explorer.exe` twice on the test machine made the surface report
       the lost host within a second; the supervisor retried while `Progman`

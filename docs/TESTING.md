@@ -17,7 +17,11 @@ job proves the build and unit tests, not wallpaper playback.
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |
 | GNOME with the Flatpak bundle | **tested** 2026-10-31, 0.7.0 | Built and launched from a local bundle; host mpv/ffmpeg bridge, XWayland, WebKitGTK; 0.8 uses the same manifest; tray/autostart not verified |
-| Windows 11 23H2, Explorer desktop | **partial** 2026-11-17 | Release build, full unit suite, `--doctor`, live display/desktop/session probes and one Explorer-hosted surface passed; live 1080p playback behind the icons with mpv 0.42, ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`), plus automatic mpv recreation after a kill, Explorer-restart recovery, tray re-registration on `TaskbarCreated`, second-launch focus, tray commands, autostart and static-wallpaper toggles. A later pass fixed the IPC reader stall and verified live switching, pause/resume, mute and advancing playback, the embedded icon font, and ru/ja counted nouns in light/dark themes at 1180 and 900 px. The 2026-11-16 pass moved each surface onto its own message-pumping thread, which cut a wallpaper change from a 105 s command-loop stall to about 0.5 s, and verified bidirectional video switching through the control surface's own `video` command. The 2026-11-17 pass added live Windows CPU/RAM/thread/process sampling (GPU stays `N/A`), close-to-tray with automatic tray enablement and hidden-window raise, and the embedded crab icon in both executables, the window, the tray and the installer. Multi-monitor and mixed-DPI scenarios are unchecked |
+| Windows 11 23H2, Explorer desktop | **partial** 2026-11-17 | Release build, full unit suite, `--doctor`, live display/desktop/session probes and one Explorer-hosted surface passed; live 1080p playback behind the icons with mpv 0.42, ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`), plus automatic mpv recreation after a kill, Explorer-restart recovery, tray re-registration on `TaskbarCreated`, second-launch focus, tray commands, autostart and static-wallpaper toggles. A later pass fixed the IPC reader stall and verified live switching, pause/resume, mute and advancing playback, the embedded icon font, and ru/ja counted nouns in light/dark themes at 1180 and 900 px. The 2026-11-16 pass moved each surface onto its own message-pumping thread, which cut a wallpaper change from a 105 s command-loop stall to about 0.5 s, and verified bidirectional video switching through the control surface's own `video` command. The 2026-11-17 pass added live Windows CPU/RAM/thread/process sampling, GPU
+utilization from the Windows `GPU Engine` counters, close-to-tray with
+automatic tray enablement and hidden-window raise, and the embedded crab icon
+in both executables, the window, the tray and the installer. Multi-monitor and
+mixed-DPI scenarios are unchecked |
 | Windows 10/11 with the installer | **partial** 2026-11-14 | Per-user silent install, Start-menu launch of both binaries and mpv, `--doctor`, ru/ja catalogs, portable ZIP from a path with a space and silent uninstall preserving user data passed on one Windows 11 account; not yet run on a clean machine or through an upgrade |
 | Native Wayland (no XWayland) | not supported | No wallpaper surface or `--wid` embedding yet |
 
@@ -330,10 +334,11 @@ profile.
 
 ### Performance and Eco events
 - [x] Open Performance: CPU, RAM, threads and processes show live values for
-      the server tree; GPU reports `N/A` on Windows because no portable counter
-      is wired up. Verified 2026-11-17 with a 1080p VP9 video: CPU 6%, RAM
-      0.2 GB of 16 GB (1%), 48 threads and 3 processes; the sparkline advanced
-      once per second.
+      the server tree; GPU shows the busiest Windows `GPU Engine` counter
+      (3D, video codec, copy, …) and reports `N/A` only when the counter set is
+      missing. Verified 2026-11-17 with a 1080p VP9 video: CPU 8%, RAM
+      0.2–0.3 GB of 16 GB, GPU 50–55%, 62–70 threads and 3 processes; both
+      sparklines advanced once per second.
 - [ ] Lock the session (Win+L); playback pauses, and unlock resumes it.
 - [ ] Sleep/resume; playback resumes without restarting the process.
 - [ ] Unplug/plug the charger on a laptop; the AC/battery state changes and
@@ -489,15 +494,16 @@ passed 443 tests (15 binary + 344 core + 17 media + 53 platform + 8 UI library
 + 6 UI binary).
 
 Recorded 2026-11-17 on the same machine: the Performance page showed live CPU
-(6%), RAM (0.2 GB of 16 GB, 1%), 48 threads and 3 processes for the server
-tree while a 1080p VP9 video played; GPU stayed `N/A` as designed. Closing the
+(8%), RAM (0.2–0.3 GB of 16 GB, 1–2%), GPU (50–55%), 62–70 threads and 3
+processes for the server tree while a 1080p VP9 video played. The GPU tile
+reads the Windows `GPU Engine` counters through PDH. Closing the
 control window with `WM_CLOSE` left `ferramari-ui` alive and enabled the tray;
 the tray's Show command and a second launch raised the same hidden window, and
 a hidden window exited after the server was quit. `ExtractAssociatedIcon`
 returned the crab from both executables, `WM_GETICON` returned the small icon
 for the control window, and the tray registration answered
-`Shell_NotifyIconGetRect` with `S_OK`. `cargo test --workspace` passed 447
-tests (15 binary + 347 core + 17 media + 54 platform + 8 UI library + 6 UI
+`Shell_NotifyIconGetRect` with `S_OK`. `cargo test --workspace` passed 450
+tests (15 binary + 350 core + 17 media + 54 platform + 8 UI library + 6 UI
 binary).
 
 ## Reproducible local run

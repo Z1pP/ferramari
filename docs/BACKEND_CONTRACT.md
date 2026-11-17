@@ -256,11 +256,13 @@ Windows is the second backend. Its status against this checklist:
 - **Metrics.** Windows has no `/proc`. `ferramari-core::metrics` walks the
   Toolhelp process table for parent links and thread counts, reads kernel+user
   time in 100 ns units with `GetProcessTimes`, working set with
-  `GetProcessMemoryInfo` and total RAM with `GlobalMemoryStatusEx`. A process
-  that cannot be opened still counts toward the tree and its thread total, so
-  the reading degrades to "some of it" rather than "nothing". GPU remains
-  `Unsupported` because no portable counter is wired up; the Performance page
-  shows `N/A` instead of zero.
+  `GetProcessMemoryInfo` and total RAM with `GlobalMemoryStatusEx`. GPU usage
+  comes from the PDH `\GPU Engine(*)\Utilization Percentage` counter: the
+  per-process `pid_..._` prefix is dropped, instances of one engine are summed
+  and the busiest engine is reported. A process that cannot be opened still
+  counts toward the tree and its thread total, so the reading degrades to
+  "some of it" rather than "nothing". If the GPU counter set is missing, the
+  Performance page shows `N/A` instead of zero.
 - **Display geometry.** All rectangles are physical pixels; `scale_factor` is
   `DPI/96`. This differs from the X11 backend's logical pixels and is why core
   never derives scale from a rectangle.

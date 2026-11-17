@@ -208,7 +208,7 @@ ferramari --catalog https://catalog.example.org/v1  # inspect a Catalog API
 ferramari package --help    # checksum, sign and verify .ferramari packages
 ```
 
-A second `ferramari` invocation does not start another wallpaper server: it asks the running server to show the separate `ferramari-ui` control surface and exits. If the window is already open it is restored and raised rather than duplicated. On Windows, closing the control window hides it instead of ending the process: the wallpaper keeps playing, the tray icon is enabled so the window can be reopened, and the same window comes back from the tray or a second launch. Both binaries must be installed side by side. On Windows the installer puts both `.exe` files in the same folder; the portable ZIP has the same layout. The executable, the control window, the tray and the installer all use the crab icon from `data/icons/windows/ferramari.ico`; the Performance page reads Windows process counters and reports GPU as `N/A` until a portable GPU counter is wired up.
+A second `ferramari` invocation does not start another wallpaper server: it asks the running server to show the separate `ferramari-ui` control surface and exits. If the window is already open it is restored and raised rather than duplicated. On Windows, closing the control window hides it instead of ending the process: the wallpaper keeps playing, the tray icon is enabled so the window can be reopened, and the same window comes back from the tray or a second launch. Both binaries must be installed side by side. On Windows the installer puts both `.exe` files in the same folder; the portable ZIP has the same layout. The executable, the control window, the tray and the installer all use the crab icon from `data/icons/windows/ferramari.ico`; the Performance page reads Windows process counters and GPU Engine utilization, and reports `N/A` only when a counter set is unavailable.
 
 Local videos and images are read from `$XDG_VIDEOS_DIR/Ferramari` (usually
 `~/Videos/Ferramari`) on Linux and from `%USERPROFILE%\Videos\Ferramari` on
@@ -495,9 +495,10 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
 - Streaming currently uses one shared source for all monitors; local video
   sources are assigned independently. Web-page wallpapers remain unavailable
   until a GTK-free browser engine is chosen.
-- The Performance page reports GPU usage only where the driver exposes
-  `gpu_busy_percent` (currently AMDGPU). NVIDIA/Intel utilisation is labelled
-  *not measurable here* rather than zero, and the same page distinguishes a
+- The Performance page reports GPU usage from Windows `GPU Engine` counters
+  (PDH) and, on Linux, only where the driver exposes `gpu_busy_percent`
+  (currently AMDGPU). Linux NVIDIA/Intel utilisation is labelled *not
+  measurable here* rather than zero, and the same page distinguishes a
   platform with no process sampler from a server that is not running.
 - Multi-monitor, 4K/60, locked-screen and long-idle benchmarks are not yet
   measured on the single-display test machine. Single-monitor 1080p, synthetic

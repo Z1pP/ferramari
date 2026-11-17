@@ -12,9 +12,14 @@
 
 #[cfg(target_os = "linux")]
 use std::collections::HashMap;
+#[cfg(any(not(target_os = "windows"), test))]
 use std::fs;
+#[cfg(any(not(target_os = "windows"), test))]
 use std::path::Path;
 use std::time::Instant;
+
+#[cfg(target_os = "windows")]
+mod windows_gpu;
 
 /// One metric reading, or the reason there is none.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -61,8 +66,8 @@ pub struct Sample {
     pub memory_total: Metric<u64>,
     pub threads: Metric<u32>,
     pub processes: Metric<u32>,
-    /// GPU utilisation, only available on drivers that expose
-    /// `gpu_busy_percent` (currently AMDGPU).
+    /// GPU utilisation: the busiest engine on Windows (`GPU Engine` counters)
+    /// or the busiest card exposing `gpu_busy_percent` on Linux (AMDGPU).
     pub gpu: Metric<f64>,
 }
 
@@ -94,6 +99,10 @@ impl Sample {
 #[derive(Debug, Default)]
 pub struct Monitor {
     previous: Option<(Instant, u64)>,
+    /// PDH query kept across samples: the GPU utilization counter is a rate
+    /// and needs the previous collection to produce a number.
+    #[cfg(target_os = "windows")]
+    gpu: windows_gpu::Sampler,
 }
 
 impl Monitor {
@@ -104,6 +113,9 @@ impl Monitor {
     /// Sample a specific process tree. The UI needs this to report the
     /// server's footprint (mpv children included) instead of its own.
     pub fn sample_of(&mut self, root: u32) -> Sample {
+        #[cfg(target_os = "windows")]
+        let gpu = self.gpu.sample();
+        #[cfg(not(target_os = "windows"))]
         let gpu = gpu_percent(Path::new("/sys/class/drm"));
         let memory_total = total_memory();
         let Some(tree) = read_tree(root) else {
@@ -420,8 +432,9 @@ fn total_memory() -> Metric<u64> {
 /// Busiest GPU, or the reason nothing is known.
 ///
 /// `gpu_busy_percent` is an AMDGPU-specific sysfs file; i915, nouveau and
-/// NVIDIA do not provide it, and neither does any non-Linux platform. That is
-/// a missing measurement, not a free one, so it reports `Unsupported`.
+/// NVIDIA do not provide it. This path-based reader is used on Linux and by
+/// the unit tests; Windows has its own PDH sampler in `metrics::windows_gpu`.
+#[cfg(any(not(target_os = "windows"), test))]
 fn gpu_percent(root: &Path) -> Metric<f64> {
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
@@ -606,6 +619,9 @@ mod tests {
         // Sample a pid that cannot exist here. The tree read succeeds and
         // finds nothing, which is "gone", not "unsupported".
         let mut monitor = Monitor::default();
+        // Prime the GPU rate (PDH needs two collections on Windows) so this
+        // assertion is about the dead tree, not about the first sample.
+        monitor.sample();
         let sample = monitor.sample_of(u32::MAX);
         if cfg!(any(target_os = "linux", target_os = "windows")) {
             assert_eq!(sample.processes, Metric::Unavailable);

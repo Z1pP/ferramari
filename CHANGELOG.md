@@ -6,7 +6,7 @@
 policy and the same Iced control surface now have a Win32 backend: a wallpaper
 window behind Explorer's desktop icons, physical-pixel monitor discovery,
 foreground/occlusion tracking, lock and power events, a tray icon, autostart
-and static-wallpaper handling. **447 tests** pass (15 binary + 347 core + 17
+and static-wallpaper handling. **450 tests** pass (15 binary + 350 core + 17
 media + 54 platform + 8 UI library + 6 UI binary).
 
 - **Wallpaper hosting.** A child window is parented to the `WorkerW` behind
@@ -62,10 +62,13 @@ media + 54 platform + 8 UI library + 6 UI binary).
   only, so every tile on the Performance page reported `N/A`. The Windows
   backend now walks the Toolhelp process table for parent links and thread
   counts, reads kernel+user time with `GetProcessTimes`, working set with
-  `GetProcessMemoryInfo` and total RAM with `GlobalMemoryStatusEx`. GPU stays
-  `Unsupported` because no portable counter is wired up. Verified live at
-  1080p: CPU 6%, RAM 0.2 GB, 48 threads and 3 processes for the server, mpv and
-  the UI.
+  `GetProcessMemoryInfo` and total RAM with `GlobalMemoryStatusEx`. GPU usage
+  comes from the Windows `GPU Engine` performance counters through PDH:
+  instances are grouped by engine (after dropping the per-process `pid_`
+  prefix) and the busiest engine is shown, matching Task Manager. `N/A` remains
+  only when the counter set is missing. Verified live at 1080p: CPU 8%, RAM
+  0.2–0.3 GB, GPU 50–55%, 62–70 threads and 3 processes while the UI, mpv and
+  the video decoder were running.
 - **The application has an icon.** `ferramari.ico` and a 256 px PNG are
   generated from the existing SVG and committed under `data/icons/windows`.
   `winresource` embeds the ICO plus version information in both executables,

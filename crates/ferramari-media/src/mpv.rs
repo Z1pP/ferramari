@@ -373,6 +373,12 @@ struct Shared {
     stats: Mutex<PlaybackStats>,
 }
 
+/// Non-blocking liveness of one player's control channel. Kept separate from
+/// the child poll so snapshots can ask without touching the process handle.
+fn shared_is_alive(shared: &Shared) -> bool {
+    !shared.ipc_dead.load(Ordering::Relaxed) && shared.worker_alive.load(Ordering::Relaxed)
+}
+
 /// Commands for the dedicated IPC thread. Keeping them here means a wedged
 /// mpv can never stall the application event loop: the caller only enqueues
 /// work.
@@ -703,6 +709,13 @@ impl Mpv {
     /// Reload the parked source and seek to the position captured by `park`.
     pub fn unpark(&mut self, source: &str) -> anyhow::Result<()> {
         self.enqueue(Request::Unpark(source.to_string()))
+    }
+
+    /// Whether the player still has a live IPC worker and has not reported a
+    /// fatal transport failure. This is the non-blocking half of
+    /// [`Mpv::is_running`], usable from a snapshot without polling the child.
+    pub fn is_alive(&self) -> bool {
+        shared_is_alive(&self.shared)
     }
 
     /// Reap the child without blocking. A missing status means mpv exited or
@@ -1207,7 +1220,17 @@ mod tests {
         Ipc::new(PipeStream::from_stream(client)).unwrap()
     }
 
-    #[cfg(unix)]
+    #[test]
+    fn a_dead_ipc_or_stopped_worker_is_not_alive() {
+        let shared = test_shared();
+        assert!(shared_is_alive(&shared));
+        shared.worker_alive.store(false, Ordering::Relaxed);
+        assert!(!shared_is_alive(&shared));
+        shared.worker_alive.store(true, Ordering::Relaxed);
+        shared.ipc_dead.store(true, Ordering::Relaxed);
+        assert!(!shared_is_alive(&shared));
+    }
+
     fn test_shared() -> Shared {
         Shared {
             volume: AtomicI64::new(50),

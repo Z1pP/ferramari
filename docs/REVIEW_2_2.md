@@ -116,8 +116,8 @@ Statuses used below:
 | R-03 | P1 | fixed-unit | Display identity | A corrupt `display-ids.json` ignores a valid `.bak` and loses assignments |
 | R-04 | P1 | fixed-code | Config reload | `reload_config` discards a pending debounced setting |
 | R-05 | P1 | partially-fixed | Error reporting | Errors now publish to `operation_status`; per-command result semantics remain open |
-| R-06 | P1 | confirmed-live | Playback state | `is_playing` reflects policy intent, not a live player |
-| R-07 | P1 | confirmed-code | Mixed DPI | Windows physical geometry is multiplied by `scale_factor` a second time |
+| R-06 | P1 | partially-fixed | Playback state | `is_playing` now requires a live player; cold-start decode is still not a separate fact |
+| R-07 | P1 | fixed-unit | Mixed DPI | Windows physical geometry is multiplied by `scale_factor` a second time |
 | R-08 | P1 | partially-fixed | Windows control transport | Unbounded request line fixed; per-client thread cap remains |
 | R-09 | P2 | confirmed-code | UI status | Sticky status banner; one-snapshot optimistic play state |
 | R-10 | P2 | confirmed-code | Config validation | Loaded volume/blur/fade values are not range-checked |
@@ -488,7 +488,7 @@ no request id; per-command acknowledgement and rollback remain open (R-09).
 ## R-06 — `is_playing` reports policy intent, not a live player
 
 **Priority:** P1  
-**Status:** `confirmed-live`
+**Status:** `partially-fixed`
 
 **Where**
 
@@ -529,12 +529,21 @@ fact). Refresh the snapshot after any automatic restart or give-up.
 - Live smoke: kill mpv, assert state transitions and no false "playing" after
   give-up.
 
+**Resolution (2026-11-18, partial)**
+
+`Engine::player_ready()` now requires a live surface and a live IPC worker, and
+`any_playing()` requires that before the Eco policy can report playback.
+`watch_players()` republishes the snapshot after a player set change. The new
+`a_dead_ipc_or_stopped_worker_is_not_alive` test covers the non-blocking worker
+flags. `is_playing` still does not distinguish "player ready but no frame has
+decoded yet"; that remains a separate `is_decoding` fact if the UI needs it.
+
 ---
 
 ## R-07 — Windows physical geometry is scaled twice for mixed DPI
 
 **Priority:** P1  
-**Status:** `confirmed-code`, live matrix blocked by one display
+**Status:** `fixed-unit`, live matrix blocked by one display
 
 **Where**
 
@@ -579,6 +588,16 @@ display before claiming mixed-DPI support.
   must produce `covered=true` and `fullscreen=true`.
 - Windows live matrix: 100/125/150/200%, two monitors, primary on either side,
   negative coordinates and a fullscreen app.
+
+**Resolution (2026-11-18, unit only)**
+
+`MonitorInfo` now declares `physical_geometry`. The Windows display provider
+sets it to `true`; the X11 provider leaves it `false`. `monitor_rect()` returns
+the raw rectangle for physical geometry and only applies `scale_factor` to
+logical geometry. The new
+`physical_monitor_geometry_is_not_scaled_twice` test uses a 1920×1080 physical
+display at scale 2 and asserts the occlusion rectangle stays 1920×1080. The
+150/200% live check is still required before calling mixed-DPI supported.
 
 ---
 
@@ -999,6 +1018,8 @@ the audit and verification results separate.
 | R-03: primary-then-backup display registry load | New display-id test; full `ferramari-core` suite |
 | R-04: flush before `reload_config` | Pre-fix live reproduction recorded; post-fix app-level regression test still pending |
 | R-05: publish errors to the snapshot | Code path now calls `set_operation_status`; per-command ack still open |
+| R-06: live-player check for `is_playing` | New media liveness test; decode-before-frame state still separate |
+| R-07: physical/logical monitor geometry | New dashboard unit test; live mixed-DPI matrix still open |
 | R-08: bounded control request line | New platform test; per-client thread cap still open |
 | R-11: UTF-8 BOM handling | New config test |
 | R-12: catalogue cache cleanup call | Startup call added; fake-root test still open |
@@ -1011,8 +1032,8 @@ cargo test --workspace --locked                                 exit 0
 cargo build --workspace --release --locked                      exit 0
 ```
 
-Test totals after the change set: **456 passed, 0 failed** (15 binary + 354
-core + 17 media + 56 platform + 8 UI library + 6 UI binary).
+Test totals after the change set: **458 passed, 0 failed** (16 binary + 354
+core + 18 media + 56 platform + 8 UI library + 6 UI binary).
 
 ## Phase 0 exit
 

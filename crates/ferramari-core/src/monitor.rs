@@ -88,6 +88,13 @@ pub struct MonitorInfo {
     /// Logical-to-device-pixel factor. Root-window coordinates (EWMH window
     /// geometry) are in device pixels, so occlusion checks scale by this.
     pub scale_factor: i32,
+    /// Whether `x`/`y`/`width`/`height` are already physical device pixels.
+    ///
+    /// Windows reports physical pixels and carries the DPI in `scale_factor`,
+    /// while the X11 backend reports logical pixels and scales them for the
+    /// occlusion comparison. Keeping the coordinate space explicit prevents
+    /// the policy layer from doubling a physical rectangle at 150% or 200%.
+    pub physical_geometry: bool,
     /// Vertical refresh of the mode the screen is running in, in hertz.
     /// `None` when the display backend could not work it out: a Wayland
     /// session, a virtual output, or a server that does not answer RandR.

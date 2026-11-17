@@ -174,6 +174,7 @@ mod tests {
             width: 1920,
             height: 1080,
             scale_factor: 1,
+            physical_geometry: false,
             refresh_hz: None,
             is_primary: false,
             identity: DisplayIdentity {
@@ -284,6 +285,7 @@ mod tests {
             width: 1920,
             height: 1080,
             scale_factor: 1,
+            physical_geometry: false,
             refresh_hz: None,
             is_primary: true,
             identity: DisplayIdentity::default(),

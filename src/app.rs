@@ -1324,6 +1324,10 @@ impl App {
             .collect();
         if due.is_empty() {
             log::trace!("[Player] no retries due");
+            // The liveness check above may have removed a dead engine or
+            // observed a new one. Publish that fact even when no restart is
+            // due, otherwise the snapshot can describe the previous player.
+            self.sync_snapshot();
             return;
         }
         log::trace!("[Player] creating {} window(s)", due.len());
@@ -1380,6 +1384,7 @@ impl App {
                 }
             }
         }
+        self.sync_snapshot();
     }
 
     /// Collect the decoder each player reports and keep the one worth showing.
@@ -1581,9 +1586,13 @@ impl App {
     }
 
     fn any_playing(&self) -> bool {
-        self.windows
-            .iter()
-            .any(|window| self.eco_plan_for(&window.key().monitor).play)
+        self.windows.iter().any(|window| {
+            // `is_playing` is a fact about a live decoder, not only an Eco
+            // policy decision. During a crash/restart loop the policy still
+            // says "play"; without this check the UI would claim playback
+            // while every mpv is dying.
+            window.player_ready() && self.eco_plan_for(&window.key().monitor).play
+        })
     }
 
     fn eco_state_for(&self, monitor: &str) -> eco::State {
@@ -2058,9 +2067,13 @@ fn bind_display_ids(monitors: &mut [MonitorInfo], registry: &mut DisplayIdRegist
 }
 
 /// X11 root coordinates are device pixels; monitor geometry from RandR is
-/// logical pixels on HiDPI/XWayland layouts. Convert once so the visibility
-/// check and its tests use the same rectangle.
+/// logical pixels on HiDPI/XWayland layouts. Windows already reports physical
+/// pixels, so its geometry must not be scaled a second time. The backend
+/// declares the coordinate space in `MonitorInfo::physical_geometry`.
 fn monitor_rect(info: &MonitorInfo) -> (i32, i32, i32, i32) {
+    if info.physical_geometry {
+        return (info.x, info.y, info.width, info.height);
+    }
     let scale = info.scale_factor.max(1);
     (
         info.x.saturating_mul(scale),
@@ -2171,6 +2184,7 @@ mod tests {
             width: 1920,
             height: 1080,
             scale_factor: 1,
+            physical_geometry: false,
             refresh_hz: None,
             is_primary: name == "eDP-1",
             identity: DisplayIdentity::default(),
@@ -2325,6 +2339,17 @@ mod tests {
     }
 
     #[test]
+    fn physical_monitor_geometry_is_not_scaled_twice() {
+        let mut info = monitor("eDP-1", 0);
+        info.scale_factor = 2;
+        info.physical_geometry = true;
+        // Windows reports 1920×1080 physical pixels and 150% DPI. The
+        // occlusion rectangle must remain physical; scaling it again would
+        // make a fullscreen window appear not to cover the monitor.
+        assert_eq!(monitor_rect(&info), (0, 0, 1920, 1080));
+    }
+
+    #[test]
     fn local_webpages_accept_paths_and_file_uris() {
         #[cfg(unix)]
         let (plain, uri, decoded) = ("/tmp/a.html", "file:///tmp/a%20b.html", "/tmp/a b.html");
@@ -2384,6 +2409,7 @@ mod tests {
                     width: 1920,
                     height: 1080,
                     scale_factor: 1,
+                    physical_geometry: false,
                     refresh_hz: None,
                     is_primary: true,
                     identity: DisplayIdentity::default(),
@@ -2396,6 +2422,7 @@ mod tests {
                     width: 1920,
                     height: 1080,
                     scale_factor: 1,
+                    physical_geometry: false,
                     refresh_hz: None,
                     is_primary: false,
                     identity: DisplayIdentity::default(),

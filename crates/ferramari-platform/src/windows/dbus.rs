@@ -256,6 +256,8 @@ fn command_from(params: &Value) -> Result<Command, String> {
         "reload" => Command::Reload,
         "reload_config" => Command::ReloadConfig,
         "feeling_lucky" => Command::FeelingLucky,
+        "next_wallpaper" => Command::NextWallpaper,
+        "previous_wallpaper" => Command::PreviousWallpaper,
         "show_gui" => Command::ShowGui,
         "quit" => Command::Quit,
         "toggle_mute" => Command::ToggleMute,

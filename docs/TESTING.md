@@ -246,6 +246,15 @@ profile.
       the tray icon and left `ferramari-ui` alive; a tray left-click restored
       the hidden window, and the UI process exited when the hidden window's
       server went away.
+- [x] Stop from the Home header, then Start: the server does not need a
+      restart. Verified 2026-11-17 by sending `quit_player` (mpv exited) and
+      `start_playback` (a fresh mpv spawned and the window was rebuilt).
+- [x] Switch videos through the control surface: the running player is reused
+      (`reused player in 14–23 µs`) and no static frame is applied while it is
+      playing, so mpv is not restarted by Explorer's wallpaper-worker rebuild.
+- [x] Step forward from the last video in the queue wraps to the first; step
+      backward from the first wraps to the last. Verified with the two videos
+      in the folder and through a rotation collection.
 - [x] Quit from the tray; no `mpv`, `ffmpeg` or `ffprobe` child remains and the
       original wallpaper is restored.
 - [ ] Quit from Settings; no `mpv`, `ffmpeg` or `ffprobe` child remains.
@@ -257,6 +266,11 @@ profile.
 - [x] Both executables expose the crab icon through `ExtractAssociatedIcon`;
       the control window answers `WM_GETICON` with a small icon and the tray
       icon loads resource ID 1 from the running module.
+- [x] Start from the installer's Start-menu shortcut: only the Iced window
+      appears, with no console or Windows Terminal tab. The shortcut points at
+      `ferramari-launcher.exe`, a GUI-subsystem launcher that starts the server
+      with `CREATE_NO_WINDOW`; `ferramari.exe --version` and `--doctor` still
+      print when run from a terminal.
 
 ### Wallpaper host and Explorer restarts
 - [x] Apply a local video to one monitor; it appears behind the desktop icons
@@ -508,8 +522,8 @@ the tray's Show command and a second launch raised the same hidden window, and
 a hidden window exited after the server was quit. `ExtractAssociatedIcon`
 returned the crab from both executables, `WM_GETICON` returned the small icon
 for the control window, and the tray registration answered
-`Shell_NotifyIconGetRect` with `S_OK`. `cargo test --workspace` passed 450
-tests (15 binary + 350 core + 17 media + 54 platform + 8 UI library + 6 UI
+`Shell_NotifyIconGetRect` with `S_OK`. `cargo test --workspace` passed 452
+tests (16 binary + 350 core + 17 media + 55 platform + 8 UI library + 6 UI
 binary).
 
 ## Reproducible local run

@@ -97,7 +97,7 @@ try {
     }
 
     $release = Join-Path $root "target\release"
-    foreach ($name in @("ferramari.exe", "ferramari-ui.exe")) {
+    foreach ($name in @("ferramari.exe", "ferramari-ui.exe", "ferramari-launcher.exe")) {
         $path = Join-Path $release $name
         if (-not (Test-Path -LiteralPath $path)) {
             throw "Missing $path; run cargo build --workspace --release --locked"
@@ -111,6 +111,7 @@ try {
 
     Copy-Item -LiteralPath (Join-Path $release "ferramari.exe") -Destination $bin
     Copy-Item -LiteralPath (Join-Path $release "ferramari-ui.exe") -Destination $bin
+    Copy-Item -LiteralPath (Join-Path $release "ferramari-launcher.exe") -Destination $bin
     Copy-Item -LiteralPath (Join-Path $root "README.md") -Destination $bin
     Copy-Item -LiteralPath (Join-Path $root "LICENSE") -Destination $bin
 

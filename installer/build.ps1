@@ -70,6 +70,20 @@ function Find-Msgfmt {
             return $candidate
         }
     }
+    # Chocolatey installs the same gettext build under Program Files, and the
+    # shim is not always on PATH in the same step that installed it.
+    if ($env:ProgramFiles) {
+        $candidate = Join-Path $env:ProgramFiles "gettext-iconv\bin\msgfmt.exe"
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+    }
+    if (${env:ProgramFiles(x86)}) {
+        $candidate = Join-Path ${env:ProgramFiles(x86)} "gettext-iconv\bin\msgfmt.exe"
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+    }
     return $null
 }
 

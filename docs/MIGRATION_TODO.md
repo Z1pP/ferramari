@@ -197,6 +197,14 @@ Current boundary progress:
       `WM_NULL`/`SetWindowPos` returns immediately. Frame freshness compares
       the primary monitor's source instead of `Default`, so a per-monitor
       switch replaces the desktop image.
+- [x] Preserve a wallpaper the user sets while the server runs.
+      `restore()` re-reads the desktop image: a real file other than the frame
+      Ferramari installed (or, with static wallpaper off, other than the
+      startup image) is kept, recorded in `background-original.json`, and
+      restored by a later run. Before a frame is installed, a user-chosen image
+      is recorded first, so a static toggle or video switch cannot lose it.
+      Verified live with static wallpaper on and off; four unit tests cover
+      path identity, the frame/startup comparisons and the pre-install record.
 - [x] Implement foreground/fullscreen/occlusion tracking.
       `windows/window_state.rs` samples the complete top-level window list
       every 750 ms, filters invisible, minimized, DWM-cloaked, tool and

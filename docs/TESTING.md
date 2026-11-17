@@ -267,9 +267,18 @@ profile.
       and a fresh mpv with a new `--wid` resumed playback. Icons stayed on top
       and clickable after they finished loading.
 - [x] Kill `mpv`; the supervisor recreates it and the surface stays alive.
-- [ ] Change the desktop wallpaper in Windows Settings while Ferramari is
+- [x] Change the desktop wallpaper in Windows Settings while Ferramari is
       playing; the live wallpaper is unaffected and the original record is not
-      overwritten by a generated frame.
+      overwritten by a generated frame. Verified 2026-11-16: changing to
+      `img24.jpg` during playback left the video running (32k+ differing
+      sample points) and did not touch the sidecar.
+- [x] Change the wallpaper while static wallpaper is off, then quit; the chosen
+      image stays and `background-original.json` records it. Verified
+      2026-11-17 with `img24.jpg`.
+- [x] Change the wallpaper while a frame is installed, then switch videos; the
+      new frame is installed and the chosen image becomes the recorded
+      original. Verified 2026-11-17: `[StaticWallpaper] Remembering ...` ran
+      before `Applied`, and quitting restored `img25.jpg`.
 - [x] Close Ferramari and confirm the user's original desktop image is back.
 
 ### Displays and DPI
@@ -289,8 +298,10 @@ profile.
 - [x] Disable it; the recorded original is restored. Verified with the real
       theme image (`c:\windows\web\wallpaper\themeb\img25.jpg`), then enabled
       again to apply the generated frame.
-- [ ] Delete the recorded original file and disable again; no missing-file
-      background is installed.
+- [x] Delete the recorded original file and disable again; no missing-file
+      background is installed. Verified 2026-11-16: the server logged
+      `[StaticWallpaper] Keeping the last frame` and left the generated frame
+      on the desktop; the missing path was not installed.
 - [x] Tray menu: Show, mute, pause, reload, lucky and quit all act on the
       running server; the icon disappears when “Run in background” is off.
       Verified by posting the menu command ids to the tray window: mute and
@@ -430,6 +441,30 @@ named the frame for the selected file. `SendMessageTimeoutW(WM_NULL)` and
 platform + 8 UI library + 6 UI binary), including the new
 `a_static_frame_matches_the_primary_monitors_source`. The original source and
 wallpaper were restored at the end.
+
+Recorded 2026-11-16/17 on the same machine: the wallpaper-preservation path was
+verified in both static modes. With static wallpaper on, changing the desktop
+to `img25.jpg` during playback was remembered when the next video switch
+installed a frame (`[StaticWallpaper] Remembering the wallpaper set while
+running: ...img25.jpg` before `Applied`), and quitting restored `img25.jpg`.
+With static wallpaper off, changing to `img24.jpg` and quitting kept
+`img24.jpg` and rewrote `background-original.json`; before the fix the same
+sequence restored `img25.jpg`. Deleting the recorded original and disabling
+static wallpaper logged `[StaticWallpaper] Keeping the last frame` and
+installed no missing path. Synthetic `WM_WTSSESSION_CHANGE` and
+`WM_POWERBROADCAST` messages moved `monitor_states` between `suspended` and
+`active`; a synthetic `WM_QUERYENDSESSION` answered 1, `WM_ENDSESSION` quit
+cleanly with no server, mpv or endpoint left, and closing the console window
+did the same. A clean launch then switched `Power-Dancing-1080p.mp4` →
+`arcane-jinx.mp4`; the control window stayed visible, foreground and
+hit-testable at its centre and both top corners after the change, so the
+earlier z-order observation did not reproduce. The installer and portable ZIP
+were rebuilt after the fix: silent install, upgrade in place (README and both
+binaries replaced, two shortcuts, one uninstall entry), silent uninstall
+(install directory and shortcuts gone, config byte-identical), and the
+portable ZIP from a path with a space all passed. `cargo test --workspace`
+passed 443 tests (15 binary + 344 core + 17 media + 53 platform + 8 UI library
++ 6 UI binary).
 
 ## Reproducible local run
 

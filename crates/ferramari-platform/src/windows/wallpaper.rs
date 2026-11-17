@@ -82,6 +82,18 @@ fn set_wallpaper(path: &Path) -> bool {
     }
 }
 
+/// Windows path identity: case-insensitive and both separators accepted.
+fn same_path(left: &Path, right: &Path) -> bool {
+    let normalize = |value: &Path| {
+        value
+            .to_string_lossy()
+            .replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_ascii_lowercase()
+    };
+    normalize(left) == normalize(right)
+}
+
 /// Whether two paths point into the same directory tree. Windows paths are
 /// case-insensitive and accept both separators, so neither a plain `starts_with`
 /// nor a string equality is correct.
@@ -123,6 +135,54 @@ fn classify_background(current: Option<&Path>, saved: Option<&OriginalBackground
         &paths::static_cache_dir(),
         &paths::config_dir(),
     )
+}
+
+/// Whether the desktop image changed to a real file other than the one
+/// Ferramari put there. Such a change came from the user (Settings, the desktop
+/// context menu or another program), so quitting must leave it in place
+/// instead of restoring the image captured at startup.
+///
+/// `active` is the frame currently installed; `original` is the startup image
+/// recorded in [`Background::Original`]. When no frame is installed the
+/// startup image is the reference, so a desktop that still shows it is not a
+/// user change.
+fn user_replaced_background(
+    current: Option<&Path>,
+    active: Option<&Path>,
+    original: Option<&Path>,
+    static_dir: &Path,
+    config_dir: &Path,
+) -> bool {
+    let Some(current) = current else {
+        return false;
+    };
+    if is_generated(current, static_dir, config_dir) || !current.is_file() {
+        return false;
+    }
+    match active {
+        Some(active) => !same_path(current, active),
+        None => original.is_none_or(|original| !same_path(current, original)),
+    }
+}
+
+/// The real wallpaper to remember before installing a frame, or `None` when
+/// the desktop still shows what Ferramari already knows about. A user-chosen
+/// image must become the new original before it is covered, otherwise a later
+/// quit or static-wallpaper toggle would roll it back.
+fn wallpaper_to_remember(
+    current: Option<&Path>,
+    background: &Background,
+    static_dir: &Path,
+    config_dir: &Path,
+) -> Option<PathBuf> {
+    let current = current?;
+    if is_generated(current, static_dir, config_dir) || !current.is_file() {
+        return None;
+    }
+    if matches!(background, Background::Original(path) if same_path(path, current)) {
+        return None;
+    }
+    Some(current.to_path_buf())
 }
 
 fn classify_background_in(
@@ -236,7 +296,14 @@ impl StaticBackground {
     }
 
     pub fn apply_static_frame(&mut self, file: &Path) -> Option<PathBuf> {
-        if !self.supported || !set_wallpaper(file) {
+        if !self.supported {
+            return None;
+        }
+        // Before covering the desktop, keep a wallpaper the user picked while
+        // Ferramari was running. Without this a static toggle or quit would
+        // restore the image from server startup instead.
+        self.remember_current_background();
+        if !set_wallpaper(file) {
             return None;
         }
         self.cleanup_files_except(Some(file));
@@ -245,7 +312,58 @@ impl StaticBackground {
         Some(file.to_path_buf())
     }
 
+    fn remember_current_background(&mut self) {
+        let current = current_wallpaper();
+        let Some(path) = wallpaper_to_remember(
+            current.as_deref(),
+            &self.background,
+            &paths::static_cache_dir(),
+            &paths::config_dir(),
+        ) else {
+            return;
+        };
+        log::info!(
+            "[StaticWallpaper] Remembering the wallpaper set while running: {}",
+            path.display()
+        );
+        let value = OriginalBackground {
+            wallpaper: path.to_string_lossy().into_owned(),
+        };
+        self.background = Background::Original(path);
+        write_original_state(&value);
+    }
+
     pub fn restore(&mut self) {
+        // A wallpaper the user picked after our frame went up is their choice,
+        // not a state to roll back. Without this check quitting would restore
+        // the image captured at startup and silently discard the newer one.
+        let current = current_wallpaper();
+        let original = match &self.background {
+            Background::Original(path) => Some(path.as_path()),
+            Background::Ours | Background::Missing => None,
+        };
+        if user_replaced_background(
+            current.as_deref(),
+            self.active_file.as_deref(),
+            original,
+            &paths::static_cache_dir(),
+            &paths::config_dir(),
+        ) {
+            if let Some(path) = &current {
+                log::info!(
+                    "[StaticWallpaper] Keeping the wallpaper set while running: {}",
+                    path.display()
+                );
+                let value = OriginalBackground {
+                    wallpaper: path.to_string_lossy().into_owned(),
+                };
+                self.background = Background::Original(path.clone());
+                write_original_state(&value);
+            }
+            self.active_file = None;
+            self.cleanup_files_except(None);
+            return;
+        }
         match self.background.clone() {
             Background::Original(path) => {
                 if set_wallpaper(&path) {
@@ -366,6 +484,114 @@ mod tests {
             Background::Missing
         );
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_wallpaper_chosen_while_running_is_kept() {
+        let root = temp_dir("user-change");
+        let cache = root.join("static");
+        let config = root.join("config");
+        fs::create_dir_all(&cache).unwrap();
+        let startup = make(&root, "startup.png");
+        let frame = make(&cache, "frame.png");
+        let chosen = make(&root, "chosen.png");
+        assert!(user_replaced_background(
+            Some(&chosen),
+            Some(&frame),
+            Some(&startup),
+            &cache,
+            &config
+        ));
+        assert!(!user_replaced_background(
+            Some(&frame),
+            Some(&frame),
+            Some(&startup),
+            &cache,
+            &config
+        ));
+        assert!(!user_replaced_background(
+            None,
+            Some(&frame),
+            Some(&startup),
+            &cache,
+            &config
+        ));
+        // Static wallpaper off: no frame is installed, but a real image that
+        // differs from the startup one is still the user's choice.
+        assert!(user_replaced_background(
+            Some(&chosen),
+            None,
+            Some(&startup),
+            &cache,
+            &config
+        ));
+        assert!(!user_replaced_background(
+            Some(&startup),
+            None,
+            Some(&startup),
+            &cache,
+            &config
+        ));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn another_generated_frame_is_not_a_user_change() {
+        let root = temp_dir("other-frame");
+        let cache = root.join("static");
+        let config = root.join("config");
+        fs::create_dir_all(&cache).unwrap();
+        let frame = make(&cache, "frame.png");
+        let stale = make(&cache, "stale.png");
+        assert!(!user_replaced_background(
+            Some(&stale),
+            Some(&frame),
+            None,
+            &cache,
+            &config
+        ));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_chosen_wallpaper_is_remembered_before_a_frame_covers_it() {
+        let root = temp_dir("remember");
+        let cache = root.join("static");
+        let config = root.join("config");
+        fs::create_dir_all(&cache).unwrap();
+        let startup = make(&root, "startup.png");
+        let chosen = make(&root, "chosen.png");
+        let frame = make(&cache, "frame.png");
+        let original = Background::Original(startup.clone());
+        assert_eq!(
+            wallpaper_to_remember(Some(&chosen), &original, &cache, &config),
+            Some(chosen.clone())
+        );
+        assert_eq!(
+            wallpaper_to_remember(Some(&startup), &original, &cache, &config),
+            None
+        );
+        assert_eq!(
+            wallpaper_to_remember(Some(&frame), &original, &cache, &config),
+            None
+        );
+        assert_eq!(
+            wallpaper_to_remember(Some(&chosen), &Background::Ours, &cache, &config),
+            Some(chosen.clone())
+        );
+        assert_eq!(
+            wallpaper_to_remember(Some(&chosen), &Background::Missing, &cache, &config),
+            Some(chosen)
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn path_identity_ignores_case_and_separators() {
+        let left = PathBuf::from(r"C:\Users\Me\Wallpaper.PNG");
+        let right = PathBuf::from(r"c:/users/me/wallpaper.png");
+        assert!(same_path(&left, &right));
+        assert!(!same_path(&left, &PathBuf::from(r"C:\Users\Me\Other.png")));
     }
 
     #[test]

@@ -6,8 +6,8 @@
 policy and the same Iced control surface now have a Win32 backend: a wallpaper
 window behind Explorer's desktop icons, physical-pixel monitor discovery,
 foreground/occlusion tracking, lock and power events, a tray icon, autostart
-and static-wallpaper handling. **439 tests** pass (15 binary + 344 core + 17
-media + 49 platform + 8 UI library + 6 UI binary).
+and static-wallpaper handling. **443 tests** pass (15 binary + 344 core + 17
+media + 53 platform + 8 UI library + 6 UI binary).
 
 - **Wallpaper hosting.** A child window is parented to the `WorkerW` behind
   `SHELLDLL_DefView` (with `Progman` as fallback) and embedded into mpv through
@@ -33,6 +33,17 @@ media + 49 platform + 8 UI library + 6 UI binary).
   freshness check also compares against the primary monitor's own source
   instead of `Default`, which had discarded every frame after a per-monitor
   switch and left the previous video's image on the desktop.
+- **A wallpaper set while Ferramari runs is not rolled back.** The desktop
+  image is read again before quitting or toggling static wallpaper. If it is a
+  real file other than the frame Ferramari installed — or, with static
+  wallpaper off, other than the image recorded at startup — it is the user's
+  choice: it stays, `background-original.json` is rewritten to point at it, and
+  a later run restores that image instead of the one from the earlier session.
+  A new frame records such an image before covering it, so enabling or
+  switching static wallpaper cannot lose it either. Path comparison is case-
+  and separator-insensitive, and generated frames are never mistaken for the
+  user's wallpaper. Covered by four unit tests and verified live with static
+  wallpaper on and off.
 - **Notification area.** The tray owns a hidden top-level window and re-adds
   its `Shell_NotifyIconW` entry when the shell broadcasts `TaskbarCreated`, so
   the icon comes back after an Explorer restart. The registration is cached in
@@ -130,8 +141,19 @@ media + 49 platform + 8 UI library + 6 UI binary).
   Explorer replaced its worker as expected, the player rebuilt in about 2.5 s
   and two desktop captures three seconds apart differed at 30k+ sample points
   after every switch. A `WM_NULL` and a `SetWindowPos` sent from another
-  process to the surface returned in under a millisecond. Multi-monitor and
-  mixed-DPI scenarios stay unchecked until they are run on suitable hardware.
+  process to the surface returned in under a millisecond. On 2026-11-16/17 an
+  external wallpaper change while static wallpaper was on left playback
+  running, and quitting kept the chosen image and rewrote the sidecar; with
+  static wallpaper off the same change was also kept, and a change made before
+  a video switch was remembered when the new frame was installed. Synthetic
+  lock/unlock and suspend/resume messages moved the monitor state between
+  `suspended` and `active`, `WM_QUERYENDSESSION` answered 1, and
+  `WM_ENDSESSION` or closing the console window stopped the server, removed
+  the endpoint and restored the wallpaper. A clean launch kept the control
+  window above the desktop through a video switch and hit-testable. The
+  installer was rebuilt and re-exercised (install, upgrade in place, uninstall,
+  portable ZIP); config stayed byte-identical. Multi-monitor and mixed-DPI
+  scenarios stay unchecked until they are run on suitable hardware.
 
 ## 2.1.0 — 2026-11-10
 

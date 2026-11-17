@@ -257,7 +257,12 @@ Windows is the second backend. Its status against this checklist:
   returns in well under a second because the surface window is owned by its
   own message-pumping thread. Frame freshness is compared with the primary
   monitor's source, not `Default`, so a per-monitor switch replaces the image
-  instead of discarding the new frame.
+  instead of discarding the new frame. A real image that is not a generated
+  frame is recorded as the new original before a frame covers it, and quitting
+  or toggling static wallpaper keeps an image the user chose while the server
+  was running (rewriting the sidecar) instead of rolling back to the startup
+  image. The check covers both an installed frame and static wallpaper being
+  off.
 - **Media.** mpv is controlled through a named pipe; `--wid` receives the
   surface HWND. The handle crosses the boundary as `u64` like the X11 window
   id. A dedicated reader thread drains events continuously: mpv's Windows IPC
@@ -283,7 +288,13 @@ Windows is the second backend. Its status against this checklist:
   2026-11-16 pass switched videos both ways through the control surface's
   `video` command, installed the matching static frame in 0.34–0.51 s, rebuilt
   the player after Explorer replaced its worker in about 2.5 s, and answered a
-  cross-process `WM_NULL`/`SetWindowPos` in under a millisecond. Multi-monitor
-  and mixed-DPI behaviour still need suitable hardware. The unit and live-probe
-  tests pass and the capability report is explicit; `docs/TESTING.md` keeps the
-  remaining scenarios unchecked until they are run.
+  cross-process `WM_NULL`/`SetWindowPos` in under a millisecond. The 2026-11-17
+  pass verified the wallpaper-preservation path with static wallpaper on and
+  off, synthetic lock/unlock and suspend/resume, end-session and console-close
+  shutdown, and a rebuilt installer (install, upgrade, uninstall, portable
+  ZIP). A clean launch kept the control window above the desktop through a
+  video switch and hit-testable; an earlier z-order observation did not
+  reproduce. Multi-monitor and mixed-DPI behaviour still need suitable
+  hardware. The unit and live-probe tests pass and the capability report is
+  explicit; `docs/TESTING.md` keeps the remaining scenarios unchecked until
+  they are run.

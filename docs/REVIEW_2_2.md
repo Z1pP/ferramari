@@ -125,7 +125,7 @@ Statuses used below:
 | R-12 | P2 | fixed-code | Cache management | `catalogue::cleanup_cache()` has no caller |
 | R-13 | P2 | risk | Single instance | Second launch can silently lose the startup race |
 | R-14 | P2 | documented-gap | Shutdown | Linux D-Bus watchers and the Windows accept loop live until process exit |
-| R-15 | P3 | confirmed-code | Docs / CI | Stale claims and a weak Linux formatting gate |
+| R-15 | P3 | partially-fixed | Docs / CI | Linux formatting gate fixed; stale docs/release gating remain |
 
 ---
 
@@ -945,6 +945,12 @@ Decide whether release tags must repeat the quality gates; if not, state that
 the tag commit must have a green CI run. Keep live results in TESTING, not in
 the historical audit.
 
+**Resolution (2026-11-18, partial)**
+
+The Linux CI formatting step now runs `cargo fmt --all -- --check`, so a
+formatting diff fails the job instead of being rewritten in the runner. The
+documentation reconciliation and release-workflow gating remain open.
+
 ---
 
 ## Verified security/robustness points
@@ -1032,6 +1038,7 @@ the audit and verification results separate.
 | R-10: numeric config ranges | New parse test |
 | R-11: UTF-8 BOM handling | New config test |
 | R-12: catalogue cache cleanup call | Startup call added; fake-root test still open |
+| R-15: Linux formatting gate | `cargo fmt --all -- --check`; docs cleanup still open |
 
 Post-change gates on the branch:
 

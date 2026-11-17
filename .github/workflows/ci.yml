@@ -25,10 +25,8 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Parse and format every workspace crate
-        run: |
-          cargo fmt --all
-          git diff --check
+      - name: Check formatting for every workspace crate
+        run: cargo fmt --all -- --check
       - name: Assert all workspace feature sets are GTK-free
         run: |
           if cargo tree --workspace --locked --all-features -e normal | \

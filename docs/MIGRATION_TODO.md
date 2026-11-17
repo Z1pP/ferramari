@@ -87,7 +87,7 @@ validation are complete. A successful compile alone is not a runtime pass.
 
 Current boundary progress:
 - Core config, cache, data and video-library roots now resolve to native per-user locations on Linux, macOS and Windows; Linux keeps its XDG/`xdg-user-dir` behavior.
-- Process metrics explicitly report unavailable on platforms without the current `/proc` sampler instead of displaying misleading zeroes.
+- Process metrics report a value on Linux (`/proc`) and Windows (Toolhelp + `GetProcessTimes`/`GetProcessMemoryInfo`); platforms without a sampler report `Unsupported` instead of misleading zeroes. GPU stays unsupported on Windows.
 - Unix process-group termination and private-key mode bits are cfg-gated; Windows uses `taskkill /T /F` to end a timed-out `yt-dlp` process tree and relies on the user's profile ACL for key files.
 - Window rectangles and occlusion evaluation now live in ferramari-core.
 - The EWMH watcher now lives in ferramari-platform; its Windows counterpart samples `EnumWindows`.
@@ -223,8 +223,24 @@ Current boundary progress:
       The server listens on a token-gated loopback endpoint and replaces a
       stale `control-endpoint.json` after a failed ping. Named mutexes keep one
       server and one control window per session; `show_gui` restores and raises
-      the existing visible, non-tool window, so a second launch or the tray's
-      Show command does not stack or strand a minimized window.
+      the existing non-tool window, including a hidden one, so a second launch
+      or the tray's Show command does not stack or strand a window.
+- [x] Close the control window to the tray on Windows.
+      The title-bar X and `CloseRequested` hide the window instead of ending
+      the process; `is_show_systray` is enabled automatically, the tray or a
+      second launch shows the same hidden window, and the UI exits if the
+      server disappears while it is hidden. Linux keeps close-and-exit.
+- [x] Ship the application icon on Windows.
+      `ferramari.ico` and a 256 px PNG are generated from the existing SVG and
+      committed under `data/icons/windows`. `winresource` embeds the ICO and
+      version info in both executables, the Iced window uses the PNG as its
+      window/taskbar icon, the tray loads resource ID 1, and the Inno Setup
+      script uses the ICO for the setup program.
+- [x] Sample Windows resource metrics.
+      `ferramari-core::metrics` walks the Toolhelp process table and reads
+      `GetProcessTimes`, `GetProcessMemoryInfo` and `GlobalMemoryStatusEx`;
+      the Performance page now shows CPU, RAM, threads and processes for the
+      server tree. GPU remains `N/A` until a portable counter is wired up.
 - [x] Verify Explorer restart recovery.
       Killing `explorer.exe` twice on the test machine made the surface report
       the lost host within a second; the supervisor retried while `Progman`

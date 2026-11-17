@@ -12,7 +12,7 @@ use windows::core::BOOL;
 use windows::Win32::Foundation::{HWND, LPARAM, TRUE};
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, EnumWindows, GetWindowLongPtrW, GetWindowTextW, IsIconic, IsWindowVisible,
-    SetForegroundWindow, ShowWindow, GWL_EXSTYLE, SW_RESTORE, WS_EX_TOOLWINDOW,
+    SetForegroundWindow, ShowWindow, GWL_EXSTYLE, SW_RESTORE, SW_SHOW, WS_EX_TOOLWINDOW,
 };
 
 use crate::win32util::{claim_named_mutex, wide, MutexClaim, NamedMutex};
@@ -51,10 +51,13 @@ pub fn acquire() -> Result<Option<UiInstance>, String> {
 /// A launch from the Start menu, a shortcut or the CLI goes through
 /// `show_gui`, which spawns a new UI process. That process loses the instance
 /// mutex and exits; without this call the existing window would stay wherever
-/// it was, possibly minimized. The caller is normally the freshly launched
-/// process, so Windows' foreground lock usually lets the request through. If
-/// it does not, restoring the window is still useful and the taskbar button
-/// shows where it is.
+/// it was, possibly minimized. Closing the window with the title-bar X hides
+/// it on Windows, so a hidden window must be shown again here as well: the
+/// tray and the second launch are the only handles the user has on it.
+///
+/// The caller is normally the freshly launched process, so Windows' foreground
+/// lock usually lets the request through. If it does not, showing the window is
+/// still useful and the taskbar button shows where it is.
 pub fn focus_existing_window() -> bool {
     let Some(hwnd) = find_control_window(UI_WINDOW_TITLE) else {
         return false;
@@ -62,23 +65,33 @@ pub fn focus_existing_window() -> bool {
     unsafe {
         if IsIconic(hwnd).as_bool() {
             let _ = ShowWindow(hwnd, SW_RESTORE);
+        } else if !IsWindowVisible(hwnd).as_bool() {
+            // `SW_SHOW` keeps a maximized window maximized, unlike
+            // `SW_RESTORE`, which would also undo the user's maximized state.
+            let _ = ShowWindow(hwnd, SW_SHOW);
         }
         let _ = BringWindowToTop(hwnd);
         if SetForegroundWindow(hwnd).as_bool() {
             log::info!("[GUI] Raised the existing control window");
-            true
         } else {
-            log::debug!("[GUI] Restored the control window but could not raise it");
-            false
+            // Foreground rights belong to the process that received the last
+            // input; a tray command or a second launch may show the window
+            // without being allowed to activate it. The window is visible and
+            // the caller must not spawn a duplicate just because activation
+            // was refused.
+            log::debug!("[GUI] Shown the control window but could not raise it");
         }
+        true
     }
 }
 
-/// The first visible top-level window with `title`.
+/// The first top-level window with `title` that is not a tool window.
 ///
-/// The tray and the event watchers also own hidden windows, and the tray uses
-/// the product name as its title, so visibility is part of the match rather
-/// than an afterthought.
+/// Visibility is deliberately not part of the match: the control surface hides
+/// itself when the user closes it, and that hidden window is exactly what a
+/// second launch or the tray has to raise. The tray also calls itself
+/// Ferramari, so tool windows are excluded instead; the display and window
+/// watchers use longer titles and never collide with the product name.
 fn find_control_window(title: &str) -> Option<HWND> {
     struct Search {
         title: Vec<u16>,
@@ -87,11 +100,8 @@ fn find_control_window(title: &str) -> Option<HWND> {
 
     unsafe extern "system" fn visit(hwnd: HWND, data: LPARAM) -> BOOL {
         let search = unsafe { &mut *(data.0 as *mut Search) };
-        if !unsafe { IsWindowVisible(hwnd).as_bool() } {
-            return TRUE;
-        }
-        // Tool windows are the tray and the event watchers. They may share the
-        // product name but must never be raised as the control surface.
+        // Tool windows are the tray and the session watcher. They may share
+        // the product name but must never be raised as the control surface.
         let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32;
         if ex_style & WS_EX_TOOLWINDOW.0 != 0 {
             return TRUE;
@@ -169,6 +179,30 @@ mod tests {
         assert_eq!(find_control_window(&title), Some(control));
         unsafe {
             let _ = DestroyWindow(tool);
+            let _ = DestroyWindow(control);
+        }
+    }
+
+    #[test]
+    fn a_hidden_window_is_still_found_by_title() {
+        const CLASS: &str = "FerramariUiInstanceHiddenTest";
+        register_class(CLASS, Some(test_window_proc)).expect("register test class");
+        let title = format!("Ferramari hidden test {}", std::process::id());
+        // No WS_VISIBLE: this is what `window::Mode::Hidden` leaves behind.
+        let control = create_window(
+            CLASS,
+            &title,
+            WS_POPUP,
+            Default::default(),
+            -10_000,
+            -10_000,
+            10,
+            10,
+            None,
+        )
+        .expect("create hidden test window");
+        assert_eq!(find_control_window(&title), Some(control));
+        unsafe {
             let _ = DestroyWindow(control);
         }
     }

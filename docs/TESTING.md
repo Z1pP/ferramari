@@ -17,7 +17,7 @@ job proves the build and unit tests, not wallpaper playback.
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |
 | GNOME with the Flatpak bundle | **tested** 2026-10-31, 0.7.0 | Built and launched from a local bundle; host mpv/ffmpeg bridge, XWayland, WebKitGTK; 0.8 uses the same manifest; tray/autostart not verified |
-| Windows 11 23H2, Explorer desktop | **partial** 2026-11-16 | Release build, full unit suite, `--doctor`, live display/desktop/session probes and one Explorer-hosted surface passed; live 1080p playback behind the icons with mpv 0.42, ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`), plus automatic mpv recreation after a kill, Explorer-restart recovery, tray re-registration on `TaskbarCreated`, second-launch focus, tray commands, autostart and static-wallpaper toggles. A later pass fixed the IPC reader stall and verified live switching, pause/resume, mute and advancing playback, the embedded icon font, and ru/ja counted nouns in light/dark themes at 1180 and 900 px. The 2026-11-16 pass moved each surface onto its own message-pumping thread, which cut a wallpaper change from a 105 s command-loop stall to about 0.5 s, and verified bidirectional video switching through the control surface's own `video` command. Multi-monitor and mixed-DPI scenarios are unchecked |
+| Windows 11 23H2, Explorer desktop | **partial** 2026-11-17 | Release build, full unit suite, `--doctor`, live display/desktop/session probes and one Explorer-hosted surface passed; live 1080p playback behind the icons with mpv 0.42, ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`), plus automatic mpv recreation after a kill, Explorer-restart recovery, tray re-registration on `TaskbarCreated`, second-launch focus, tray commands, autostart and static-wallpaper toggles. A later pass fixed the IPC reader stall and verified live switching, pause/resume, mute and advancing playback, the embedded icon font, and ru/ja counted nouns in light/dark themes at 1180 and 900 px. The 2026-11-16 pass moved each surface onto its own message-pumping thread, which cut a wallpaper change from a 105 s command-loop stall to about 0.5 s, and verified bidirectional video switching through the control surface's own `video` command. The 2026-11-17 pass added live Windows CPU/RAM/thread/process sampling (GPU stays `N/A`), close-to-tray with automatic tray enablement and hidden-window raise, and the embedded crab icon in both executables, the window, the tray and the installer. Multi-monitor and mixed-DPI scenarios are unchecked |
 | Windows 10/11 with the installer | **partial** 2026-11-14 | Per-user silent install, Start-menu launch of both binaries and mpv, `--doctor`, ru/ja catalogs, portable ZIP from a path with a space and silent uninstall preserving user data passed on one Windows 11 account; not yet run on a clean machine or through an upgrade |
 | Native Wayland (no XWayland) | not supported | No wallpaper surface or `--wid` embedding yet |
 
@@ -235,7 +235,13 @@ profile.
       minimized: the second launch restored and raised it (the log shows
       `[GUI] Raised the existing control window`) and exited in about one
       second.
-- [x] Closing the UI leaves the server and wallpaper running.
+- [x] Closing the control window on Windows hides it instead of ending the
+      process: the title-bar X, the native close request, a second launch and
+      the tray's Show all reach the same window. Verified 2026-11-17: closing
+      with the "Run in background" switch off turned the switch on, registered
+      the tray icon and left `ferramari-ui` alive; a tray left-click restored
+      the hidden window, and the UI process exited when the hidden window's
+      server went away.
 - [x] Quit from the tray; no `mpv`, `ffmpeg` or `ffprobe` child remains and the
       original wallpaper is restored.
 - [ ] Quit from Settings; no `mpv`, `ffmpeg` or `ffprobe` child remains.
@@ -244,6 +250,9 @@ profile.
 - [x] A stale `control-endpoint.json` from a killed server is replaced on the
       next start and does not block the UI. A file pointing at a closed port
       was replaced with the new port and token, and the UI connected.
+- [x] Both executables expose the crab icon through `ExtractAssociatedIcon`;
+      the control window answers `WM_GETICON` with a small icon and the tray
+      icon loads resource ID 1 from the running module.
 
 ### Wallpaper host and Explorer restarts
 - [x] Apply a local video to one monitor; it appears behind the desktop icons
@@ -319,7 +328,12 @@ profile.
 - [ ] Sign out and back in; the wallpaper starts in background mode without
       opening the control window.
 
-### Session and Eco events
+### Performance and Eco events
+- [x] Open Performance: CPU, RAM, threads and processes show live values for
+      the server tree; GPU reports `N/A` on Windows because no portable counter
+      is wired up. Verified 2026-11-17 with a 1080p VP9 video: CPU 6%, RAM
+      0.2 GB of 16 GB (1%), 48 threads and 3 processes; the sparkline advanced
+      once per second.
 - [ ] Lock the session (Win+L); playback pauses, and unlock resumes it.
 - [ ] Sleep/resume; playback resumes without restarting the process.
 - [ ] Unplug/plug the charger on a laptop; the AC/battery state changes and
@@ -333,6 +347,14 @@ profile.
 ### Installer and packaging
 - [x] `installer\build.ps1` produces a setup `.exe` and a portable `.zip` in
       `installer\Output`.
+- [x] The setup program and its shortcuts use
+      `data/icons/windows/ferramari.ico`; the embedded icon is present in both
+      installed executables and the uninstall entry points at `ferramari.exe`.
+      Verified 2026-11-17 by a silent per-user install: the setup, Start-menu
+      shortcut and installed `ferramari-ui.exe` all returned the crab through
+      `ExtractAssociatedIcon`; silent uninstall removed the install directory
+      and shortcuts while `%APPDATA%\ferramari` and `%LOCALAPPDATA%\ferramari`
+      stayed intact.
 - [x] Install per-user without elevation; Start-menu shortcut starts both
       binaries and the UI is translated (ru/ja) when the locale is selected.
 - [x] Uninstall removes binaries, shortcuts and locale files but leaves
@@ -346,7 +368,7 @@ next to the results. Do not mark the Windows row in the environment matrix as
 
 Recorded 2026-11-12 on Windows 11 23H2, one 1920×1080 display at 125%,
 Explorer, with mpv 0.42.0, ffmpeg/ffprobe 9.0.2 and yt-dlp 2026.10.26:
-`cargo test --workspace` passed (14 binary + 344 core + 17 media + 49 platform
+`cargo test --workspace` passed (15 binary + 347 core + 17 media + 54 platform
 + 8 UI library + 6 UI binary tests), the release workspace produced both `.exe`
 files, and `ferramari --doctor` reported the Win32 backend, one `DISPLAY1` with its
 monitor device interface, Explorer wallpaper host = yes, every capability
@@ -465,6 +487,18 @@ binaries replaced, two shortcuts, one uninstall entry), silent uninstall
 portable ZIP from a path with a space all passed. `cargo test --workspace`
 passed 443 tests (15 binary + 344 core + 17 media + 53 platform + 8 UI library
 + 6 UI binary).
+
+Recorded 2026-11-17 on the same machine: the Performance page showed live CPU
+(6%), RAM (0.2 GB of 16 GB, 1%), 48 threads and 3 processes for the server
+tree while a 1080p VP9 video played; GPU stayed `N/A` as designed. Closing the
+control window with `WM_CLOSE` left `ferramari-ui` alive and enabled the tray;
+the tray's Show command and a second launch raised the same hidden window, and
+a hidden window exited after the server was quit. `ExtractAssociatedIcon`
+returned the crab from both executables, `WM_GETICON` returned the small icon
+for the control window, and the tray registration answered
+`Shell_NotifyIconGetRect` with `S_OK`. `cargo test --workspace` passed 447
+tests (15 binary + 347 core + 17 media + 54 platform + 8 UI library + 6 UI
+binary).
 
 ## Reproducible local run
 

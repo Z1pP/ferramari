@@ -24,7 +24,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_NULL, WM_RBUTTONUP, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
 };
 
-use crate::win32util::{create_window, hwnd_from_raw, hwnd_raw, register_class, wide};
+use crate::win32util::{
+    create_window, hwnd_from_raw, hwnd_raw, module_handle, register_class, wide,
+};
 
 const CLASS_NAME: &str = "FerramariTray";
 const TRAY_ID: u32 = 1;
@@ -159,9 +161,20 @@ fn notify_data(hwnd: HWND) -> NOTIFYICONDATAW {
         uCallbackMessage: CALLBACK_MESSAGE,
         ..Default::default()
     };
-    // A stock application icon is always present; shipping a custom icon file
-    // is an installer concern, not a runtime lookup.
-    if let Ok(icon) = unsafe { LoadIconW(None, IDI_APPLICATION) } {
+    // Resource ID 1 is the icon `build.rs` embeds in both executables. Reading
+    // it from the running module keeps the notification area identical to the
+    // taskbar and Explorer instead of falling back to the generic application
+    // icon. A build without resources still gets a usable stock icon.
+    // `without_provenance(1)` is `MAKEINTRESOURCE(1)`: an integer resource id
+    // carried in a pointer-sized parameter, not an address.
+    let icon = unsafe {
+        LoadIconW(
+            Some(module_handle()),
+            PCWSTR(std::ptr::without_provenance(1)),
+        )
+    }
+    .or_else(|_| unsafe { LoadIconW(None, IDI_APPLICATION) });
+    if let Ok(icon) = icon {
         data.hIcon = icon;
     }
     copy_wide(&mut data.szTip, "Ferramari");

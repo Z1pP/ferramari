@@ -6,8 +6,8 @@
 policy and the same Iced control surface now have a Win32 backend: a wallpaper
 window behind Explorer's desktop icons, physical-pixel monitor discovery,
 foreground/occlusion tracking, lock and power events, a tray icon, autostart
-and static-wallpaper handling. **443 tests** pass (15 binary + 344 core + 17
-media + 53 platform + 8 UI library + 6 UI binary).
+and static-wallpaper handling. **447 tests** pass (15 binary + 347 core + 17
+media + 54 platform + 8 UI library + 6 UI binary).
 
 - **Wallpaper hosting.** A child window is parented to the `WorkerW` behind
   `SHELLDLL_DefView` (with `Progman` as fallback) and embedded into mpv through
@@ -47,7 +47,33 @@ media + 53 platform + 8 UI library + 6 UI binary).
 - **Notification area.** The tray owns a hidden top-level window and re-adds
   its `Shell_NotifyIconW` entry when the shell broadcasts `TaskbarCreated`, so
   the icon comes back after an Explorer restart. The registration is cached in
-  a `OnceLock` and covered by a unit test.
+  a `OnceLock` and covered by a unit test. The icon itself is read from
+  resource ID 1 of the running executable, so the tray, Explorer and the
+  installer show the same crab.
+- **Closing the control window keeps Ferramari running.** On Windows the
+  title-bar X and the native close request hide the window instead of ending
+  the process: playback continues, "Run in background" is switched on
+  automatically so the tray icon exists, and the tray's Show command or a
+  second launch raises the same hidden window. `focus_existing_window` no
+  longer requires `IsWindowVisible`, so a hidden window is found and restored;
+  a hidden control surface closes itself if the server disappears, which
+  avoids an invisible orphan after tray Quit. Linux keeps close-and-exit.
+- **Performance metrics work on Windows.** The sampler used to read `/proc`
+  only, so every tile on the Performance page reported `N/A`. The Windows
+  backend now walks the Toolhelp process table for parent links and thread
+  counts, reads kernel+user time with `GetProcessTimes`, working set with
+  `GetProcessMemoryInfo` and total RAM with `GlobalMemoryStatusEx`. GPU stays
+  `Unsupported` because no portable counter is wired up. Verified live at
+  1080p: CPU 6%, RAM 0.2 GB, 48 threads and 3 processes for the server, mpv and
+  the UI.
+- **The application has an icon.** `ferramari.ico` and a 256 px PNG are
+  generated from the existing SVG and committed under `data/icons/windows`.
+  `winresource` embeds the ICO plus version information in both executables,
+  the Iced window takes the PNG as its window/taskbar icon, and the tray loads
+  resource ID 1. The Inno Setup script uses the same ICO for the setup program
+  and its shortcuts. Verified by extracting the icon from both `.exe` files,
+  reading the window's `WM_GETICON` and confirming the tray registration with
+  `Shell_NotifyIconGetRect`.
 - **No D-Bus on Windows.** The server listens on `127.0.0.1` at an ephemeral
   port and publishes a per-process token in `control-endpoint.json`. The Iced
   UI and the second-launch handshake use newline-delimited JSON over that

@@ -208,7 +208,7 @@ ferramari --catalog https://catalog.example.org/v1  # inspect a Catalog API
 ferramari package --help    # checksum, sign and verify .ferramari packages
 ```
 
-A second `ferramari` invocation does not start another wallpaper server: it asks the running server to show the separate `ferramari-ui` control surface and exits. If the window is already open it is restored and raised rather than duplicated. Both binaries must be installed side by side. On Windows the installer puts both `.exe` files in the same folder; the portable ZIP has the same layout.
+A second `ferramari` invocation does not start another wallpaper server: it asks the running server to show the separate `ferramari-ui` control surface and exits. If the window is already open it is restored and raised rather than duplicated. On Windows, closing the control window hides it instead of ending the process: the wallpaper keeps playing, the tray icon is enabled so the window can be reopened, and the same window comes back from the tray or a second launch. Both binaries must be installed side by side. On Windows the installer puts both `.exe` files in the same folder; the portable ZIP has the same layout. The executable, the control window, the tray and the installer all use the crab icon from `data/icons/windows/ferramari.ico`; the Performance page reads Windows process counters and reports GPU as `N/A` until a portable GPU counter is wired up.
 
 Local videos and images are read from `$XDG_VIDEOS_DIR/Ferramari` (usually
 `~/Videos/Ferramari`) on Linux and from `%USERPROFILE%\Videos\Ferramari` on

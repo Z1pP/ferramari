@@ -32,6 +32,11 @@ zvariant = "5"
 # Iced-only contract.
 ferramari-platform = { path = "../ferramari-platform" }
 
+[target.'cfg(windows)'.build-dependencies]
+# Embeds the icon, version info and manifest into ferramari-ui.exe; see
+# build.rs.
+winresource = "0.1"
+
 [[bin]]
 name = "ferramari-ui"
 path = "src/main.rs"

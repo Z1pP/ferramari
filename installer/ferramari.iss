@@ -45,11 +45,12 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayName=Ferramari {#AppVersion}
 UninstallDisplayIcon={app}\ferramari.exe
+; The setup icon is the same ICO both executables embed, so the installer,
+; the shortcut and the tray all show one product icon.
+SetupIconFile=..\data\icons\windows\ferramari.ico
 CloseApplications=yes
 UsePreviousAppDir=yes
 SetupLogging=yes
-; There is no .ico asset in the repository yet; the default setup icon is
-; honest and does not pretend to be the Linux SVG.
 VersionInfoVersion={#AppVersion}
 VersionInfoDescription=Ferramari video wallpaper
 VersionInfoProductName=Ferramari

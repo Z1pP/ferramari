@@ -840,6 +840,9 @@ struct App {
     /// snapshots that contradict the user's intent (e.g. user clicked Resume
     /// but server hasn't started playback yet, so snapshot still says paused).
     pending_play: Option<bool>,
+    /// Windows close-to-tray: the window is hidden but the process stays alive
+    /// so the tray (or a second launch) can raise it again.
+    hidden: bool,
 }
 
 impl App {
@@ -886,6 +889,7 @@ impl App {
                 },
                 ticks: 0,
                 pending_play: None,
+                hidden: false,
             },
             // Connecting to the server and asking GitHub about a new release
             // are independent, so neither waits for the other. The release
@@ -1026,7 +1030,7 @@ impl App {
                 Task::none()
             }
             Message::CloseWindow => match self.window {
-                Some(id) => window::close(id),
+                Some(id) => self.close_or_hide(id),
                 None => Task::none(),
             },
             Message::DragWindow => match self.window {
@@ -1052,6 +1056,10 @@ impl App {
                         self.width = size.width;
                         return window::is_maximized(id).map(Message::MaximizeState);
                     }
+                    window::Event::CloseRequested => return self.close_or_hide(id),
+                    // The tray raises the window through Win32, which the Iced
+                    // runtime reports as focus rather than as a mode change.
+                    window::Event::Focused => self.hidden = false,
                     window::Event::Resized(size) => self.width = size.width,
                     _ => {}
                 }
@@ -1178,6 +1186,14 @@ impl App {
                     self.server = None;
                     self.applied_language.clear();
                     self.pending_play = None;
+                    // A hidden window whose server is gone has no tray left to
+                    // reopen it: it would sit in memory invisible until the
+                    // session ends. Closing the last window ends the process.
+                    if self.hidden {
+                        if let Some(id) = self.window {
+                            return window::close(id);
+                        }
+                    }
                 }
                 if !self.blur_dirty {
                     self.blur_draft = new_state.blur_radius;
@@ -1749,6 +1765,38 @@ impl App {
             },
             move |result| Message::CatalogueLoaded(result, append),
         )
+    }
+
+    /// The title-bar X and the native close request.
+    ///
+    /// On Windows the window is hidden instead of destroyed: the server and
+    /// its wallpaper keep running, the tray icon gets a chance to be there, and
+    /// the tray's Show command (or a second launch) raises the same window
+    /// again. Everywhere else the window closes as it always did.
+    fn close_or_hide(&mut self, id: window::Id) -> Task<Message> {
+        #[cfg(target_os = "windows")]
+        {
+            // Without a server there is no tray to reopen the window from;
+            // hiding would leave an invisible process with no handle.
+            if self.server.is_none() {
+                return window::close(id);
+            }
+            self.hidden = true;
+            // Closing to the tray is what "Run in background" describes, so
+            // turn it on when it is off. The switch then reflects the state
+            // instead of promising a tray that is not registered.
+            let tray = if self.state.is_show_systray {
+                Task::none()
+            } else {
+                self.state.is_show_systray = true;
+                set_bool(self.server.as_ref(), "is_show_systray", true)
+            };
+            Task::batch([tray, window::set_mode(id, window::Mode::Hidden)])
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            window::close(id)
+        }
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -5106,6 +5154,21 @@ fn acquire_ui_instance() -> Result<Option<ferramari_platform::ui_instance::UiIns
     ferramari_platform::ui_instance::acquire()
 }
 
+/// The window and taskbar icon.
+///
+/// Windows does not infer it from the executable resource for a window, and
+/// the control surface has no title-bar decorations that would supply one.
+/// The PNG is generated from the same SVG the Linux desktop entry installs;
+/// the ICO next to it is what `build.rs` embeds in both executables for the
+/// tray, Explorer and the installer.
+fn window_icon() -> Option<window::Icon> {
+    iced::window::icon::from_file_data(
+        include_bytes!("../../../data/icons/windows/ferramari-256.png"),
+        None,
+    )
+    .ok()
+}
+
 fn main() -> iced::Result {
     if let Some(language) = Config::language_override() {
         apply_language(&language);
@@ -5117,6 +5180,13 @@ fn main() -> iced::Result {
     let _instance = match acquire_ui_instance() {
         Ok(connection) => connection,
         Err(error) => {
+            // On Windows a second launch is the user asking for the window
+            // that is already running, not an error to print into a console
+            // nobody sees. Raise it — hidden windows included — and leave.
+            #[cfg(windows)]
+            if ferramari_platform::ui_instance::focus_existing_window() {
+                return Ok(());
+            }
             eprintln!("[GUI] {error}");
             return Ok(());
         }
@@ -5135,6 +5205,15 @@ fn main() -> iced::Result {
         // still shows a whole resource row; below that nothing fits honestly.
         min_size: Some(Size::new(900.0, 620.0)),
         decorations: false,
+        // On Windows the title-bar X hides the window instead of ending the
+        // process, so the tray keeps a handle on the running server. The
+        // runtime must deliver `CloseRequested` rather than close the window
+        // itself for that to be possible.
+        exit_on_close_request: !cfg!(target_os = "windows"),
+        // Windows takes the taskbar icon from the window, not from the
+        // executable resource, and the control surface has no decorations
+        // that would supply one.
+        icon: window_icon(),
         // Linux only: the application id matches the .desktop basename, which
         // is what makes the window group with the app in the taskbar and the
         // Activities overview. Windows and macOS use their own defaults.

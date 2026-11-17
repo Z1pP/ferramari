@@ -1,8 +1,9 @@
 //! Lightweight process-tree metrics for the Performance page.
 //!
-//! The Linux sampler reads `/proc`; there is no dependency on a system
-//! monitor, UPower or `nvidia-smi`. A sample covers Ferramari plus its mpv
-//! children.
+//! Linux reads `/proc`; Windows reads the Toolhelp process table and
+//! per-process counters through `GetProcessTimes` and `GetProcessMemoryInfo`.
+//! Neither needs a system monitor, UPower or `nvidia-smi`. A sample covers
+//! Ferramari plus its mpv children.
 //!
 //! Every number is a [`Metric`], so a missing value carries *why* it is
 //! missing. Showing `0%` for a platform that cannot measure CPU at all, or for
@@ -104,7 +105,7 @@ impl Monitor {
     /// server's footprint (mpv children included) instead of its own.
     pub fn sample_of(&mut self, root: u32) -> Sample {
         let gpu = gpu_percent(Path::new("/sys/class/drm"));
-        let memory_total = mem_total(Path::new("/proc/meminfo"));
+        let memory_total = total_memory();
         let Some(tree) = read_tree(root) else {
             // Either this platform has no sampler, or the tree is gone. The
             // distinction belongs to the sampler, so ask it directly.
@@ -137,7 +138,7 @@ impl Monitor {
                 let elapsed = now.duration_since(previous_at).as_secs_f64();
                 if elapsed > 0.0 {
                     let ticks = tree.ticks.saturating_sub(previous_ticks);
-                    Metric::Value(ticks as f64 / clock_ticks() as f64 / elapsed * 100.0)
+                    Metric::Value(ticks as f64 / ticks_per_second() as f64 / elapsed * 100.0)
                 } else {
                     // Two reads within the same clock tick: there is no
                     // interval to divide by, and `0%` would be a guess.
@@ -235,10 +236,105 @@ fn read_tree(root: u32) -> Option<Tree> {
     Some(tree)
 }
 
-/// Platforms without a `/proc` table have no sampler yet. Windows needs
-/// `GetProcessTimes`/PSAPI and macOS `proc_pid_rusage`; until one of those is
-/// wired up the metrics page must report that rather than zeroes.
-#[cfg(not(target_os = "linux"))]
+/// Walk the Windows process table below `root`. The Toolhelp snapshot gives
+/// the parent links and thread counts in one pass; each process that can be
+/// opened contributes its kernel+user time (100 ns units) and working set.
+/// A process that cannot be opened still counts as a process and keeps the
+/// tree shape, so the reading is "some of it" rather than "nothing".
+#[cfg(target_os = "windows")]
+fn read_tree(root: u32) -> Option<Tree> {
+    use std::collections::HashMap;
+
+    use windows::Win32::Foundation::{CloseHandle, FILETIME};
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
+    use windows::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, PROCESS_ACCESS_RIGHTS, PROCESS_QUERY_LIMITED_INFORMATION,
+        PROCESS_VM_READ,
+    };
+
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }.ok()?;
+    let mut processes: HashMap<u32, (u32, u32)> = HashMap::new();
+    let mut entry = PROCESSENTRY32W {
+        dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+        ..Default::default()
+    };
+    if unsafe { Process32FirstW(snapshot, &mut entry) }.is_ok() {
+        loop {
+            processes.insert(
+                entry.th32ProcessID,
+                (entry.th32ParentProcessID, entry.cntThreads),
+            );
+            if unsafe { Process32NextW(snapshot, &mut entry) }.is_err() {
+                break;
+            }
+        }
+    }
+    let _ = unsafe { CloseHandle(snapshot) };
+
+    let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
+    for (pid, (ppid, _)) in &processes {
+        children.entry(*ppid).or_default().push(*pid);
+    }
+
+    // `GetProcessMemoryInfo` wants `PROCESS_VM_READ`; `GetProcessTimes` only
+    // wants query access. Try the wider right first and fall back so a
+    // protected child still contributes CPU time.
+    let wide_access =
+        PROCESS_ACCESS_RIGHTS(PROCESS_QUERY_LIMITED_INFORMATION.0 | PROCESS_VM_READ.0);
+    let mut tree = Tree::default();
+    let mut stack = vec![root];
+    while let Some(pid) = stack.pop() {
+        let Some((_, threads)) = processes.get(&pid).copied() else {
+            continue;
+        };
+        tree.processes = tree.processes.saturating_add(1);
+        tree.threads = tree.threads.saturating_add(threads.max(1));
+        if let Ok(handle) = unsafe { OpenProcess(wide_access, false, pid) }
+            .or_else(|_| unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) })
+        {
+            let mut created = FILETIME::default();
+            let mut exited = FILETIME::default();
+            let mut kernel = FILETIME::default();
+            let mut user = FILETIME::default();
+            if unsafe { GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user) }
+                .is_ok()
+            {
+                tree.ticks = tree
+                    .ticks
+                    .saturating_add(filetime_ticks(kernel) + filetime_ticks(user));
+            }
+            let mut counters = PROCESS_MEMORY_COUNTERS {
+                cb: std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+                ..Default::default()
+            };
+            if unsafe { GetProcessMemoryInfo(handle, &mut counters, counters.cb) }.is_ok() {
+                tree.rss_bytes = tree
+                    .rss_bytes
+                    .saturating_add(counters.WorkingSetSize as u64);
+            }
+            let _ = unsafe { CloseHandle(handle) };
+        }
+        if let Some(children) = children.get(&pid) {
+            stack.extend(children);
+        }
+    }
+    Some(tree)
+}
+
+/// FILETIME stores 100 ns units in two 32-bit halves.
+#[cfg(target_os = "windows")]
+fn filetime_ticks(time: windows::Win32::Foundation::FILETIME) -> u64 {
+    (u64::from(time.dwHighDateTime) << 32) | u64::from(time.dwLowDateTime)
+}
+
+/// Platforms without a process table the sampler understands. macOS needs
+/// `proc_pid_rusage`; until that is wired up the metrics page must report that
+/// rather than zeroes.
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 fn read_tree(_root: u32) -> Option<Tree> {
     None
 }
@@ -278,7 +374,7 @@ fn parse_status(text: &str) -> Status {
 }
 
 #[cfg(unix)]
-fn clock_ticks() -> u64 {
+fn ticks_per_second() -> u64 {
     let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
     if ticks > 0 {
         ticks as u64
@@ -287,10 +383,38 @@ fn clock_ticks() -> u64 {
     }
 }
 
-#[cfg(not(unix))]
-fn clock_ticks() -> u64 {
+/// Windows `GetProcessTimes` reports 100 ns intervals, so there are ten
+/// million per second.
+#[cfg(target_os = "windows")]
+fn ticks_per_second() -> u64 {
+    10_000_000
+}
+
+#[cfg(not(any(unix, target_os = "windows")))]
+fn ticks_per_second() -> u64 {
     // Only reached by code paths that already reported Unsupported.
     100
+}
+
+/// Total physical memory in bytes. Windows exposes it through
+/// `GlobalMemoryStatusEx`; Linux reads `MemTotal` from `/proc/meminfo`.
+#[cfg(target_os = "windows")]
+fn total_memory() -> Metric<u64> {
+    use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+
+    let mut status = MEMORYSTATUSEX {
+        dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
+        ..Default::default()
+    };
+    match unsafe { GlobalMemoryStatusEx(&mut status) } {
+        Ok(()) => Metric::Value(status.ullTotalPhys),
+        Err(_) => Metric::Unavailable,
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn total_memory() -> Metric<u64> {
+    mem_total(Path::new("/proc/meminfo"))
 }
 
 /// Busiest GPU, or the reason nothing is known.
@@ -321,6 +445,7 @@ fn gpu_percent(root: &Path) -> Metric<f64> {
 
 /// Total physical memory in bytes, from `MemTotal` in `/proc/meminfo`. The
 /// Performance page shows Ferramari's share of it, which needs the whole.
+#[cfg(any(not(target_os = "windows"), test))]
 fn mem_total(path: &Path) -> Metric<u64> {
     let Ok(text) = fs::read_to_string(path) else {
         return Metric::Unsupported;
@@ -363,6 +488,16 @@ mod tests {
         let status = parse_status("Name:\tferramari\nVmRSS:\t  12345 kB\nThreads:\t7\n");
         assert_eq!(status.rss_kb, 12345);
         assert_eq!(status.threads, 7);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn filetime_ticks_combine_the_two_words() {
+        let time = windows::Win32::Foundation::FILETIME {
+            dwLowDateTime: 1,
+            dwHighDateTime: 2,
+        };
+        assert_eq!(filetime_ticks(time), (2u64 << 32) | 1);
     }
 
     #[test]
@@ -425,7 +560,7 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     #[test]
     fn the_first_sample_has_no_rate_to_report() {
         let mut monitor = Monitor::default();
@@ -440,7 +575,7 @@ mod tests {
         assert!(sample.threads.is_value());
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     #[test]
     fn a_platform_without_a_process_sampler_says_so() {
         let sample = Monitor::default().sample();
@@ -450,7 +585,7 @@ mod tests {
         assert_eq!(sample.threads, Metric::Unsupported);
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     #[test]
     fn current_process_tree_contains_this_test() {
         let mut monitor = Monitor::default();
@@ -472,7 +607,7 @@ mod tests {
         // finds nothing, which is "gone", not "unsupported".
         let mut monitor = Monitor::default();
         let sample = monitor.sample_of(u32::MAX);
-        if cfg!(target_os = "linux") {
+        if cfg!(any(target_os = "linux", target_os = "windows")) {
             assert_eq!(sample.processes, Metric::Unavailable);
             assert_eq!(sample.cpu, Metric::Unavailable);
             assert_eq!(sample.memory, Metric::Unavailable);
@@ -485,13 +620,11 @@ mod tests {
         assert!(!matches!(sample.gpu, Metric::Pending));
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     #[test]
     fn a_gone_server_resets_the_cpu_interval() {
         // Otherwise the next live sample would divide by the elapsed time
-        // across the gap and report a meaningless spike. Windows has no
-        // process-tree sampler yet, so every reading there is Unsupported and
-        // this Linux-only invariant does not apply.
+        // across the gap and report a meaningless spike.
         let mut monitor = Monitor::default();
         monitor.sample();
         let _ = monitor.sample_of(u32::MAX);

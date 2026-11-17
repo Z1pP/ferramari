@@ -224,9 +224,15 @@ Windows is the second backend. Its status against this checklist:
   `Local\io.github.ferramari.Ferramari.server`; a second launch probes the
   endpoint and asks the owner to show the UI. The control surface claims
   `Local\io.github.ferramari.Ferramari.ui` before creating its window. Both are
-  per-session named mutexes. `show_gui` looks for the existing visible,
-  non-tool window titled `Ferramari`, restores it when minimized and raises it;
-  a new UI process that loses the mutex exits without stacking a second window.
+  per-session named mutexes. `show_gui` looks for the existing non-tool window
+  titled `Ferramari`, restores it when minimized, shows it when hidden and
+  raises it; a new UI process that loses the mutex raises the same window and
+  exits without stacking a second one. Showing counts as success even when
+  Windows' foreground lock refuses activation, so the caller does not spawn a
+  duplicate. On Windows the control surface's close request hides the window
+  (`exit_on_close_request: false`), keeps the process alive and turns
+  `is_show_systray` on so the tray is available to reopen it; a hidden window
+  closes itself when the server stops answering.
 - **Desktop host.** Explorer's layout differs between builds. On the classic
   layout a top-level `WorkerW` owns `SHELLDLL_DefView` and the surface goes
   into the next `WorkerW`, or into the icon host itself when there is no
@@ -244,7 +250,17 @@ Windows is the second backend. Its status against this checklist:
   failure.
 - **Notification area.** The tray owns a hidden top-level window and re-adds
   its `Shell_NotifyIconW` entry when the shell broadcasts `TaskbarCreated`,
-  which is how the icon survives an Explorer restart.
+  which is how the icon survives an Explorer restart. Its `HICON` comes from
+  resource ID 1 of the running executable (falling back to the stock
+  application icon), so the tray, Explorer and the installer share one icon.
+- **Metrics.** Windows has no `/proc`. `ferramari-core::metrics` walks the
+  Toolhelp process table for parent links and thread counts, reads kernel+user
+  time in 100 ns units with `GetProcessTimes`, working set with
+  `GetProcessMemoryInfo` and total RAM with `GlobalMemoryStatusEx`. A process
+  that cannot be opened still counts toward the tree and its thread total, so
+  the reading degrades to "some of it" rather than "nothing". GPU remains
+  `Unsupported` because no portable counter is wired up; the Performance page
+  shows `N/A` instead of zero.
 - **Display geometry.** All rectangles are physical pixels; `scale_factor` is
   `DPI/96`. This differs from the X11 backend's logical pixels and is why core
   never derives scale from a rectangle.

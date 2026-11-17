@@ -6,6 +6,17 @@ rust-version.workspace = true
 license.workspace = true
 description = "Ferramari core library: paths, configuration, business logic"
 
+[target.'cfg(target_os = "windows")'.dependencies]
+# Process-tree sampling reads the Windows process table and per-process
+# counters directly; the same `windows` crate version the platform layer uses.
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_ProcessStatus",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+] }
+
 [dependencies]
 anyhow = "1"
 base64 = "0.22"

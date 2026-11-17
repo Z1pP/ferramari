@@ -110,10 +110,10 @@ Statuses used below:
 
 | ID | Priority | Status | Area | Finding |
 | --- | --- | --- | --- | --- |
-| R-01 | P0 | confirmed-live | Windows static wallpaper | Disabling static wallpaper makes playback restart in a loop |
-| R-02 | P1 | confirmed-repro | Config durability | Recovery overwrites the valid `.bak` with the corrupt primary |
-| R-03 | P1 | confirmed-repro | Display identity | A corrupt `display-ids.json` ignores a valid `.bak` and loses assignments |
-| R-04 | P1 | confirmed-live | Config reload | `reload_config` discards a pending debounced setting |
+| R-01 | P0 | fixed-live | Windows static wallpaper | Disabling static wallpaper makes playback restart in a loop |
+| R-02 | P1 | fixed-unit | Config durability | Recovery overwrites the valid `.bak` with the corrupt primary |
+| R-03 | P1 | fixed-unit | Display identity | A corrupt `display-ids.json` ignores a valid `.bak` and loses assignments |
+| R-04 | P1 | fixed-code | Config reload | `reload_config` discards a pending debounced setting |
 | R-05 | P1 | confirmed-live | Error reporting | Server-side application errors never reach the control surface |
 | R-06 | P1 | confirmed-live | Playback state | `is_playing` reflects policy intent, not a live player |
 | R-07 | P1 | confirmed-code | Mixed DPI | Windows physical geometry is multiplied by `scale_factor` a second time |
@@ -131,7 +131,7 @@ Statuses used below:
 ## R-01 — Disabling static wallpaper makes Windows playback restart in a loop
 
 **Priority:** P0  
-**Status:** `confirmed-live`
+**Status:** `fixed-live` (fixed in this branch; see Resolution)
 
 **Where**
 
@@ -199,6 +199,27 @@ wallpaper host and destroys the live surface.
   twice, wait 10 s, assert the mpv PID stays stable and no `lost its wallpaper
   host`/restart sequence occurs.
 
+**Resolution (2026-11-18)**
+
+`StaticBackground::restore()` now skips the restore when no frame is active and
+the desktop already shows the recorded original. The decision lives in
+`restore_can_be_skipped()` and is covered by
+`restoring_the_original_that_is_already_shown_is_a_no_op`.
+
+A fresh isolated live run with `is_static_wallpaper=false` then produced:
+
+```text
+PLAYING=True
+STATS_ACTIVE=true
+MPV=18344
+RESTART_LINES=0
+RESTORE_LINES=0
+```
+
+No `lost its wallpaper host`, no restart, and an active decoder after eight
+seconds. The earlier failing run had three restarts in seven seconds and
+`stats.active=false`.
+
 ---
 
 ## R-02 — Config recovery overwrites the valid backup with the corrupt primary
@@ -253,6 +274,16 @@ alone.
   backup is still valid JSON after recovery.
 - Add a failure-injection seam between backup promotion and primary rename;
   after the simulated failure, assert that at least one valid copy exists.
+
+**Resolution (2026-11-18)**
+
+`write_atomic()` now promotes only a previous primary that is a valid JSON
+object, writes the backup through its own temporary file and rename, and leaves
+an already-good backup alone when the primary is corrupt. The existing recovery
+test now also asserts that the repaired backup remains valid, and
+`a_corrupt_primary_is_not_promoted_to_the_backup` covers the
+corrupt-primary-to-new-primary path. The same helper serves `config.json`,
+`library.json` and `display-ids.json`.
 
 ---
 
@@ -312,6 +343,15 @@ after a successful parse. Keep the `write_atomic` fix from R-02.
   legacy record survives.
 - Assert the backup remains valid after the repair.
 
+**Resolution (2026-11-18)**
+
+`DisplayIdRegistry::load_from()` now tries the primary and then
+`display-ids.json.bak`, remembering the last parse error for the log. The new
+`a_corrupt_primary_falls_back_to_the_valid_backup` test writes a valid backup,
+corrupts the primary, and asserts both the recovered record and the intact
+backup. `read_with_backup()` also validates JSON before preferring a primary,
+so `Config::language_override()` benefits from the same rule.
+
 ---
 
 ## R-04 — `reload_config` discards a pending debounced setting
@@ -362,6 +402,14 @@ the hotplug path). Add a test that sets a dirty value and reloads.
   `ReloadConfig`, assert volume 77 in memory and on disk.
 - A live control-endpoint check on Windows, where the ordering is easy to
   reproduce.
+
+**Resolution (2026-11-18)**
+
+`reload_config()` now calls `flush_config()` before `Config::load()`, matching
+the established hotplug path. The pre-fix live reproduction is recorded above
+(`AFTER_RELOAD=42`). A post-fix live rerun was not possible while another
+Ferramari server owned the per-session mutex; the unit/integration regression
+test remains to be added with the next app-level test harness.
 
 ---
 
@@ -908,6 +956,29 @@ original background afterward. The temporary directories are under
 The release binary used for the live probes was
 `target\release\ferramari.exe` built from `fb6071f`. The test video was
 `%USERPROFILE%\Videos\Ferramari\Power-Dancing-1080p.mp4`.
+
+## Phase 1 progress
+
+The first Phase 1 change set addresses R-01, R-02, R-03 and R-04 while keeping
+the audit and verification results separate.
+
+| Change | Verification |
+| --- | --- |
+| R-01: idempotent Windows static-background restore | New platform unit test; live rerun with static wallpaper off: stable mpv PID, `STATS_ACTIVE=true`, zero restarts/restore calls |
+| R-02: validated, atomic backup promotion | New config tests; full `ferramari-core` suite |
+| R-03: primary-then-backup display registry load | New display-id test; full `ferramari-core` suite |
+| R-04: flush before `reload_config` | Pre-fix live reproduction recorded; post-fix app-level regression test still pending |
+
+Post-change gates on the branch:
+
+```text
+cargo clippy --workspace --all-targets --locked -- -D warnings  exit 0
+cargo test --workspace --locked                                 exit 0
+cargo build --workspace --release --locked                      exit 0
+```
+
+Test totals after the change set: **454 passed, 0 failed** (15 binary + 353
+core + 17 media + 55 platform + 8 UI library + 6 UI binary).
 
 ## Phase 0 exit
 

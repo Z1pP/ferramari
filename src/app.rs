@@ -1163,6 +1163,9 @@ impl App {
 
     /// Re-read `config.json` from disk (D-Bus `reload_config`).
     fn reload_config(&mut self) {
+        // A volume/blur slider change is written after a short debounce. An
+        // external reload must not re-read the old file and silently undo it.
+        self.flush_config();
         let names: Vec<String> = self
             .monitors
             .iter()

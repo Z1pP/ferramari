@@ -1128,7 +1128,7 @@ impl App {
         }
     }
 
-    fn notify_window_error(&self, key: &WindowKey, err: anyhow::Error) {
+    fn notify_window_error(&mut self, key: &WindowKey, err: anyhow::Error) {
         let (kind, summary) = match key.kind {
             ContentKind::Video => {
                 let name = Path::new(&key.source)
@@ -1841,7 +1841,7 @@ impl App {
         }
     }
 
-    fn save_config(&self) {
+    fn save_config(&mut self) {
         log::debug!("[Config] Saving {}", paths::config_path().display());
         if let Err(err) = self.config.save() {
             self.notify_user_error(UserError::with_detail(
@@ -1933,8 +1933,13 @@ impl App {
         log::trace!("[Snapshot] published");
     }
 
-    fn notify_user_error(&self, error: UserError) {
+    fn notify_user_error(&mut self, error: UserError) {
         error.log();
+        // The control surface is a separate process and only reads snapshots.
+        // Publishing the error here is what turns a log-only failure into a
+        // visible status line; package operations keep using the same field.
+        self.set_operation_status(error.message(), true);
+        self.sync_snapshot();
     }
 }
 

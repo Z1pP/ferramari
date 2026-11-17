@@ -114,7 +114,7 @@ Statuses used below:
 | R-02 | P1 | fixed-unit | Config durability | Recovery overwrites the valid `.bak` with the corrupt primary |
 | R-03 | P1 | fixed-unit | Display identity | A corrupt `display-ids.json` ignores a valid `.bak` and loses assignments |
 | R-04 | P1 | fixed-code | Config reload | `reload_config` discards a pending debounced setting |
-| R-05 | P1 | confirmed-live | Error reporting | Server-side application errors never reach the control surface |
+| R-05 | P1 | partially-fixed | Error reporting | Errors now publish to `operation_status`; per-command result semantics remain open |
 | R-06 | P1 | confirmed-live | Playback state | `is_playing` reflects policy intent, not a live player |
 | R-07 | P1 | confirmed-code | Mixed DPI | Windows physical geometry is multiplied by `scale_factor` a second time |
 | R-08 | P1 | partially-fixed | Windows control transport | Unbounded request line fixed; per-client thread cap remains |
@@ -473,6 +473,14 @@ without a sequence id.
 - Windows control test: missing file returns a structured error (or an
   observable error snapshot) rather than plain `ok`.
 - Server test: `notify_user_error` publishes to the snapshot.
+
+**Resolution (2026-11-18, partial)**
+
+`notify_user_error()` now publishes `error.message()` through the existing
+`operation_status`/`operation_error` snapshot fields and refreshes the snapshot,
+so the control surface can display an apply/playback failure instead of only
+writing a log line. The command API is still fire-and-forget and the status has
+no request id; per-command acknowledgement and rollback remain open (R-09).
 
 ---
 
@@ -989,6 +997,7 @@ the audit and verification results separate.
 | R-02: validated, atomic backup promotion | New config tests; full `ferramari-core` suite |
 | R-03: primary-then-backup display registry load | New display-id test; full `ferramari-core` suite |
 | R-04: flush before `reload_config` | Pre-fix live reproduction recorded; post-fix app-level regression test still pending |
+| R-05: publish errors to the snapshot | Code path now calls `set_operation_status`; per-command ack still open |
 | R-08: bounded control request line | New platform test; per-client thread cap still open |
 | R-11: UTF-8 BOM handling | New config test |
 | R-12: catalogue cache cleanup call | Startup call added; fake-root test still open |

@@ -43,6 +43,8 @@ pub enum Command {
     ReloadConfig,
     QuitPlayer,
     FeelingLucky,
+    NextWallpaper,
+    PreviousWallpaper,
     Quit,
     ToggleMute,
     TogglePause,

@@ -21,6 +21,16 @@
     <category>Graphics</category>
   </categories>
   <releases>
+    <release version="2.2.3" date="2026-11-18" type="stable">
+      <description>
+        <p>Fixes start-after-stop, slow video changes and the non-wrapping next/previous wallpaper controls.</p>
+        <ul>
+          <li>Start rebuilds the stopped players instead of doing nothing until the app restarts.</li>
+          <li>Video switches reuse the running player and leave the static frame alone while the video is playing, so Explorer does not replace its wallpaper worker and restart mpv.</li>
+          <li>The Home step controls move through the rotation collection, history and all local videos, wrapping at both ends.</li>
+        </ul>
+      </description>
+    </release>
     <release version="2.2.2" date="2026-11-17" type="stable">
       <description>
         <p>The Windows shortcuts and autostart use a GUI-subsystem launcher, so starting Ferramari shows only the Iced UI and no console window. The server keeps its console for CLI and debug use.</p>

@@ -169,7 +169,8 @@ enum Message {
     TogglePlay,
     ToggleMute,
     ReloadWallpaper,
-    FeelingLucky,
+    NextWallpaper,
+    PreviousWallpaper,
 
     SetVolume(i32),
     BlurChanged(i32),
@@ -1138,6 +1139,7 @@ impl App {
             // it and the tray would have nothing to talk to.
             Message::StartEngine => {
                 self.state.is_playing = true;
+                self.state.is_paused_by_user = false;
                 self.pending_play = Some(true);
                 call(self.server.as_ref(), "start_playback")
             }
@@ -1276,7 +1278,8 @@ impl App {
                 set_bool(self.server.as_ref(), "is_mute", muted)
             }
             Message::ReloadWallpaper => call(self.server.as_ref(), "reload"),
-            Message::FeelingLucky => call(self.server.as_ref(), "feeling_lucky"),
+            Message::NextWallpaper => call(self.server.as_ref(), "next_wallpaper"),
+            Message::PreviousWallpaper => call(self.server.as_ref(), "previous_wallpaper"),
 
             Message::SetVolume(volume) => {
                 self.state.volume = volume;
@@ -2402,7 +2405,7 @@ impl App {
                     .align_y(Alignment::Center)
                     .push(s::icon_button(
                         "step-backward",
-                        Some(Message::FeelingLucky),
+                        Some(Message::PreviousWallpaper),
                         12.0,
                         s::Kind::IconOnArtwork,
                         sem,
@@ -2416,7 +2419,7 @@ impl App {
                     ))
                     .push(s::icon_button(
                         "step-forward",
-                        Some(Message::ReloadWallpaper),
+                        Some(Message::NextWallpaper),
                         12.0,
                         s::Kind::IconOnArtwork,
                         sem,

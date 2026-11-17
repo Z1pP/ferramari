@@ -21,6 +21,11 @@
     <category>Graphics</category>
   </categories>
   <releases>
+    <release version="2.2.2" date="2026-11-17" type="stable">
+      <description>
+        <p>The Windows shortcuts and autostart use a GUI-subsystem launcher, so starting Ferramari shows only the Iced UI and no console window. The server keeps its console for CLI and debug use.</p>
+      </description>
+    </release>
     <release version="2.2.0" date="2026-11-17" type="stable">
       <description>
         <p>Ferramari now runs on Windows 10/11 with a native Win32 wallpaper host and the same Iced control surface.</p>

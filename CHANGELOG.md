@@ -1,13 +1,22 @@
 # Changelog
 
+## 2.2.2 - 2026-11-17
+
+- **No console window from a shortcut.** Windows shortcuts, the desktop
+  shortcut and autostart now go through `ferramari-launcher.exe`, a tiny
+  GUI-subsystem binary that starts the server with `CREATE_NO_WINDOW` and
+  forwards its arguments. The server keeps its console for `--doctor`,
+  `--version`, package commands and debug logs when it is run from a terminal;
+  the normal shortcut launch shows only the Iced UI.
+
 ## 2.2.0 - 2026-11-17
 
 **Ferramari runs on Windows 10/11.** The same two binaries, the same core
 policy and the same Iced control surface now have a Win32 backend: a wallpaper
 window behind Explorer's desktop icons, physical-pixel monitor discovery,
 foreground/occlusion tracking, lock and power events, a tray icon, autostart
-and static-wallpaper handling. **450 tests** pass (15 binary + 350 core + 17
-media + 54 platform + 8 UI library + 6 UI binary).
+and static-wallpaper handling. **451 tests** pass (15 binary + 350 core + 17
+media + 55 platform + 8 UI library + 6 UI binary).
 
 - **Wallpaper hosting.** A child window is parented to the `WorkerW` behind
   `SHELLDLL_DefView` (with `Progman` as fallback) and embedded into mpv through

@@ -257,6 +257,11 @@ profile.
 - [x] Both executables expose the crab icon through `ExtractAssociatedIcon`;
       the control window answers `WM_GETICON` with a small icon and the tray
       icon loads resource ID 1 from the running module.
+- [x] Start from the installer's Start-menu shortcut: only the Iced window
+      appears, with no console or Windows Terminal tab. The shortcut points at
+      `ferramari-launcher.exe`, a GUI-subsystem launcher that starts the server
+      with `CREATE_NO_WINDOW`; `ferramari.exe --version` and `--doctor` still
+      print when run from a terminal.
 
 ### Wallpaper host and Explorer restarts
 - [x] Apply a local video to one monitor; it appears behind the desktop icons
@@ -508,8 +513,8 @@ the tray's Show command and a second launch raised the same hidden window, and
 a hidden window exited after the server was quit. `ExtractAssociatedIcon`
 returned the crab from both executables, `WM_GETICON` returned the small icon
 for the control window, and the tray registration answered
-`Shell_NotifyIconGetRect` with `S_OK`. `cargo test --workspace` passed 450
-tests (15 binary + 350 core + 17 media + 54 platform + 8 UI library + 6 UI
+`Shell_NotifyIconGetRect` with `S_OK`. `cargo test --workspace` passed 451
+tests (15 binary + 350 core + 17 media + 55 platform + 8 UI library + 6 UI
 binary).
 
 ## Reproducible local run

@@ -6,7 +6,7 @@
 ; the release build already exists in ..\target\release.
 
 #ifndef AppVersion
-  #define AppVersion "2.2.0"
+  #define AppVersion "2.2.2"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\target\release"
@@ -67,6 +67,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "{#SourceDir}\ferramari.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\ferramari-ui.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\ferramari-launcher.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 ; build.ps1 stages catalogs under <bin>\locale, which is also the portable
@@ -74,12 +75,12 @@ Source: "{#SourceDir}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#LocaleDir}\*"; DestDir: "{app}\locale"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 
 [Icons]
-Name: "{group}\Ferramari"; Filename: "{app}\ferramari.exe"
+Name: "{group}\Ferramari"; Filename: "{app}\ferramari-launcher.exe"
 Name: "{group}\Uninstall Ferramari"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\Ferramari"; Filename: "{app}\ferramari.exe"; Tasks: desktopicon
+Name: "{autodesktop}\Ferramari"; Filename: "{app}\ferramari-launcher.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\ferramari.exe"; Description: "{cm:LaunchProgram,Ferramari}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\ferramari-launcher.exe"; Description: "{cm:LaunchProgram,Ferramari}"; Flags: nowait postinstall skipifsilent
 
 ; Deliberately no [UninstallDelete] for user data. Config, library, signing
 ; keys, packages and the recorded original wallpaper live in the user profile

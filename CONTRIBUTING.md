@@ -13,7 +13,7 @@ cargo test --workspace --locked
 
 The runtime needs `mpv`, `ffmpeg`/`ffprobe` and (for streaming) `yt-dlp`. Web-page wallpapers are temporarily unavailable. Build both application binaries with `cargo build --workspace --release --locked`.
 
-The wallpaper server currently creates desktop surfaces through X11/XWayland; the Iced control surface is separate and communicates over D-Bus. Do not claim native Wayland support without implementing and testing a compositor-specific wallpaper surface first.
+The wallpaper server creates desktop surfaces through X11/XWayland on Linux and through the `WorkerW`/`Progman` host on Windows; the Iced control surface is separate and communicates over D-Bus on Linux or the token-gated loopback endpoint on Windows. Do not claim native Wayland support without implementing and testing a compositor-specific wallpaper surface first.
 
 ## Before opening a pull request
 
@@ -42,7 +42,7 @@ desktop-file-validate data/io.github.ferramari.Ferramari.desktop
 ## Architecture rules
 
 - The Iced UI owns its widget tree on its event-loop thread. Never move UI state or widget handles into background workers.
-- The wallpaper server owns media engines on its command-loop thread. The UI and server communicate through the stable session D-Bus API.
+- The wallpaper server owns media engines on its command-loop thread. The UI and server communicate through the platform control API: D-Bus on Linux, loopback JSON on Windows.
 - Background work (network, ffmpeg, thumbnails, catalogues) returns plain data through channels or Iced tasks; do not reintroduce a GLib main loop.
 - External commands must have a deadline and must be reaped. Use
   `util::wait_with_timeout`, `util::output_with_timeout` or

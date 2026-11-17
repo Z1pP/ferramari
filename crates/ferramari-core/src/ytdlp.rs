@@ -340,8 +340,19 @@ fn kill_tree(child: &mut Child) {
             libc::kill(-(child.id() as i32), libc::SIGKILL);
         }
     }
-    // On non-Unix targets this kills the direct child. Platform-specific
-    // process-tree termination can replace this fallback when implemented.
+    #[cfg(windows)]
+    {
+        // `std` has no process groups here. `taskkill /T` walks the tree by
+        // parent pid, which is what keeps a timed-out `cmd` wrapper from
+        // leaving its child holding the stdout pipe open. Failure falls back
+        // to the direct kill below.
+        let _ = Command::new("taskkill")
+            .args(["/T", "/F", "/PID", &child.id().to_string()])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
     let _ = child.kill();
     let _ = child.wait();
 }
@@ -440,27 +451,63 @@ mod tests {
         assert!(Formats::parse("garbage").is_err());
     }
 
-    #[test]
-    fn hung_process_is_killed_at_the_deadline() {
+    /// A child that outlives the test's timeout on either platform.
+    #[cfg(unix)]
+    fn long_running() -> Command {
         let mut command = Command::new("sh");
         command.args(["-c", "sleep 5"]);
+        command
+    }
+
+    #[cfg(windows)]
+    fn long_running() -> Command {
+        let mut command = Command::new("cmd");
+        command.args(["/C", "ping -n 6 127.0.0.1 >NUL"]);
+        command
+    }
+
+    /// 200 KB of stdout, well past the usual 64 KB pipe buffer.
+    #[cfg(unix)]
+    fn large_output() -> Command {
+        let mut command = Command::new("sh");
+        command.args(["-c", "head -c 200000 /dev/zero"]);
+        command
+    }
+
+    #[cfg(windows)]
+    fn large_output() -> Command {
+        // Windows has no `head`; stage a file and let `type` stream it. The
+        // simple name and `current_dir` avoid `cmd.exe` path quoting.
+        let name = format!("ferramari-pipe-test-{}.txt", std::process::id());
+        let path = std::env::temp_dir().join(&name);
+        std::fs::write(&path, vec![b'x'; 200_000]).unwrap();
+        let mut command = Command::new("cmd");
+        command.current_dir(std::env::temp_dir());
+        command.args(["/C", &format!("type {name}")]);
+        command
+    }
+
+    #[test]
+    fn hung_process_is_killed_at_the_deadline() {
         let started = Instant::now();
-        let err =
-            run_with_timeout(command, Duration::from_millis(150), "test command").unwrap_err();
+        let err = run_with_timeout(long_running(), Duration::from_millis(150), "test command")
+            .unwrap_err();
         assert!(err.contains("timed out"), "{err}");
         assert!(started.elapsed() < Duration::from_secs(3), "kill was slow");
     }
 
     #[test]
     fn output_larger_than_a_pipe_buffer_is_captured() {
-        // 200 KB is well past the usual 64 KB pipe buffer: without a reader
-        // thread the child would block and the timeout would fire.
-        let mut command = Command::new("sh");
-        command.args(["-c", "head -c 200000 /dev/zero"]);
+        // Without a reader thread the child would block and the timeout would
+        // fire once it writes more than the pipe buffer.
         let (status, stdout, _) =
-            run_with_timeout(command, Duration::from_secs(5), "test command").unwrap();
+            run_with_timeout(large_output(), Duration::from_secs(5), "test command").unwrap();
         assert!(status.success());
         assert_eq!(stdout.len(), 200_000);
+        #[cfg(windows)]
+        let _ = std::fs::remove_file(
+            std::env::temp_dir().join(format!("ferramari-pipe-test-{}.txt", std::process::id())),
+        );
     }
 
     fn stream(url: &str) -> StreamInfo {

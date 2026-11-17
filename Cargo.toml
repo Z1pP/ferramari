@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "2.1.0"
+version = "2.2.0"
 edition = "2021"
 rust-version = "1.88"
 license = "GPL-3.0-or-later"
@@ -14,9 +14,9 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Video wallpaper for Linux, written in Rust"
+description = "Video wallpaper for Linux and Windows, written in Rust"
 readme = "README.md"
-keywords = ["wallpaper", "video", "linux"]
+keywords = ["wallpaper", "video", "linux", "windows"]
 categories = ["multimedia::video", "graphics"]
 
 [dependencies]
@@ -28,12 +28,16 @@ ferramari-media = { path = "crates/ferramari-media" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 env_logger = "0.11"
-gettext-rs = { version = "0.8", features = ["gettext-system"] }
-libc = "0.2"
 log = "0.4"
 rand = "0.8"
-# Ed25519 for `.ferramari` package signatures. `ring` is already in the tree
-# through `ureq`/rustls, so this adds no new native dependency.
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.build-dependencies]
+# Embeds the icon, version info and manifest into ferramari.exe. The same
+# resource is what the tray loads at runtime; see build.rs.
+winresource = "0.1"
 
 [profile.release]
 lto = "thin"

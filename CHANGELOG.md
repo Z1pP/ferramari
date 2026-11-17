@@ -1,5 +1,195 @@
 # Changelog
 
+## 2.2.0 - 2026-11-17
+
+**Ferramari runs on Windows 10/11.** The same two binaries, the same core
+policy and the same Iced control surface now have a Win32 backend: a wallpaper
+window behind Explorer's desktop icons, physical-pixel monitor discovery,
+foreground/occlusion tracking, lock and power events, a tray icon, autostart
+and static-wallpaper handling. **450 tests** pass (15 binary + 350 core + 17
+media + 54 platform + 8 UI library + 6 UI binary).
+
+- **Wallpaper hosting.** A child window is parented to the `WorkerW` behind
+  `SHELLDLL_DefView` (with `Progman` as fallback) and embedded into mpv through
+  `--wid`. On Windows 11 Explorer keeps the icon view directly under `Progman`
+  and paints the desktop image in a visible `WorkerW` below it; the surface is
+  parented into that worker, taking the bottom-most visible one because the
+  dummy created by `0x052C` sits above the real painter. Explorer restarts and
+  wallpaper changes destroy or hide that host; Windows leaves a cross-process
+  child alive, so `WallpaperSurface::is_alive` checks the parent link, the
+  host's owning process and the host's visibility rather than only `IsWindow`.
+  The media supervisor drops the stale engine and rebuilds against the new
+  host, retrying every second while Explorer is gone; a lost host is not
+  counted as a player failure.
+- **Wallpaper changes no longer freeze playback.** `SPI_SETDESKWALLPAPER`
+  makes Explorer replace the wallpaper `WorkerW` and send synchronous messages
+  to the surface. The surface window used to belong to the command loop, which
+  was inside that very call, so the call waited about 105 seconds for a thread
+  that could not answer; mpv died with its host and the generated frame looked
+  as if it had never been applied. Each surface now owns a dedicated
+  message-pumping thread: the call returns in about half a second, the expected
+  host loss rebuilds the player in about two seconds, and a cross-process
+  `WM_NULL` or `SetWindowPos` to the surface returns immediately. The frame
+  freshness check also compares against the primary monitor's own source
+  instead of `Default`, which had discarded every frame after a per-monitor
+  switch and left the previous video's image on the desktop.
+- **A wallpaper set while Ferramari runs is not rolled back.** The desktop
+  image is read again before quitting or toggling static wallpaper. If it is a
+  real file other than the frame Ferramari installed — or, with static
+  wallpaper off, other than the image recorded at startup — it is the user's
+  choice: it stays, `background-original.json` is rewritten to point at it, and
+  a later run restores that image instead of the one from the earlier session.
+  A new frame records such an image before covering it, so enabling or
+  switching static wallpaper cannot lose it either. Path comparison is case-
+  and separator-insensitive, and generated frames are never mistaken for the
+  user's wallpaper. Covered by four unit tests and verified live with static
+  wallpaper on and off.
+- **Notification area.** The tray owns a hidden top-level window and re-adds
+  its `Shell_NotifyIconW` entry when the shell broadcasts `TaskbarCreated`, so
+  the icon comes back after an Explorer restart. The registration is cached in
+  a `OnceLock` and covered by a unit test. The icon itself is read from
+  resource ID 1 of the running executable, so the tray, Explorer and the
+  installer show the same crab.
+- **Closing the control window keeps Ferramari running.** On Windows the
+  title-bar X and the native close request hide the window instead of ending
+  the process: playback continues, "Run in background" is switched on
+  automatically so the tray icon exists, and the tray's Show command or a
+  second launch raises the same hidden window. `focus_existing_window` no
+  longer requires `IsWindowVisible`, so a hidden window is found and restored;
+  a hidden control surface closes itself if the server disappears, which
+  avoids an invisible orphan after tray Quit. Linux keeps close-and-exit.
+- **Performance metrics work on Windows.** The sampler used to read `/proc`
+  only, so every tile on the Performance page reported `N/A`. The Windows
+  backend now walks the Toolhelp process table for parent links and thread
+  counts, reads kernel+user time with `GetProcessTimes`, working set with
+  `GetProcessMemoryInfo` and total RAM with `GlobalMemoryStatusEx`. GPU usage
+  comes from the Windows `GPU Engine` performance counters through PDH:
+  instances are grouped by engine (after dropping the per-process `pid_`
+  prefix) and the busiest engine is shown, matching Task Manager. `N/A` remains
+  only when the counter set is missing. Verified live at 1080p: CPU 8%, RAM
+  0.2–0.3 GB, GPU 50–55%, 62–70 threads and 3 processes while the UI, mpv and
+  the video decoder were running.
+- **The application has an icon.** `ferramari.ico` and a 256 px PNG are
+  generated from the existing SVG and committed under `data/icons/windows`.
+  `winresource` embeds the ICO plus version information in both executables,
+  the Iced window takes the PNG as its window/taskbar icon, and the tray loads
+  resource ID 1. The Inno Setup script uses the same ICO for the setup program
+  and its shortcuts. Verified by extracting the icon from both `.exe` files,
+  reading the window's `WM_GETICON` and confirming the tray registration with
+  `Shell_NotifyIconGetRect`.
+- **No D-Bus on Windows.** The server listens on `127.0.0.1` at an ephemeral
+  port and publishes a per-process token in `control-endpoint.json`. The Iced
+  UI and the second-launch handshake use newline-delimited JSON over that
+  endpoint; named mutexes provide single-instance semantics for both binaries.
+  A stale endpoint is probed and replaced, and `show_gui` restores and raises
+  an already-open control window instead of leaving it minimized behind the
+  new launch.
+- **Native event sources.** WTS notifications cover lock/unlock, power
+  broadcasts cover suspend/resume, `RegisterPowerSettingNotification` covers
+  charger changes, `GetLastInputInfo` covers idle, and `SetConsoleCtrlHandler`
+  turns Ctrl/Ctrl-Break/close/logoff/shutdown into the same `Command::Quit`
+  path with a 1500 ms grace period. Occlusion is sampled from `EnumWindows`
+  every 750 ms and only changes are emitted.
+- **Media and helpers.** mpv IPC uses a Windows named pipe instead of a Unix
+  socket; timed-out yt-dlp/ffmpeg trees are terminated with
+  `taskkill /T /F` so a wrapper cannot leave its child holding the pipe.
+  `paths::tool` also checks the standard Windows install locations
+  (`Program Files\MPV Player`, the winget `Links` folder and per-user
+  `Programs`) before falling back to a bare `PATH` lookup, because mpv's
+  installer does not add itself to `PATH`.
+- **Playback no longer wedges on Windows.** mpv's IPC server writes events and
+  reads commands on one thread. A client that only read between commands let
+  the 4 KiB pipe buffer fill, so mpv blocked in `WriteFile` and never read the
+  next command: playback started but switching, pause, mute and statistics
+  stopped answering. A dedicated reader thread now drains the stream
+  continuously, replies are matched by `request_id` with a timeout, and `Drop`
+  joins the reader before the pipe closes. A separate `worker_alive` flag makes
+  a stopped or panicked worker report the player as dead instead of healthy.
+  Verified live: switching `Power-Dancing-1080p.mp4` → `arcane-jinx.mp4`,
+  pause/resume, master mute and advancing `time-pos` all answered while
+  playback continued.
+- **Occlusion ignores the shell.** `Progman`, `WorkerW`, taskbars and
+  Explorer's XAML island are excluded from the `EnumWindows` sample; otherwise
+  the desktop's own host windows counted as covering the wallpaper and Eco
+  paused it.
+- **Occlusion pauses the covered monitor.** With "Pause on maximized window"
+  enabled, a maximized, fullscreen or otherwise fully covering window pauses
+  playback on that monitor only; the watcher samples every 750 ms and ignores
+  shell, tool and own-process windows. Verified live on Windows by maximizing
+  the control window (`[Eco] DISPLAY1: Occluded (play=false)`) and restoring
+  it (`Active (play=true)`).
+- **The icon font is embedded.** Font Awesome 4.7 ships as
+  `crates/ferramari-ui/assets/fontawesome-webfont.ttf` (SIL OFL 1.1, licence
+  beside it) and is registered under the family name `FontAwesome`. The rail
+  and every page draw their glyphs on a machine with no icon font installed;
+  `scripts/glyph-check.py` reads the bundled face instead of a system one.
+- **Counted nouns translate again.** GNU MO stores a plural entry under
+  `singular\0plural`, and the pure-Rust reader keyed the whole msgid, so
+  `tr_n` never matched and "1 display" stayed English in every catalog. The
+  parser now keys by the singular and a regression test covers it; Russian
+  renders `1 монитор` and Japanese `1 台`.
+- **Rotation picker width.** The monitor card's rotation control sizes to its
+  widest option with a 220 px cap instead of a fixed 150 px, which had put the
+  Japanese `ローテーションなし` label under the arrow. Checked in light and dark,
+  Russian and Japanese, at 1180 and 900 px wide.
+- **Restart policy.** A player that ran longer than `STABLE_AFTER` and then
+  exited had its scheduled retry erased by the stability reset on the next
+  tick, so the supervisor never recreated it. The reset now only runs while no
+  retry is pending; killing mpv during playback starts a fresh process after
+  the one-second backoff and resumes on the same surface.
+- **Translations without libintl.** `gettext-rs` and `gettext-sys` are gone.
+  `ferramari-core::i18n` reads GNU MO files and evaluates each catalog's own
+  `Plural-Forms` expression, so both binaries build on Windows without a C
+  gettext dependency. Startup no longer deadlocks on the translator lock while
+  resolving the initial language.
+- **Packaging.** `installer/build.ps1` builds an Inno Setup installer and a
+  portable ZIP with both binaries and their locale catalogs. It finds Inno
+  Setup and `msgfmt` on `PATH`, in `Program Files` or under the per-user
+  `%LOCALAPPDATA%\Programs` tree where winget installs them. CI now lints,
+  tests, builds and runs `--doctor` on `windows-latest`, then uploads both
+  artifacts; tagged releases attach them to the GitHub release. Locally, a
+  silent per-user install placed both binaries, docs and ru/ja catalogs and
+  created Start-menu shortcuts; the shortcut started the server, the control
+  surface and mpv, and a control `quit` stopped them. Uninstall removed the
+  installation and shortcuts while leaving `%APPDATA%\ferramari` and
+  `%LOCALAPPDATA%\ferramari` untouched, and the portable ZIP ran from a path
+  containing a space. The control surface
+  showed the Russian and Japanese catalogs without clipped labels.
+- **Docs.** `docs/BACKEND_CONTRACT.md` gains the Windows backend notes and
+  checklist status, `docs/MIGRATION_TODO.md` records what is done and what
+  still needs hardware, and `docs/TESTING.md` has a Windows smoke checklist.
+  Live playback on one Explorer-hosted display was verified with mpv 0.42,
+  ffmpeg 9.0.2 and yt-dlp 2026.10.26 (`d3d11va`, playback behind the icons,
+  automatic recreation after killing mpv). Killing Explorer twice rebuilt the
+  surface through the `Progman` fallback and kept the icons clickable, and a
+  `TaskbarCreated` broadcast re-added the tray icon. A second launch restored
+  and raised a minimized control window; tray mute, pause, reload, lucky, Show
+  and quit acted on the running server; autostart wrote and removed its `Run`
+  key; static wallpaper applied a frame and restored the recorded original.
+  A second live pass on 2026-11-15 switched between two videos, paused,
+  resumed and muted through the control API while `time-pos` advanced, and
+  checked the embedded icons and ru/ja counted nouns in light and dark themes
+  at 1180 and 900 px. A third pass on 2026-11-16 switched
+  `Power-Dancing-1080p.mp4` ↔ `arcane-jinx.mp4` through the same `video`
+  command the control surface sends (with and without a monitor name): the
+  matching static frame was installed in 0.34–0.51 s instead of about 105 s,
+  Explorer replaced its worker as expected, the player rebuilt in about 2.5 s
+  and two desktop captures three seconds apart differed at 30k+ sample points
+  after every switch. A `WM_NULL` and a `SetWindowPos` sent from another
+  process to the surface returned in under a millisecond. On 2026-11-16/17 an
+  external wallpaper change while static wallpaper was on left playback
+  running, and quitting kept the chosen image and rewrote the sidecar; with
+  static wallpaper off the same change was also kept, and a change made before
+  a video switch was remembered when the new frame was installed. Synthetic
+  lock/unlock and suspend/resume messages moved the monitor state between
+  `suspended` and `active`, `WM_QUERYENDSESSION` answered 1, and
+  `WM_ENDSESSION` or closing the console window stopped the server, removed
+  the endpoint and restored the wallpaper. A clean launch kept the control
+  window above the desktop through a video switch and hit-testable. The
+  installer was rebuilt and re-exercised (install, upgrade in place, uninstall,
+  portable ZIP); config stayed byte-identical. Multi-monitor and mixed-DPI
+  scenarios stay unchecked until they are run on suitable hardware.
+
 ## 2.1.0 — 2026-11-10
 
 **The control surface redrawn to the reference design, and the shutdown path

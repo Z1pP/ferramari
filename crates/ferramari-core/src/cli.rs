@@ -5,7 +5,11 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Clone, Parser)]
-#[command(name = "ferramari", version, about = "Video wallpaper for Linux")]
+#[command(
+    name = "ferramari",
+    version,
+    about = "Video wallpaper for Linux and Windows"
+)]
 pub struct Args {
     /// Add pause before launching Ferramari [sec]
     #[arg(short = 'p', long = "pause", value_name = "SEC", default_value_t = 0)]

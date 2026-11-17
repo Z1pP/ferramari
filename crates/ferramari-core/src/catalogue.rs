@@ -1216,9 +1216,38 @@ mod tests {
         assert!(page_error_message("<html>ok</html>").is_none());
     }
 
+    /// A child that outlives the test's timeout on either platform.
+    #[cfg(unix)]
+    fn long_running() -> Command {
+        let mut command = Command::new("sleep");
+        command.arg("5");
+        command
+    }
+
+    #[cfg(windows)]
+    fn long_running() -> Command {
+        let mut command = Command::new("cmd");
+        command.args(["/C", "ping -n 6 127.0.0.1 >NUL"]);
+        command
+    }
+
+    #[cfg(unix)]
+    fn exit_success() -> Command {
+        let mut command = Command::new("sh");
+        command.args(["-c", "exit 0"]);
+        command
+    }
+
+    #[cfg(windows)]
+    fn exit_success() -> Command {
+        let mut command = Command::new("cmd");
+        command.args(["/C", "exit 0"]);
+        command
+    }
+
     #[test]
     fn external_commands_are_killed_at_the_deadline() {
-        let mut child = Command::new("sleep").arg("5").spawn().unwrap();
+        let mut child = long_running().spawn().unwrap();
         let started = Instant::now();
         assert!(util::wait_with_timeout(&mut child, Duration::from_millis(100)).is_none());
         assert!(started.elapsed() < Duration::from_secs(3));
@@ -1226,7 +1255,7 @@ mod tests {
 
     #[test]
     fn short_external_commands_finish_normally() {
-        let mut child = Command::new("sh").args(["-c", "exit 0"]).spawn().unwrap();
+        let mut child = exit_success().spawn().unwrap();
         assert!(util::wait_with_timeout(&mut child, Duration::from_secs(2))
             .is_some_and(|status| status.success()));
     }

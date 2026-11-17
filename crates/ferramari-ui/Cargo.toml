@@ -9,7 +9,6 @@ description = "Ferramari Iced UI: D-Bus client of the wallpaper server"
 [dependencies]
 ferramari-core = { path = "../ferramari-core" }
 
-gettext-rs = { version = "0.8", features = ["gettext-system"] }
 # `canvas` powers the sparklines on the Home and Performance pages; it is a
 # renderer feature, not a new dependency — the geometry crate is already in
 # the tree through the default `tiny-skia` backend.
@@ -20,9 +19,23 @@ iced = { version = "0.14", features = ["tokio", "image", "canvas"] }
 # Default features do not enable GTK bindings.
 rfd = "0.17.2"
 serde = "1"
+serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[target.'cfg(unix)'.dependencies]
 zbus = "5"
 zvariant = "5"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# The control transport and wire types are shared with the server. The
+# platform crate has no toolkit dependency, so this does not affect the
+# Iced-only contract.
+ferramari-platform = { path = "../ferramari-platform" }
+
+[target.'cfg(windows)'.build-dependencies]
+# Embeds the icon, version info and manifest into ferramari-ui.exe; see
+# build.rs.
+winresource = "0.1"
 
 [[bin]]
 name = "ferramari-ui"

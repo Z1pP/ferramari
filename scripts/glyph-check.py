@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Check that every icon name the UI uses is a glyph the installed font has.
+"""Check that every icon name the UI uses is a glyph the bundled font has.
 
-The icon font is a system font, not a bundled asset, and Font Awesome's
-codepoints live in the Private Use Area. Two failures follow from that and
-both are silent:
+The icon font is bundled at `crates/ferramari-ui/assets/fontawesome-webfont.ttf`
+and registered under the family name `FontAwesome`; Font Awesome's codepoints
+live in the Private Use Area. Two failures follow and both are silent:
 
 * a name missing from `style::glyph` falls through to the default arm, so the
   UI draws a dot where a filmstrip was intended;
 * a codepoint borrowed from Font Awesome 5 exists in the table but not in the
-  4.7 font, so it draws *some other glyph* — a different wrong icon on a
-  different machine.
+  4.7 font, so it draws *some other glyph*.
 
 Neither is visible in a screenshot unless you know what was meant to be there,
-so the check reads the font's own charset with `fc-query` and compares it
-against the table and every name the sources hand to an icon helper.
+so the check reads the bundled font's own charset with `fc-query` and compares
+it against the table and every name the sources hand to an icon helper.
 
     python3 scripts/glyph-check.py
 """
@@ -37,19 +36,9 @@ FALLBACK = re.compile(r'_ => \'\u005cu\{([0-9a-fA-F]{4})\'')
 
 
 def font_path() -> str | None:
-    """The installed Font Awesome face, whichever of the two the system has."""
-    for candidate in (
-        "/usr/share/fonts/truetype/font-awesome/fontawesome-webfont.ttf",
-        "/usr/share/fonts/opentype/font-awesome/FontAwesome.otf",
-    ):
-        if Path(candidate).is_file():
-            return candidate
-    found = subprocess.run(
-        ["fc-match", "-f", "%{file}", "FontAwesome"],
-        capture_output=True,
-        text=True,
-    )
-    return found.stdout.strip() or None
+    """The bundled Font Awesome face the UI registers at startup."""
+    path = ROOT / "crates/ferramari-ui/assets/fontawesome-webfont.ttf"
+    return str(path) if path.is_file() else None
 
 
 def covered_ranges(path: str) -> list[tuple[int, int]]:
@@ -93,7 +82,7 @@ def main() -> int:
 
     path = font_path()
     if path is None:
-        print("Font Awesome is not installed; icons will render as fallback tofu.")
+        print("The bundled Font Awesome face is missing; icons will render as fallback tofu.")
         return 1
     ranges = covered_ranges(path)
 
@@ -124,7 +113,7 @@ def main() -> int:
         for name, codepoint in absent:
             print(f"  {name} -> U+{codepoint.upper()}")
     if status == 0:
-        print("\nAll icon names resolve to glyphs the installed font has.")
+        print("\nAll icon names resolve to glyphs the bundled font has.")
     return status
 
 

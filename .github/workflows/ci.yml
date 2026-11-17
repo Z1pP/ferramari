@@ -81,6 +81,40 @@ jobs:
           test "$cargo_version" = "$release_version"
           echo "version $cargo_version"
 
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Lint every workspace target
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test every workspace crate
+        run: cargo test --workspace --locked
+      - name: Build server and Iced UI
+        run: cargo build --workspace --release --locked
+      - name: Verify both application binaries exist
+        run: |
+          if (!(Test-Path target/release/ferramari.exe)) { throw "ferramari.exe is missing" }
+          if (!(Test-Path target/release/ferramari-ui.exe)) { throw "ferramari-ui.exe is missing" }
+      - name: Diagnose the Windows backend
+        run: cargo run --release --locked -- --doctor
+      - name: Install packaging tools
+        run: choco install innosetup gettext -y --no-progress
+      - name: Build installer and portable archive
+        run: .\installer\build.ps1 -NoBuild
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ferramari-windows
+          path: |
+            installer/Output/*.exe
+            installer/Output/*.zip
+          if-no-files-found: error
+
   audit:
     runs-on: ubuntu-latest
     permissions:

@@ -4,11 +4,16 @@
 //!
 //! Run: `DISPLAY=:0 cargo run -p ferramari-platform --example probe_engine <video>`
 
+// The probe talks to a live X server; it has no Windows counterpart.
+#[cfg(target_os = "linux")]
 use std::time::Duration;
 
+#[cfg(target_os = "linux")]
 use x11rb::connection::Connection as _;
+#[cfg(target_os = "linux")]
 use x11rb::protocol::xproto::ConnectionExt as _;
 
+#[cfg(target_os = "linux")]
 fn root_monitor() -> anyhow::Result<ferramari_core::MonitorInfo> {
     let (connection, screen) = x11rb::connect(None)?;
     let setup = connection.setup();
@@ -27,6 +32,7 @@ fn root_monitor() -> anyhow::Result<ferramari_core::MonitorInfo> {
     })
 }
 
+#[cfg(target_os = "linux")]
 fn main() -> anyhow::Result<()> {
     let video = std::env::args()
         .nth(1)
@@ -129,4 +135,10 @@ fn main() -> anyhow::Result<()> {
     println!("window {xid:#x} gone: ok");
     println!("done");
     Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn main() {
+    eprintln!("probe_engine needs a live X11 server and only runs on Linux");
+    std::process::exit(2);
 }

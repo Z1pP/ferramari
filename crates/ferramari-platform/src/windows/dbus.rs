@@ -1,0 +1,437 @@
+//! Windows control API. It mirrors the D-Bus interface names and operations so
+//! `App`, the Iced UI and scripts keep one vocabulary; only the transport
+//! differs. See [`crate::control`] for the wire protocol.
+//!
+//! Single-instance ownership uses a named mutex plus the published endpoint.
+//! The mutex closes the startup race (two processes launched at once), and the
+//! endpoint tells a later launch where to send `show_gui`.
+//!
+//! Shutdown: the accept loop lives until the process exits, matching the
+//! documented D-Bus watcher gap in `docs/BACKEND_CONTRACT.md`. The token does
+//! not stop it early; there is no in-process restart of the server today.
+
+use std::collections::HashMap;
+use std::net::TcpListener;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+
+use serde_json::{json, Value};
+
+use ferramari_core::bus::{Command, CommandSender, Snapshot};
+
+use crate::control::{self, Endpoint, Request, Response, PROTOCOL_VERSION};
+use crate::win32util::{claim_named_mutex, MutexClaim, NamedMutex};
+
+/// The mutex name is session-local: one server per interactive session, the
+/// same scope as the Linux session-bus name.
+const INSTANCE_MUTEX: &str = r"Local\io.github.ferramari.Ferramari.server";
+
+pub enum Acquired {
+    Primary(ControlServer),
+    AlreadyRunning,
+}
+
+/// The listening server. Kept in `main` for the process lifetime; dropping it
+/// removes the endpoint file so a later launch does not probe a dead port.
+pub struct ControlServer {
+    endpoint: Endpoint,
+    listener: TcpListener,
+    /// Named mutex owned for the process lifetime. `None` when the kernel
+    /// object could not be created; the close-on-drop then only removes the
+    /// endpoint.
+    _instance: Option<NamedMutex>,
+}
+
+impl Drop for ControlServer {
+    fn drop(&mut self) {
+        control::remove_endpoint(&self.endpoint);
+    }
+}
+
+/// Claim the server instance, or report that another one owns it.
+pub fn acquire() -> anyhow::Result<Acquired> {
+    let instance = match claim_named_mutex(INSTANCE_MUTEX) {
+        MutexClaim::Owned(mutex) => Some(mutex),
+        MutexClaim::AlreadyRunning => return Ok(Acquired::AlreadyRunning),
+        MutexClaim::Unavailable(err) => {
+            log::warn!("[Control] Could not create the instance mutex: {err}");
+            None
+        }
+    };
+
+    // A crashed server leaves the endpoint behind. Probe it before replacing
+    // the file: a live server that owns the mutex cannot be reached here
+    // because the claim already said the name is free, but the check keeps the
+    // failure mode honest if the mutex API is unavailable.
+    if let Some(existing) = control::read_endpoint() {
+        if control::ping(&existing) {
+            drop(instance);
+            return Ok(Acquired::AlreadyRunning);
+        }
+        log::debug!("[Control] Removing a stale endpoint");
+        let _ = std::fs::remove_file(control::endpoint_path());
+    }
+
+    let listener = TcpListener::bind(("127.0.0.1", 0))?;
+    let port = listener.local_addr()?.port();
+    let endpoint = Endpoint {
+        protocol: PROTOCOL_VERSION,
+        pid: std::process::id(),
+        port,
+        token: control::new_token(),
+    };
+    control::write_endpoint(&endpoint)?;
+    log::info!("[Control] Listening on 127.0.0.1:{port}");
+    Ok(Acquired::Primary(ControlServer {
+        endpoint,
+        listener,
+        _instance: instance,
+    }))
+}
+
+/// Ask the running instance to show its window.
+pub fn request_show_gui() -> anyhow::Result<()> {
+    let endpoint =
+        control::read_endpoint().ok_or_else(|| anyhow::anyhow!("the server is not running"))?;
+    control::call(&endpoint, "command", json!({ "name": "show_gui" }))
+        .map(|_| ())
+        .map_err(anyhow::Error::msg)?;
+    // `show_gui` spawns a UI process; when a window is already open that
+    // process loses the instance mutex and exits. Raise the existing window
+    // from this freshly launched process, which still has foreground rights.
+    crate::ui_instance::focus_existing_window();
+    Ok(())
+}
+
+/// The decoder the running server reports, for `--doctor`.
+pub fn hwdec_running() -> Option<String> {
+    let endpoint = control::read_endpoint()?;
+    let snapshot = control::call(&endpoint, "snapshot", Value::Null).ok()?;
+    snapshot
+        .get("hwdec_running")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+/// Start answering requests. `server` stays owned by the caller; only a cloned
+/// listener moves into the accept thread.
+pub fn register(
+    server: &ControlServer,
+    tx: CommandSender,
+    snapshot: Arc<Mutex<Snapshot>>,
+) -> anyhow::Result<()> {
+    let listener = server.listener.try_clone()?;
+    let token = server.endpoint.token.clone();
+    std::thread::Builder::new()
+        .name("ferramari-control".to_string())
+        .spawn(move || {
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(stream) => {
+                        let tx = tx.clone();
+                        let snapshot = Arc::clone(&snapshot);
+                        let token = token.clone();
+                        let _ = std::thread::Builder::new()
+                            .name("ferramari-control-client".to_string())
+                            .spawn(move || handle_client(stream, &token, &tx, &snapshot));
+                    }
+                    Err(err) => log::warn!("[Control] Accept failed: {err}"),
+                }
+            }
+        })?;
+    Ok(())
+}
+
+fn handle_client(
+    stream: std::net::TcpStream,
+    token: &str,
+    tx: &CommandSender,
+    snapshot: &Arc<Mutex<Snapshot>>,
+) {
+    let _ = stream.set_read_timeout(Some(control::IO_TIMEOUT));
+    let _ = stream.set_write_timeout(Some(control::IO_TIMEOUT));
+    let Ok(mut writer) = stream.try_clone() else {
+        return;
+    };
+    let mut reader = std::io::BufReader::new(stream);
+    let mut line = String::new();
+    let response = match std::io::BufRead::read_line(&mut reader, &mut line) {
+        Ok(0) => return,
+        Ok(_) => match serde_json::from_str::<Request>(&line) {
+            Ok(request) if request.token == token => dispatch(&request, tx, snapshot),
+            Ok(_) => Response::error("invalid control token"),
+            Err(err) => Response::error(format!("invalid request: {err}")),
+        },
+        Err(err) => Response::error(format!("could not read the request: {err}")),
+    };
+    if let Ok(text) = serde_json::to_string(&response) {
+        use std::io::Write as _;
+        let _ = writeln!(writer, "{text}");
+        let _ = writer.flush();
+    }
+}
+
+fn dispatch(request: &Request, tx: &CommandSender, snapshot: &Arc<Mutex<Snapshot>>) -> Response {
+    match request.method.as_str() {
+        "ping" => Response::ok(json!({
+            "pid": std::process::id(),
+            "protocol": PROTOCOL_VERSION,
+        })),
+        "snapshot" => Response::ok(snapshot_json(snapshot)),
+        "command" => match command_from(&request.params) {
+            Ok(command) => {
+                send(tx, command);
+                Response::ok(Value::Null)
+            }
+            Err(err) => Response::error(err),
+        },
+        "property_set" => match property_command(&request.params) {
+            Ok(command) => {
+                send(tx, command);
+                Response::ok(Value::Null)
+            }
+            Err(err) => Response::error(err),
+        },
+        other => Response::error(format!("unknown control method {other:?}")),
+    }
+}
+
+fn send(tx: &CommandSender, command: Command) {
+    if tx.send(command).is_err() {
+        log::debug!("[Control] Main loop is gone, dropping command");
+    }
+}
+
+fn string_param(params: &Value, index: usize) -> Result<String, String> {
+    params
+        .get("args")
+        .and_then(Value::as_array)
+        .and_then(|args| args.get(index))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| format!("missing string argument {index}"))
+}
+
+fn optional_string_param(params: &Value, index: usize) -> Option<String> {
+    params
+        .get("args")
+        .and_then(Value::as_array)
+        .and_then(|args| args.get(index))
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+/// Map the shared method vocabulary onto the command bus. The spelling follows
+/// the D-Bus interface so a script and the Iced UI send identical requests.
+fn command_from(params: &Value) -> Result<Command, String> {
+    let method = params
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "missing command name".to_string())?;
+    let command = match method {
+        "null" => Command::Null,
+        "video" => Command::Video {
+            path: optional_string_param(params, 0),
+            monitor: optional_string_param(params, 1),
+        },
+        "stream" => Command::Stream {
+            url: string_param(params, 0)?,
+        },
+        "webpage" => Command::Webpage {
+            url: string_param(params, 0)?,
+        },
+        "import_package" => Command::ImportPackage(PathBuf::from(string_param(params, 0)?)),
+        "export_package" => Command::ExportPackage {
+            video: PathBuf::from(string_param(params, 0)?),
+            parent: PathBuf::from(string_param(params, 1)?),
+        },
+        "sign_package" => Command::SignPackage(PathBuf::from(string_param(params, 0)?)),
+        "verify_package" => Command::VerifyPackage(PathBuf::from(string_param(params, 0)?)),
+        "trust_key" => Command::TrustKey(PathBuf::from(string_param(params, 0)?)),
+        "library_changed" => Command::LibraryChanged,
+        "pause_playback" => Command::PausePlayback,
+        "start_playback" => Command::StartPlayback,
+        "quit_player" => Command::QuitPlayer,
+        "reload" => Command::Reload,
+        "reload_config" => Command::ReloadConfig,
+        "feeling_lucky" => Command::FeelingLucky,
+        "show_gui" => Command::ShowGui,
+        "quit" => Command::Quit,
+        "toggle_mute" => Command::ToggleMute,
+        "toggle_pause" => Command::TogglePause,
+        "set_monitor_rotation" => Command::SetMonitorRotation {
+            monitor: string_param(params, 0)?,
+            collection: optional_string_param(params, 1),
+        },
+        other => return Err(format!("unknown server method {other:?}")),
+    };
+    Ok(command)
+}
+
+/// Property writes, `name` plus `value`, matching the D-Bus property names.
+fn property_command(params: &Value) -> Result<Command, String> {
+    let name = params
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "missing property name".to_string())?;
+    let value = params
+        .get("value")
+        .ok_or_else(|| format!("missing value for {name}"))?;
+    let command = match name {
+        "volume" => Command::SetVolume(json_int(value)?),
+        "blur_radius" => Command::SetBlurRadius(json_int(value)?),
+        "is_mute" => Command::SetMute(json_bool(value)?),
+        "is_paused_by_user" => Command::SetPausedByUser(json_bool(value)?),
+        "is_static_wallpaper" => Command::SetStaticWallpaper(json_bool(value)?),
+        "is_pause_when_maximized" => Command::SetPauseWhenMaximized(json_bool(value)?),
+        "is_mute_when_maximized" => Command::SetMuteWhenMaximized(json_bool(value)?),
+        "theme" => Command::SetTheme(json_string(value)?),
+        "language" => Command::SetLanguage(json_string(value)?),
+        "rotation_mode" => Command::SetRotationMode(json_string(value)?),
+        "rotation_interval_sec" => Command::SetRotationInterval(json_int(value)?),
+        "playback_profile" => Command::SetPlaybackProfile(json_string(value)?),
+        "pause_on_battery" => Command::SetPauseOnBattery(json_bool(value)?),
+        "idle_timeout_sec" => Command::SetIdleTimeout(json_int(value)?),
+        "hwdec" => Command::SetHardwareDecoding(json_string(value)?),
+        "web_allow_network" => Command::SetWebNetwork(json_bool(value)?),
+        "is_show_systray" => Command::SetShowSystray(json_bool(value)?),
+        "autostart_enabled" => Command::SetAutostart(json_bool(value)?),
+        other => return Err(format!("unknown or read-only property {other:?}")),
+    };
+    Ok(command)
+}
+
+fn json_int(value: &Value) -> Result<i64, String> {
+    value
+        .as_i64()
+        .or_else(|| value.as_f64().map(|number| number as i64))
+        .ok_or_else(|| "expected an integer".to_string())
+}
+
+fn json_bool(value: &Value) -> Result<bool, String> {
+    value
+        .as_bool()
+        .ok_or_else(|| "expected a boolean".to_string())
+}
+
+fn json_string(value: &Value) -> Result<String, String> {
+    value
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| "expected a string".to_string())
+}
+
+/// The merged state the UI polls. Keys are exactly the `ServerState` fields;
+/// keeping both interfaces in one object costs nothing locally and makes the
+/// Windows client a single request per tick instead of two.
+fn snapshot_json(snapshot: &Arc<Mutex<Snapshot>>) -> Value {
+    let state = snapshot
+        .lock()
+        .map(|snapshot| snapshot.clone())
+        .unwrap_or_default();
+    let player_stats: HashMap<String, String> = state.player_stats.to_bus_map();
+    json!({
+        "mode": state.mode.as_str(),
+        "volume": state.volume,
+        "blur_radius": state.blur_radius,
+        "is_mute": state.is_mute,
+        "is_playing": state.is_playing,
+        "is_paused_by_user": state.is_paused_by_user,
+        "is_static_wallpaper": state.is_static_wallpaper,
+        "is_pause_when_maximized": state.is_pause_when_maximized,
+        "is_mute_when_maximized": state.is_mute_when_maximized,
+        "theme": state.theme,
+        "language": state.language,
+        "rotation_mode": state.rotation_mode,
+        "rotation_interval_sec": state.rotation_interval_sec,
+        "playback_profile": state.playback_profile,
+        "pause_on_battery": state.pause_on_battery,
+        "idle_timeout_sec": state.idle_timeout_sec,
+        "hwdec": state.hwdec,
+        "hwdec_running": state.hwdec_running,
+        "player_stats": player_stats,
+        "web_allow_network": state.web_allow_network,
+        "autostart_enabled": state.autostart_enabled,
+        "is_show_systray": state.is_show_systray,
+        "operation_status": state.operation_status,
+        "operation_error": state.operation_error,
+        "data_source": state.data_source,
+        "monitor_states": state.monitor_states,
+        "monitor_resolutions": state.monitor_resolutions,
+        "monitor_refresh": state.monitor_refresh,
+        "primary_monitor": state.primary_monitor,
+        "rotations": state.rotations,
+        "server_pid": std::process::id(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_spelling_matches_the_bus_api() {
+        let command = command_from(&json!({
+            "name": "video",
+            "args": ["C:/wall.mp4", "DISPLAY1"],
+        }))
+        .unwrap();
+        match command {
+            Command::Video { path, monitor } => {
+                assert_eq!(path.as_deref(), Some("C:/wall.mp4"));
+                assert_eq!(monitor.as_deref(), Some("DISPLAY1"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn empty_optional_arguments_mean_default() {
+        let command =
+            command_from(&json!({"name": "video", "args": ["", ""]})).expect("valid command");
+        match command {
+            Command::Video { path, monitor } => {
+                assert!(path.is_none());
+                assert!(monitor.is_none());
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn property_writes_map_to_the_same_commands_as_dbus() {
+        let command = property_command(&json!({
+            "name": "idle_timeout_sec",
+            "value": 600,
+        }))
+        .unwrap();
+        assert!(matches!(command, Command::SetIdleTimeout(600)));
+
+        let error = property_command(&json!({
+            "name": "mode",
+            "value": "MODE_VIDEO",
+        }))
+        .unwrap_err();
+        assert!(error.contains("read-only"), "{error}");
+    }
+
+    #[test]
+    fn a_snapshot_contains_every_ui_field() {
+        let snapshot = Arc::new(Mutex::new(Snapshot::default()));
+        let value = snapshot_json(&snapshot);
+        for key in [
+            "mode",
+            "volume",
+            "data_source",
+            "monitor_refresh",
+            "primary_monitor",
+            "hwdec_running",
+            "player_stats",
+            "operation_status",
+            "server_pid",
+        ] {
+            assert!(value.get(key).is_some(), "missing {key}");
+        }
+    }
+}

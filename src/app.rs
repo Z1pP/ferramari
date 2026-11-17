@@ -37,7 +37,7 @@ use crate::signing;
 use crate::supervisor::{RestartPolicy, Retry, MAX_RETRIES};
 use crate::tray;
 use crate::util;
-use crate::wallpaper::GnomeBackground;
+use crate::wallpaper::StaticBackground;
 use crate::window::{MonitorVisibility as WindowVisibility, WindowState};
 use crate::ytdlp;
 
@@ -95,7 +95,7 @@ pub struct App {
     last_plans: HashMap<String, eco::Plan>,
     stream: Option<ytdlp::StreamInfo>,
     stream_resolving: bool,
-    background_wallpaper: GnomeBackground,
+    background_wallpaper: StaticBackground,
     library: Rc<RefCell<Library>>,
     last_rotation: HashMap<String, Instant>,
     on_battery: bool,
@@ -154,7 +154,7 @@ impl App {
         let mut display_ids = DisplayIdRegistry::load();
         let names = bind_display_ids(&mut monitors, &mut display_ids);
         let config = Config::load(&names);
-        let background_wallpaper = GnomeBackground::capture();
+        let background_wallpaper = StaticBackground::capture();
         // Read the power supply once: two separate `status()` calls can
         // observe different states while a charger is being plugged in.
         let power_status = power_provider.status();
@@ -254,13 +254,17 @@ impl App {
             let now = Instant::now();
             if now >= next_player {
                 next_player = now + PLAYER_WATCH_EVERY;
+                log::trace!("[Loop] watch_players start");
                 let mut state = app.borrow_mut();
                 state.watch_players();
+                log::trace!("[Loop] watch_players done");
                 state.flush_config_if_due();
             }
             if now >= next_rotation {
                 next_rotation = now + ROTATION_WATCH_EVERY;
+                log::trace!("[Loop] rotate_wallpapers start");
                 app.borrow_mut().rotate_wallpapers();
+                log::trace!("[Loop] rotate_wallpapers done");
             }
             if now >= next_power {
                 next_power = now + POWER_WATCH_EVERY;
@@ -307,6 +311,7 @@ impl App {
     }
 
     fn handle(&mut self, command: Command) {
+        log::trace!("[Command] {command:?}");
         match command {
             Command::ShowGui => self.show_gui(),
             Command::Null => {
@@ -746,10 +751,8 @@ impl App {
                     }
                     return;
                 }
-                let still_current = self.config.mode == Mode::Video
-                    && self.config.is_static_wallpaper
-                    && self.config.default_source() == source
-                    && self.config.blur_radius.max(0) == blur;
+                let still_current =
+                    Self::static_frame_is_current(&self.config, &self.monitors, &source, blur);
                 if !still_current {
                     if let Some(file) = file {
                         let _ = fs::remove_file(file);
@@ -1213,9 +1216,31 @@ impl App {
         }
 
         let mut crashed = Vec::new();
+        let mut lost_hosts = Vec::new();
         for window in &mut self.windows {
             if !window.player_alive() {
                 crashed.push(window.key().clone());
+            } else if !window.surface_alive() {
+                // mpv can keep decoding into a window whose host is gone:
+                // Explorer restarts destroy WorkerW/Progman but not our
+                // cross-process child. Rebuild the engine against the new
+                // host instead of waiting for a player that will never die.
+                lost_hosts.push(window.key().clone());
+            }
+        }
+        if !lost_hosts.is_empty() {
+            self.windows
+                .retain(|window| !lost_hosts.iter().any(|key| key == window.key()));
+            for key in lost_hosts {
+                let delay = self
+                    .policies
+                    .entry(key.clone())
+                    .or_insert_with(|| RestartPolicy::new(now))
+                    .on_host_lost(now);
+                log::warn!(
+                    "[Player] {} lost its wallpaper host; rebuilding in {delay:?}",
+                    key.monitor
+                );
             }
         }
         if !crashed.is_empty() {
@@ -1262,7 +1287,9 @@ impl App {
         // and mpv falls back to the CPU without saying so. One probe per
         // second is enough for the settings page and costs the command loop
         // nothing, because the reply is read on the IPC worker.
+        log::trace!("[Player] probing decoder");
         self.poll_hwdec();
+        log::trace!("[Player] decoder probed");
 
         // Free decoders that have been paused out of sight for a while. The
         // decision is checked every second so a monitor that becomes visible
@@ -1276,6 +1303,7 @@ impl App {
             window.set_park_allowed(allowed);
             window.park_if_due(now, DECODER_PARK_AFTER);
         }
+        log::trace!("[Player] parking checked");
 
         let desired = self.desired_windows();
         let pending_stream = self.config.mode == Mode::Stream && self.stream.is_none();
@@ -1288,8 +1316,10 @@ impl App {
             .filter_map(|(key, policy)| policy.retry_is_due(now).then(|| key.clone()))
             .collect();
         if due.is_empty() {
+            log::trace!("[Player] no retries due");
             return;
         }
+        log::trace!("[Player] creating {} window(s)", due.len());
 
         let volume = self.config.volume;
         let duration = self.config.fade_duration_sec;
@@ -1477,6 +1507,7 @@ impl App {
     }
 
     fn apply_playback_states(&mut self) {
+        log::trace!("[Eco] apply_playback_states start");
         let plans: Vec<(String, eco::Plan, bool)> = self
             .windows
             .iter()
@@ -1511,12 +1542,14 @@ impl App {
             window.set_fps_cap(plan.fps);
             self.last_plans.insert(monitor, plan);
         }
+        log::trace!("[Eco] apply_playback_states done");
         self.sync_snapshot();
     }
 
     /// Apply master mute and the per-monitor "mute when covered" rule. This
     /// also reaches Web wallpapers, which have no mpv volume.
     fn apply_mute_states(&mut self) {
+        log::trace!("[Eco] apply_mute_states start");
         let master = self.config.is_mute;
         let mute_when_covered = self.config.is_mute_when_maximized;
         let target = self.config.volume;
@@ -1537,6 +1570,7 @@ impl App {
             }
             window.set_mute(muted);
         }
+        log::trace!("[Eco] apply_mute_states done");
     }
 
     fn any_playing(&self) -> bool {
@@ -1678,6 +1712,22 @@ impl App {
         }
     }
 
+    /// Whether a rendered static frame still matches the settings it was made
+    /// for. The primary monitor's own video wins over `Default`, so comparing
+    /// the frame with `default_source` discarded every frame after a
+    /// per-monitor switch and left the previous video's image on the desktop.
+    fn static_frame_is_current(
+        config: &Config,
+        monitors: &[MonitorInfo],
+        source: &str,
+        blur: i64,
+    ) -> bool {
+        config.mode == Mode::Video
+            && config.is_static_wallpaper
+            && util::primary_source(config, monitors) == source
+            && config.blur_radius.max(0) == blur
+    }
+
     fn update_static_wallpaper(&mut self) {
         let source = util::primary_source(&self.config, &self.monitors).to_string();
         let blur = self.config.blur_radius.max(0);
@@ -1801,6 +1851,7 @@ impl App {
     }
 
     fn sync_snapshot(&self) {
+        log::trace!("[Snapshot] publishing");
         let snapshot = Snapshot {
             mode: self.config.mode,
             volume: self.config.volume,
@@ -1872,6 +1923,7 @@ impl App {
         if let Ok(mut shared) = self.snapshot.lock() {
             *shared = snapshot;
         }
+        log::trace!("[Snapshot] published");
     }
 
     fn notify_user_error(&self, error: UserError) {
@@ -1879,21 +1931,22 @@ impl App {
     }
 }
 
-/// Start the Iced control surface next to this executable. It is a normal
-/// D-Bus client, so the server never has to know about its widgets.
+/// Start the Iced control surface next to this executable. It is an ordinary
+/// client of the local control API (D-Bus on Linux, loopback JSON on Windows),
+/// so the server never has to know about its widgets.
 fn launch_control_surface() -> anyhow::Result<()> {
-    let exe = std::env::current_exe()?;
-    let dir = exe
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("executable has no directory"))?;
-    let candidate = dir.join("ferramari-ui");
-    let program = if candidate.is_file() {
-        candidate
-    } else {
-        PathBuf::from("ferramari-ui")
-    };
     // A second `show_gui` while one window is open must not stack windows;
     // `ferramari-ui` exits immediately when another instance owns its name.
+    // On Windows, raise the existing window here as well: the tray's Show
+    // command reaches this process, and the tray click already gave it
+    // foreground rights.
+    #[cfg(target_os = "windows")]
+    if ferramari_platform::ui_instance::focus_existing_window() {
+        return Ok(());
+    }
+    // `paths::tool` already prefers a sibling binary and appends `.exe` on
+    // Windows; falling back to PATH keeps a source-tree `cargo run` working.
+    let program = paths::tool("ferramari-ui");
     // Spawning a process is quick and returning the error here lets
     // show_gui() report a missing or non-executable UI binary to the log.
     let mut child = std::process::Command::new(&program)
@@ -2147,6 +2200,45 @@ mod tests {
     }
 
     #[test]
+    fn a_static_frame_matches_the_primary_monitors_source() {
+        let monitors = vec![monitor("eDP-1", 0), monitor("HDMI-1", 1920)];
+        let mut config = Config::template(&["eDP-1".to_string(), "HDMI-1".to_string()]);
+        config.mode = Mode::Video;
+        config.is_static_wallpaper = true;
+        config.blur_radius = 5;
+        config
+            .data_source
+            .insert("Default".to_string(), "/videos/old.mp4".to_string());
+        config
+            .data_source
+            .insert("eDP-1".to_string(), "/videos/new.mp4".to_string());
+        config
+            .data_source
+            .insert("HDMI-1".to_string(), "/videos/new.mp4".to_string());
+
+        // The primary monitor switched to a new file; `Default` still names
+        // the old one and must not reject the new frame.
+        assert!(App::static_frame_is_current(
+            &config,
+            &monitors,
+            "/videos/new.mp4",
+            5
+        ));
+        assert!(!App::static_frame_is_current(
+            &config,
+            &monitors,
+            "/videos/old.mp4",
+            5
+        ));
+        assert!(!App::static_frame_is_current(
+            &config,
+            &monitors,
+            "/videos/new.mp4",
+            4
+        ));
+    }
+
+    #[test]
     fn assigning_one_monitor_from_web_mode_does_not_leave_a_url_for_mpv() {
         let monitors = vec![monitor("eDP-1", 0), monitor("HDMI-1", 1920)];
         let mut config = Config::template(&["eDP-1".to_string(), "HDMI-1".to_string()]);
@@ -2222,14 +2314,16 @@ mod tests {
 
     #[test]
     fn local_webpages_accept_paths_and_file_uris() {
-        assert_eq!(
-            local_webpage_path("/tmp/a.html"),
-            Some(PathBuf::from("/tmp/a.html"))
+        #[cfg(unix)]
+        let (plain, uri, decoded) = ("/tmp/a.html", "file:///tmp/a%20b.html", "/tmp/a b.html");
+        #[cfg(windows)]
+        let (plain, uri, decoded) = (
+            r"C:\tmp\a.html",
+            "file:///C:/tmp/a%20b.html",
+            r"C:\tmp\a b.html",
         );
-        assert_eq!(
-            local_webpage_path("file:///tmp/a%20b.html"),
-            Some(PathBuf::from("/tmp/a b.html"))
-        );
+        assert_eq!(local_webpage_path(plain), Some(PathBuf::from(plain)));
+        assert_eq!(local_webpage_path(uri), Some(PathBuf::from(decoded)));
         assert_eq!(local_webpage_path("file://evil.example/a.html"), None);
     }
 

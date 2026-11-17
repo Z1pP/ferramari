@@ -96,16 +96,20 @@ constant, so a palette change cannot leave a fill behind its stroke.
 
 `style::glyph(name)` maps a design name to a **Font Awesome 4.7** codepoint and
 `style::icon` binds the family in one place, because the codepoints live in the
-Private Use Area: with the default family, fontconfig falls back through DejaVu,
-which has a house and a cog but not a filmstrip, and a rail reads as half
-icons, half tofu.
+Private Use Area: with the default family, the renderer's fallback font may
+have a house and a cog but not a filmstrip, and a rail reads as half icons,
+half tofu.
 
-The font is a system font, not a bundled asset. Consequences:
+The font is bundled, not a system font: Font Awesome 4.7 lives at
+`crates/ferramari-ui/assets/fontawesome-webfont.ttf` (SIL OFL 1.1, licence
+next to it) and is registered at startup under the family name `FontAwesome`.
+Every platform therefore draws the same glyphs and no user has to install a
+font. Consequences:
 
 - A name missing from the table renders as the fallback glyph, silently.
 - A codepoint from Font Awesome 5 renders as *some other glyph*, silently.
 
-`scripts/glyph-check.py` reads the installed font's own charset and reports
+`scripts/glyph-check.py` reads the bundled font's own charset and reports
 every name the UI references that the font cannot draw, so both cases are a
 failing check rather than a screenshot hunt. Run it after touching `glyph`.
 

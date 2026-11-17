@@ -19,6 +19,6 @@ fn main() {
     }
     println!(
         "background: {}",
-        ferramari_platform::gnome_bg::background_diagnostic()
+        ferramari_platform::wallpaper::background_diagnostic()
     );
 }

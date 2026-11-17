@@ -1,8 +1,9 @@
-//! Ferramari — video wallpaper for Linux, written in Rust.
+//! Ferramari — video wallpaper for Linux and Windows, written in Rust.
 //!
-//! The server owns the wallpaper players and answers D-Bus. It has no GUI:
-//! the control surface is a separate binary (`ferramari-ui`) that talks to
-//! this process over the session bus, so nothing here links a toolkit.
+//! The server owns the wallpaper players and answers the local control API
+//! (D-Bus on Linux, a loopback JSON channel on Windows). It has no GUI: the
+//! control surface is a separate binary (`ferramari-ui`) that talks to this
+//! process, so nothing here links a toolkit.
 
 // Business logic, the command bus and the data models live in `ferramari-core`.
 // The binary re-exports the modules under their historic names so that `app.rs`
@@ -10,16 +11,15 @@
 pub use ferramari_core::bus::{Command, CommandReceiver, CommandSender, PackageReport, Snapshot};
 pub use ferramari_core::MonitorInfo;
 pub use ferramari_core::{
-    bus, catalog_api, catalogue, cli, config, display_ids, eco, error, library, lint, metrics,
-    package, paths, plugin, session, signing, supervisor, thumbnails, util, window, ytdlp,
+    bus, catalog_api, catalogue, cli, config, display_ids, eco, error, i18n, library, lint,
+    metrics, package, paths, plugin, session, signing, supervisor, thumbnails, util, window, ytdlp,
 };
 pub use ferramari_media::mpv;
 pub use ferramari_platform::{
-    autostart, dbus, desktop, event_source, gnome_bg, gnome_extensions, handlers, monitors, power,
-    surface, tray, x11,
+    autostart, dbus, desktop, event_source, gnome_extensions, handlers, monitors, power, surface,
+    tray, wallpaper, x11, DefaultDisplayProvider, DefaultPlatformEventSource, DefaultPowerProvider,
+    DefaultSurfaceProvider,
 };
-// The static-background module kept its historic name in the binary.
-pub use ferramari_platform::gnome_bg as wallpaper;
 
 mod app;
 
@@ -32,6 +32,13 @@ use app::App;
 use cli::PackageCommand;
 
 fn main() {
+    // Before any window exists: a DPI-unaware process sees a 1920×1080
+    // display at 125% as 1536×864, which sizes the wallpaper surface too
+    // small. Windows lets a process opt in only once; when the launcher
+    // already made it aware the call fails and is ignored.
+    #[cfg(windows)]
+    desktop::init_dpi_awareness();
+
     let args = cli::Args::parse();
     init_logging(args.debug);
     // GNU gettext gives `LANGUAGE` priority over the system locale. The
@@ -120,10 +127,10 @@ fn main() {
         &args,
         tx.clone(),
         Arc::clone(&snapshot),
-        Box::new(surface::X11SurfaceProvider),
-        Box::new(monitors::X11DisplayProvider),
-        Box::new(power::LinuxPowerProvider),
-        Box::new(event_source::LinuxPlatformEventSource),
+        Box::new(DefaultSurfaceProvider),
+        Box::new(DefaultDisplayProvider),
+        Box::new(DefaultPowerProvider),
+        Box::new(DefaultPlatformEventSource),
     );
     // Start the players (and the control surface unless `--background`)
     // before waiting for commands, matching the server's startup contract.
@@ -195,32 +202,9 @@ fn init_logging(debug: bool) {
 }
 
 fn init_i18n() {
-    // SAFETY: called before any thread is spawned, from the main thread, and
-    // the locale string is a valid C string literal.
-    unsafe {
-        let _ = gettextrs::setlocale(gettextrs::LocaleCategory::LcAll, "");
-    }
-    let localedir = locale_dir();
-    let _ = gettextrs::bindtextdomain(paths::TRANSLATION_DOMAIN, &localedir);
-    let _ = gettextrs::textdomain(paths::TRANSLATION_DOMAIN);
-}
-
-/// `FERRAMARI_LOCALEDIR` wins; otherwise look next to the executable so a
-/// non-default `PREFIX` (`/usr/local`, a staged install, Guix, Nix, …) finds
-/// its own catalogs.
-fn locale_dir() -> std::path::PathBuf {
-    if let Some(dir) = std::env::var_os("FERRAMARI_LOCALEDIR") {
-        return dir.into();
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(prefix) = exe.parent().and_then(|bin| bin.parent()) {
-            let candidate = prefix.join("share/locale");
-            if candidate.is_dir() {
-                return candidate;
-            }
-        }
-    }
-    std::path::PathBuf::from("/usr/share/locale")
+    // The translator reads the same MO catalogs gettext installed. It has no
+    // C library dependency, which is what lets the server build on Windows.
+    i18n::init(paths::locale_dir());
 }
 
 /// `ferramari package …`: creator-facing tooling for `.ferramari` packages.
@@ -387,8 +371,12 @@ fn author_name(requested: &str) -> String {
     signing::default_author_name()
 }
 
-#[cfg(not(unix))]
-fn install_signal_handlers(_tx: &CommandSender) {
-    // Native console-control handling belongs to the Windows platform
-    // backend. Until that backend is enabled, retain the OS default behavior.
+/// Windows has no POSIX signals. A console control handler covers Ctrl-C,
+/// Ctrl-Break, closing the console window, logoff and shutdown, and the
+/// session watcher covers the cases where the process has no console at all.
+#[cfg(windows)]
+fn install_signal_handlers(tx: &CommandSender) {
+    if !handlers::install_console_handler(tx.clone()) {
+        log::debug!("[Signal] Running without a console control handler");
+    }
 }

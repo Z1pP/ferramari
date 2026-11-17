@@ -117,11 +117,11 @@ Statuses used below:
 | R-05 | P1 | confirmed-live | Error reporting | Server-side application errors never reach the control surface |
 | R-06 | P1 | confirmed-live | Playback state | `is_playing` reflects policy intent, not a live player |
 | R-07 | P1 | confirmed-code | Mixed DPI | Windows physical geometry is multiplied by `scale_factor` a second time |
-| R-08 | P1 | confirmed-code | Windows control transport | Unbounded request line and unbounded per-client threads |
+| R-08 | P1 | partially-fixed | Windows control transport | Unbounded request line fixed; per-client thread cap remains |
 | R-09 | P2 | confirmed-code | UI status | Sticky status banner; one-snapshot optimistic play state |
 | R-10 | P2 | confirmed-code | Config validation | Loaded volume/blur/fade values are not range-checked |
-| R-11 | P2 | confirmed-repro | Config robustness | A UTF-8 BOM makes the whole config fall back to defaults |
-| R-12 | P2 | confirmed-code | Cache management | `catalogue::cleanup_cache()` has no caller |
+| R-11 | P2 | fixed-unit | Config robustness | A UTF-8 BOM makes the whole config fall back to defaults |
+| R-12 | P2 | fixed-code | Cache management | `catalogue::cleanup_cache()` has no caller |
 | R-13 | P2 | risk | Single instance | Second launch can silently lose the startup race |
 | R-14 | P2 | documented-gap | Shutdown | Linux D-Bus watchers and the Windows accept loop live until process exit |
 | R-15 | P3 | confirmed-code | Docs / CI | Stale claims and a weak Linux formatting gate |
@@ -612,6 +612,14 @@ tests with an oversized line, a slow client and a burst of connections.
   isolated path inherited SYSTEM/Administrators/user only; no explicit ACL is
   set by the app).
 
+**Resolution (2026-11-18, partial)**
+
+`read_request_line()` now reads through a `Read::take` limit of 64 KiB plus one
+byte and rejects an oversized line before JSON parsing. The new test
+`control_request_lines_have_a_hard_size_limit` covers a normal line, EOF and an
+oversized line. The per-connection thread count is still unbounded; that
+remains a Phase 1 follow-up.
+
 ---
 
 ## R-09 — Sticky UI status and a one-snapshot optimistic play state
@@ -730,6 +738,13 @@ encoding. Add a test with a BOM-prefixed valid document.
   survive and the file is rewritten without a BOM if the app chooses to
   rewrite.
 
+**Resolution (2026-11-18)**
+
+`strip_bom()` is applied by `Config::parse`, `Config::language_override`,
+`Config::is_json_object`, `DisplayIdRegistry`, `Library` and the update record.
+The new `a_utf8_bom_is_not_a_corrupt_config` test parses a BOM-prefixed
+document and preserves its value.
+
 ---
 
 ## R-12 — `catalogue::cleanup_cache()` has no caller
@@ -763,6 +778,12 @@ Linux if it is safe to identify files from dead PIDs.
 - A test with a fake cache containing an old video, a fresh video and a
   partial file; assert old data is removed and the current limit is applied.
 - A start-up test/fake-clock assertion that the cleanup function is invoked.
+
+**Resolution (2026-11-18, partial)**
+
+The startup cache-clean thread now calls `catalogue::cleanup_cache()` alongside
+the thumbnail/static partial cleanup. The function itself still reads the
+global cache paths; a fake-root test remains open.
 
 ---
 
@@ -968,6 +989,9 @@ the audit and verification results separate.
 | R-02: validated, atomic backup promotion | New config tests; full `ferramari-core` suite |
 | R-03: primary-then-backup display registry load | New display-id test; full `ferramari-core` suite |
 | R-04: flush before `reload_config` | Pre-fix live reproduction recorded; post-fix app-level regression test still pending |
+| R-08: bounded control request line | New platform test; per-client thread cap still open |
+| R-11: UTF-8 BOM handling | New config test |
+| R-12: catalogue cache cleanup call | Startup call added; fake-root test still open |
 
 Post-change gates on the branch:
 
@@ -977,8 +1001,8 @@ cargo test --workspace --locked                                 exit 0
 cargo build --workspace --release --locked                      exit 0
 ```
 
-Test totals after the change set: **454 passed, 0 failed** (15 binary + 353
-core + 17 media + 55 platform + 8 UI library + 6 UI binary).
+Test totals after the change set: **456 passed, 0 failed** (15 binary + 354
+core + 17 media + 56 platform + 8 UI library + 6 UI binary).
 
 ## Phase 0 exit
 

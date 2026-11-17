@@ -148,6 +148,10 @@ impl App {
                 let age = Duration::from_secs(3600);
                 util::cleanup_partial_files(&paths::thumbnail_cache_dir(), age);
                 util::cleanup_partial_files(&paths::static_cache_dir(), age);
+                // The catalogue cache has its own seven-day / 2 GiB budget.
+                // Keep that work off the command loop; it is startup
+                // housekeeping, not part of the first frame.
+                crate::catalogue::cleanup_cache();
             })
             .ok();
         let mut monitors = display_provider.displays();

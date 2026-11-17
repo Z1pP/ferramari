@@ -38,6 +38,11 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 /// forever. Every request is one short line.
 pub const IO_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Upper bound for one control request, including its terminating newline.
+/// A local client must not be able to make the server allocate an unbounded
+/// line before the token is even checked.
+pub const MAX_REQUEST_BYTES: usize = 64 * 1024;
+
 /// What `control-endpoint.json` contains.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Endpoint {

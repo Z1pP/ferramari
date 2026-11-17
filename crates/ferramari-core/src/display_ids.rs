@@ -61,7 +61,7 @@ impl DisplayIdRegistry {
             let Ok(text) = fs::read_to_string(&candidate) else {
                 continue;
             };
-            match serde_json::from_str::<Self>(&text) {
+            match serde_json::from_str::<Self>(crate::config::strip_bom(&text)) {
                 Ok(registry) => return registry,
                 Err(err) => last_error = Some((candidate, err)),
             }

@@ -71,7 +71,7 @@ impl Library {
             let Ok(text) = fs::read_to_string(&candidate) else {
                 continue;
             };
-            match serde_json::from_str::<Library>(&text) {
+            match serde_json::from_str::<Library>(crate::config::strip_bom(&text)) {
                 Ok(mut library) => {
                     if library.version != LIBRARY_VERSION {
                         library.version = LIBRARY_VERSION;

@@ -26,8 +26,12 @@ fn temp_path(path: &Path) -> PathBuf {
     path.with_extension(CONFIG_TEMP_EXTENSION)
 }
 
+pub(crate) fn strip_bom(text: &str) -> &str {
+    text.strip_prefix('\u{feff}').unwrap_or(text)
+}
+
 fn is_json_object(text: &str) -> bool {
-    serde_json::from_str::<Value>(text)
+    serde_json::from_str::<Value>(strip_bom(text))
         .map(|value| value.is_object())
         .unwrap_or(false)
 }
@@ -47,9 +51,9 @@ pub(crate) fn read_with_backup(path: &Path) -> Option<String> {
 }
 
 fn is_json_object_bytes(contents: &[u8]) -> bool {
-    serde_json::from_slice::<Value>(contents)
-        .map(|value| value.is_object())
-        .unwrap_or(false)
+    std::str::from_utf8(contents)
+        .ok()
+        .is_some_and(is_json_object)
 }
 
 /// Write through a temporary file and rename it over the target, keeping the
@@ -256,7 +260,7 @@ impl Config {
     pub fn language_override() -> Option<String> {
         let path = paths::config_path();
         let text = read_with_backup(&path)?;
-        let value: Value = serde_json::from_str(&text).ok()?;
+        let value: Value = serde_json::from_str(strip_bom(&text)).ok()?;
         let language = value.get("language")?.as_str()?.trim();
         if language.is_empty() || language == "system" {
             None
@@ -311,7 +315,7 @@ impl Config {
         let template = Self::template(monitors);
         let template_value = serde_json::to_value(&template).expect("template is serializable");
 
-        let mut value: Value = match serde_json::from_str(text) {
+        let mut value: Value = match serde_json::from_str(strip_bom(text)) {
             Ok(value @ Value::Object(_)) => value,
             _ => return (template, true),
         };
@@ -888,6 +892,16 @@ mod tests {
         let (config, _) = Config::parse(text, &monitors());
         assert_eq!(config.volume, 50);
         assert_eq!(config.fade_duration_sec, 0.25);
+    }
+
+    #[test]
+    fn a_utf8_bom_is_not_a_corrupt_config() {
+        let mut template = Config::template(&monitors());
+        template.volume = 21;
+        let text = format!("\u{feff}{}\n", serde_json::to_string(&template).unwrap());
+        let (config, _) = Config::parse(&text, &monitors());
+        assert_eq!(config.volume, 21);
+        assert!(is_json_object(&text));
     }
 
     #[test]

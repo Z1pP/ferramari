@@ -11,6 +11,7 @@
 //! not stop it early; there is no in-process restart of the server today.
 
 use std::collections::HashMap;
+use std::io::{BufRead, Read};
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -154,14 +155,13 @@ fn handle_client(
         return;
     };
     let mut reader = std::io::BufReader::new(stream);
-    let mut line = String::new();
-    let response = match std::io::BufRead::read_line(&mut reader, &mut line) {
-        Ok(0) => return,
-        Ok(_) => match serde_json::from_str::<Request>(&line) {
+    let response = match read_request_line(&mut reader) {
+        Ok(Some(line)) => match serde_json::from_str::<Request>(&line) {
             Ok(request) if request.token == token => dispatch(&request, tx, snapshot),
             Ok(_) => Response::error("invalid control token"),
             Err(err) => Response::error(format!("invalid request: {err}")),
         },
+        Ok(None) => return,
         Err(err) => Response::error(format!("could not read the request: {err}")),
     };
     if let Ok(text) = serde_json::to_string(&response) {
@@ -169,6 +169,29 @@ fn handle_client(
         let _ = writeln!(writer, "{text}");
         let _ = writer.flush();
     }
+}
+
+/// Read one newline-delimited request with a hard upper bound.
+///
+/// `read_line` on a plain `BufReader` grows until it finds a newline, so a
+/// local client could force an allocation before the token is checked. The
+/// `take` limit makes the failure bounded and explicit.
+fn read_request_line(reader: &mut impl BufRead) -> std::io::Result<Option<String>> {
+    let mut line = String::new();
+    let mut limited = reader
+        .by_ref()
+        .take((control::MAX_REQUEST_BYTES + 1) as u64);
+    let read = limited.read_line(&mut line)?;
+    if read == 0 {
+        return Ok(None);
+    }
+    if line.len() > control::MAX_REQUEST_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("request exceeds {} bytes", control::MAX_REQUEST_BYTES),
+        ));
+    }
+    Ok(Some(line))
 }
 
 fn dispatch(request: &Request, tx: &CommandSender, snapshot: &Arc<Mutex<Snapshot>>) -> Response {
@@ -433,5 +456,24 @@ mod tests {
         ] {
             assert!(value.get(key).is_some(), "missing {key}");
         }
+    }
+
+    #[test]
+    fn control_request_lines_have_a_hard_size_limit() {
+        let mut normal = std::io::Cursor::new(
+            br#"{"token":"t","method":"ping"}
+"#
+            .to_vec(),
+        );
+        assert!(read_request_line(&mut normal)
+            .expect("normal line")
+            .is_some());
+
+        let mut empty = std::io::Cursor::new(Vec::new());
+        assert!(read_request_line(&mut empty).expect("eof").is_none());
+
+        let mut oversized = std::io::Cursor::new(vec![b'x'; control::MAX_REQUEST_BYTES + 2]);
+        let error = read_request_line(&mut oversized).expect_err("oversized line");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
     }
 }

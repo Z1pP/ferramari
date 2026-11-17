@@ -3,8 +3,9 @@
 **Audit date:** 2026-11-18  
 **Target:** `origin/main` / `fb6071f` (release 2.2.0)  
 **Branch:** `work/2.2-audit`  
-**Scope:** Phase 0 only. This document records findings and reproductions; it
-does not claim that the findings are fixed.
+**Scope:** Phase 0 audit plus the first Phase 1 change set. Each finding states
+whether it is fixed, partially fixed, or still open; unverified live scenarios
+stay explicitly blocked.
 
 ## Environment
 

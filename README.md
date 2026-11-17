@@ -193,6 +193,8 @@ the server through the GUI-subsystem `ferramari-launcher.exe` from shortcuts
 and autostart, so the normal launch shows only the UI; run `ferramari` in a
 terminal for logs and CLI output. 2.2.3 fixes Start after Stop, reuses the
 player on video changes and makes the next/previous wallpaper controls wrap.
+2.2.4 corrects the Settings text in all three languages and describes what
+each switch and slider actually does.
 
 ### Flatpak
 

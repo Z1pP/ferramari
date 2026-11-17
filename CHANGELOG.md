@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.2.4 - 2026-11-18
+
+- **Settings copy reviewed.** Every Settings section now describes what the
+  switch or slider actually does. The garbled, duplicated Russian and Japanese
+  strings are gone; the profile, hardware-decoding, idle, rotation, occlusion,
+  static-wallpaper and background-tray descriptions were rewritten in all
+  three catalogs. Windows no longer offers the Linux-only `VA-API` decoder,
+  and the dead web-wallpaper networking switch was removed.
+- **Settings fit narrow windows.** The package actions wrap onto a second line
+  instead of clipping, and minute counts use the interface language.
+
 ## 2.2.3 - 2026-11-18
 
 - **Start works after Stop.** `quit_player` destroys the players; the Home

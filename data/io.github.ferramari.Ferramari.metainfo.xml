@@ -21,6 +21,17 @@
     <category>Graphics</category>
   </categories>
   <releases>
+    <release version="2.2.4" date="2026-11-18" type="stable">
+      <description>
+        <p>Reviewed and corrected the text in every Settings section.</p>
+        <ul>
+          <li>Fixed duplicated and garbled Russian and Japanese descriptions.</li>
+          <li>Explained what the playback profiles, hardware decoding, idle delay, rotation, occlusion pause/mute and static wallpaper actually do.</li>
+          <li>“Run in background” now says it shows the tray icon; Windows no longer offers the Linux-only VA-API decoder, and the dead web-wallpaper switch is gone.</li>
+          <li>The package actions wrap on narrow windows, and minute counts follow the interface language.</li>
+        </ul>
+      </description>
+    </release>
     <release version="2.2.3" date="2026-11-18" type="stable">
       <description>
         <p>Fixes start-after-stop, slow video changes and the non-wrapping next/previous wallpaper controls.</p>

@@ -16,8 +16,10 @@ fn main() {
     let icon = manifest.join("../../data/icons/windows/ferramari.ico");
     println!("cargo:rerun-if-changed={}", icon.display());
 
+    // The build script is compiled for the host, so `cfg(windows)` alone would
+    // still run `rc.exe` when cross-compiling to Linux. Check the target too.
     #[cfg(windows)]
-    {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         let mut resource = winresource::WindowsResource::new();
         resource
             .set_icon(icon.to_str().expect("icon path is UTF-8"))

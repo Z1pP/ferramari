@@ -153,9 +153,10 @@ Guarantees the core relies on, which a new backend must keep:
 - Watcher threads stop when the command channel closes: `send` fails and the
   thread returns. This is the portable cancellation mechanism, and it is why
   watchers hold no state worth flushing.
-- Watchers with a native event loop additionally take a stop flag and are
-  joined when their token is dropped, so the X connection is not torn down
-  while an event thread still reads it.
+- Watchers with a native event loop take a stop flag. Where the loop can be
+  woken (the Linux D-Bus connections) the thread is joined when its token is
+  dropped; X11's `wait_for_event` and the inotify charger loop keep their
+  existing process-lifetime/detach behaviour (see below).
 - `PlatformEventSource::start` returns `Box<dyn PlatformWatchers>`; dropping
   that box is the documented teardown signal. A backend that cannot stop a
   subscription must say so in this document rather than pretend the token
@@ -166,14 +167,23 @@ Guarantees the core relies on, which a new backend must keep:
 - `Drop` on a surface releases its native resources; on a media engine it
   stops the fade threads and kills the player.
 
-**Known gap.** The D-Bus session/lock/sleep/idle watchers in
-`ferramari-platform/src/handlers.rs` block on `receive_signal` and are only
-released when the process exits: the token does not stop them. Today the only
-in-process teardown of the whole app is process exit, so the gap is not
-reachable, but a backend that restarts its event sources without exiting would
-inherit it. Fix shape: give each watcher an owned `zbus::blocking::Connection`
-plus a self-message or a poll deadline, so the signal loop can be woken and the
-thread joined. Until then `PlatformWatchers` promises less than its name.
+- **Linux D-Bus watchers are bounded.** Each session/lock/sleep/end-session
+  watcher owns one blocking `zbus` connection on one thread. Dropping
+  `SessionWatchers` sets every stop flag, closes each stored connection —
+  which is what releases a blocking signal iterator parked on the bus — and
+  then joins all threads under one shared two-second deadline. A thread that
+  misses the deadline is detached and logged; it exits when its D-Bus call
+  returns. The idle watcher checks its stop flag every 250 ms and is joined
+  under the same deadline. One GNOME session client serves both
+  `QueryEndSession` and `EndSession` through a single match-rule iterator, so
+  gnome-session never sees the app registered twice.
+- **Still process-lifetime or detached.** The Windows control accept loop
+  (`ferramari-platform/src/windows/dbus.rs`) deliberately lives until process
+  exit; the inotify charger watcher exits only when the command channel
+  closes, which happens at process exit; and the X11 window/monitor watchers
+  detach their `wait_for_event` threads because that call has no portable
+  wake-up. A future in-process backend restart must not assume those sources
+  stop.
 
 ## 6. Display identity
 

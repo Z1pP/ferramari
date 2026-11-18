@@ -20,6 +20,10 @@
 - **Control transport** limits requests to 64 KiB and 16 concurrent clients.
 - **Catalogue cleanup** now actually runs at startup, removes expired sheets
   with their videos, and has a fake-root test.
+- **Linux session watchers** now stop at shutdown: each watcher owns a
+  connection that is closed to wake its blocking signal iterator, and every
+  watcher thread is joined under one two-second deadline. GNOME registers a
+  single session client for both end-session signals.
 - **Release tags** repeat formatting, clippy, tests and the release build.
 
 ## 2.2.0 - 2026-11-17

@@ -42,6 +42,14 @@ Build the complete 2.0 workspace with `cargo build --workspace --release --locke
 - [ ] Quit from Settings and from the tray; no `mpv`, `ffmpeg` or `ffprobe`
       processes remain.
 - [ ] SIGTERM during playback shuts down cleanly.
+- [ ] Linux: start with `RUST_LOG=ferramari_platform=debug`, then quit from the
+      tray and with SIGTERM. The process exits within three seconds and the log
+      contains no `did not stop before the shutdown deadline` warning.
+- [ ] Linux: lock, unlock, suspend and resume the session. Each transition
+      reaches the server once, and playback pauses and resumes once for each.
+- [ ] Linux GNOME: log out. `QueryEndSession` is answered immediately (the
+      shell does not wait for its timeout), `EndSession` quits the app, and
+      `org.gnome.SessionManager` lists one Ferramari client, not two.
 
 ### Theme and appearance
 - [ ] Settings → System → Theme switches between System default, Light and Dark.

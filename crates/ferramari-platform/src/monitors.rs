@@ -330,35 +330,28 @@ pub fn list() -> Vec<MonitorInfo> {
 /// Returns `None` when no X server answers at all.
 pub struct Watcher {
     stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Raw X socket, shared with the worker so shutdown can wake
+    /// `wait_for_event` with `shutdown(2)`.
+    fd: std::sync::Arc<std::sync::atomic::AtomicI32>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Drop for Watcher {
     fn drop(&mut self) {
         self.stop();
-        // Deliberately not joined. The thread spends its life inside
-        // `wait_for_event`, which is a blocking read on the X socket: it
-        // cannot observe the `stop` flag until an event arrives, and an idle
-        // desktop produces none. Joining here therefore hung the server's
-        // shutdown forever — reached on exit, and the process kept the
-        // D-Bus name so no new daemon could start.
-        //
-        // Detaching is safe because the thread does only two things while
-        // blocked: wait, and send on the command channel. Once the owner is
-        // gone that send fails and is ignored, and the watcher is created
-        // exactly once per process (`App::start_external_watchers`), so no
-        // thread accumulates. The thread dies with the process.
-        self.thread = None;
+        crate::x11::shutdown_connection(&self.fd);
+        crate::x11::join_bounded("monitor watcher", &mut self.thread);
     }
 }
 
 impl Watcher {
     pub fn stop(&self) {
-        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
 pub fn start(tx: ferramari_core::CommandSender) -> Option<Watcher> {
+    use std::os::fd::AsRawFd;
     use x11rb::connection::Connection as _;
     use x11rb::protocol::randr::{ConnectionExt as _, Notify, NotifyMask};
 
@@ -376,10 +369,16 @@ pub fn start(tx: ferramari_core::CommandSender) -> Option<Watcher> {
 
     let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let thread_stop = std::sync::Arc::clone(&stop);
+    let fd = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(
+        connection.stream().as_raw_fd(),
+    ));
+    let thread_fd = std::sync::Arc::clone(&fd);
     let thread = std::thread::Builder::new()
         .name("ferramari-monitors".into())
         .spawn(move || {
-            while !thread_stop.load(std::sync::atomic::Ordering::Relaxed) {
+            // Cleared before the captured connection closes the descriptor.
+            let _fd_guard = crate::x11::ConnectionFd(std::sync::Arc::clone(&thread_fd));
+            while !thread_stop.load(std::sync::atomic::Ordering::SeqCst) {
                 match connection.wait_for_event() {
                     Ok(event) => {
                         use x11rb::protocol::Event;
@@ -399,6 +398,11 @@ pub fn start(tx: ferramari_core::CommandSender) -> Option<Watcher> {
                         }
                     }
                     Err(err) => {
+                        // `shutdown_connection` intentionally breaks the
+                        // socket while stopping; that is not a disconnect.
+                        if thread_stop.load(std::sync::atomic::Ordering::SeqCst) {
+                            return;
+                        }
                         log::debug!("[Monitors] watcher disconnected: {err}");
                         return;
                     }
@@ -409,6 +413,7 @@ pub fn start(tx: ferramari_core::CommandSender) -> Option<Watcher> {
 
     Some(Watcher {
         stop,
+        fd,
         thread: Some(thread),
     })
 }

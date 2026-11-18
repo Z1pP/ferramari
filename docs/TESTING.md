@@ -272,6 +272,9 @@ profile.
       in the folder and through a rotation collection.
 - [x] Quit from the tray; no `mpv`, `ffmpeg` or `ffprobe` child remains and the
       original wallpaper is restored.
+- [ ] Quit from the tray with debug logging: the server exits within three
+      seconds and the log contains no `did not stop before the shutdown
+      deadline` warning from the control accept loop.
 - [ ] Quit from Settings; no `mpv`, `ffmpeg` or `ffprobe` child remains.
 - [ ] Ctrl-C, Ctrl-Break, console close, logoff and shutdown each end the
       server cleanly; the original wallpaper is restored.

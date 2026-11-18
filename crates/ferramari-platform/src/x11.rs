@@ -5,8 +5,11 @@
 
 pub use ferramari_core::window::{MonitorVisibility, WindowRect, WindowState};
 use ferramari_core::{Command, CommandSender};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::os::fd::AsRawFd;
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Arc;
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{AtomEnum, ChangeWindowAttributesAux, ConnectionExt, EventMask};
@@ -14,17 +17,64 @@ use x11rb::protocol::Event;
 
 pub struct Watcher {
     stop: Arc<AtomicBool>,
+    /// Raw X socket, written once the worker has connected. `shutdown(2)` on
+    /// it wakes `wait_for_event`; the connection still owns the descriptor.
+    fd: Arc<AtomicI32>,
+    thread: Option<JoinHandle<()>>,
 }
 
 impl Watcher {
     pub fn stop(&self) {
-        self.stop.store(true, Ordering::Relaxed);
+        self.stop.store(true, Ordering::SeqCst);
     }
 }
 
 impl Drop for Watcher {
     fn drop(&mut self) {
         self.stop();
+        shutdown_connection(&self.fd);
+        join_bounded("window watcher", &mut self.thread);
+    }
+}
+
+/// Wake a blocking X11 read by shutting down the socket, not closing it.
+///
+/// `shutdown` leaves the descriptor owned by the connection; the worker's
+/// read returns and the connection closes it. Closing the fd here could race
+/// with the worker and, worse, hand a reused number to a later socket.
+pub(crate) fn shutdown_connection(fd: &AtomicI32) {
+    let fd = fd.swap(-1, Ordering::SeqCst);
+    if fd >= 0 {
+        // Safety: the descriptor is owned by the X connection and is still
+        // open when this is called; `shutdown` does not close it.
+        unsafe {
+            libc::shutdown(fd, libc::SHUT_RDWR);
+        }
+    }
+}
+
+/// Clear the fd slot before the owning connection closes the descriptor, so
+/// a later `shutdown_connection` can never touch a reused fd number.
+pub(crate) struct ConnectionFd(pub(crate) Arc<AtomicI32>);
+
+impl Drop for ConnectionFd {
+    fn drop(&mut self) {
+        self.0.store(-1, Ordering::SeqCst);
+    }
+}
+
+pub(crate) fn join_bounded(name: &str, thread: &mut Option<JoinHandle<()>>) {
+    let Some(handle) = thread.take() else {
+        return;
+    };
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !handle.is_finished() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    if handle.is_finished() {
+        let _ = handle.join();
+    } else {
+        log::warn!("[X11] {name} did not stop before the shutdown deadline");
     }
 }
 
@@ -38,20 +88,37 @@ impl Drop for Watcher {
 /// watcher, which is why the earlier Wayland gate was removed.
 pub fn start(tx: CommandSender) -> Option<Watcher> {
     let stop = Arc::new(AtomicBool::new(false));
+    let fd = Arc::new(AtomicI32::new(-1));
     let thread_stop = Arc::clone(&stop);
-    std::thread::Builder::new()
+    let thread_fd = Arc::clone(&fd);
+    let thread = std::thread::Builder::new()
         .name("ferramari-x11".into())
         .spawn(move || {
-            if let Err(err) = run(tx, thread_stop) {
-                log::warn!("[WindowHandler] Disabled: {err}");
+            if let Err(err) = run(tx, thread_stop.clone(), thread_fd) {
+                // Shutdown deliberately shuts the socket down; that is not a
+                // disabled watcher and must not look like one.
+                if !thread_stop.load(Ordering::SeqCst) {
+                    log::warn!("[WindowHandler] Disabled: {err}");
+                }
             }
         })
         .ok()?;
-    Some(Watcher { stop })
+    Some(Watcher {
+        stop,
+        fd,
+        thread: Some(thread),
+    })
 }
 
-fn run(tx: CommandSender, stop: Arc<AtomicBool>) -> anyhow::Result<()> {
+fn run(tx: CommandSender, stop: Arc<AtomicBool>, fd_slot: Arc<AtomicI32>) -> anyhow::Result<()> {
     let (connection, screen) = x11rb::connect(None)?;
+    fd_slot.store(connection.stream().as_raw_fd(), Ordering::SeqCst);
+    // Declared after the connection: the guard drops first and clears the
+    // slot before the connection closes the descriptor.
+    let _fd_guard = ConnectionFd(Arc::clone(&fd_slot));
+    if stop.load(Ordering::SeqCst) {
+        return Ok(());
+    }
     let root = connection.setup().roots[screen].root;
     let atoms = Atoms::new(&connection)?;
 
@@ -280,4 +347,26 @@ fn property32(
         .value32()
         .map(|values| values.collect())
         .unwrap_or_default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+    use std::os::fd::AsRawFd;
+    use std::os::unix::net::UnixStream;
+
+    #[test]
+    fn shutting_down_the_socket_wakes_a_blocked_reader() {
+        let (mut reader, writer) = UnixStream::pair().expect("socket pair");
+        let fd = Arc::new(AtomicI32::new(reader.as_raw_fd()));
+        let thread = std::thread::spawn(move || {
+            let mut byte = [0u8; 1];
+            let _ = reader.read(&mut byte);
+        });
+        shutdown_connection(&fd);
+        thread.join().expect("the reader exits");
+        assert_eq!(fd.load(Ordering::SeqCst), -1);
+        drop(writer);
+    }
 }

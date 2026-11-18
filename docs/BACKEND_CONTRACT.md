@@ -162,10 +162,11 @@ Guarantees the core relies on, which a new backend must keep:
 - Watcher threads stop when the command channel closes: `send` fails and the
   thread returns. This is the portable cancellation mechanism, and it is why
   watchers hold no state worth flushing.
-- Watchers with a native event loop take a stop flag. Where the loop can be
-  woken (the Linux D-Bus connections) the thread is joined when its token is
-  dropped; X11's `wait_for_event` and the inotify charger loop keep their
-  existing process-lifetime/detach behaviour (see below).
+- Watchers with a native event loop take a stop flag. Every current watcher can
+  be woken: Linux D-Bus closes the connection, the inotify loop checks its flag
+  every drain slice, X11 shuts down the socket to release `wait_for_event`, and
+  the Windows control listener accepts a loopback wake-up. Each is joined under
+  a two-second deadline and detached with a warning if it misses it.
 - `PlatformEventSource::start` returns `Box<dyn PlatformWatchers>`; dropping
   that box is the documented teardown signal. A backend that cannot stop a
   subscription must say so in this document rather than pretend the token
@@ -186,13 +187,13 @@ Guarantees the core relies on, which a new backend must keep:
   under the same deadline. One GNOME session client serves both
   `QueryEndSession` and `EndSession` through a single match-rule iterator, so
   gnome-session never sees the app registered twice.
-- **Still process-lifetime or detached.** The Windows control accept loop
-  (`ferramari-platform/src/windows/dbus.rs`) deliberately lives until process
-  exit; the inotify charger watcher exits only when the command channel
-  closes, which happens at process exit; and the X11 window/monitor watchers
-  detach their `wait_for_event` threads because that call has no portable
-  wake-up. A future in-process backend restart must not assume those sources
-  stop.
+- **All event sources stop on token drop.** The Windows control accept loop
+  sets a flag and wakes its listener with a loopback connection; the inotify
+  charger watcher checks its flag on every drain slice; the X11 window and
+  monitor watchers call `shutdown(2)` on the X socket so `wait_for_event`
+  returns. Each is joined under one two-second deadline and logged if it misses
+  it. The named mutex and endpoint stay owned until `ControlServer` drops, which
+  is the documented teardown signal.
 
 ## 6. Display identity
 
@@ -233,10 +234,8 @@ Windows is the second backend. Its status against this checklist:
       `--doctor` shows the reason.
 - [x] Stable display ids use the strongest identity the OS exposes; the
       fallback rule and its limits are recorded in §6.
-- [x] Event sources that can be woken stop on teardown; §5 names the ones
-      that cannot (the Windows control listener, the inotify charger watcher
-      and the X11 window/monitor watchers) instead of pretending the token
-      covers them.
+- [x] Every event source stops on teardown, using a wake-up mechanism the
+      backend owns; §5 records the mechanism and the two-second join bound.
 - [x] Surface lifecycle survives a player crash and a surface destruction and
       re-creation without leaking native handles.
 - [x] Contract tests run against the fake providers in

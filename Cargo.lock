@@ -1273,6 +1273,7 @@ dependencies = [
  "ferramari-media",
  "inotify",
  "ksni",
+ "libc",
  "log",
  "rand 0.8.8",
  "serde",

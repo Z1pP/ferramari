@@ -124,7 +124,7 @@ Statuses used below:
 | R-11 | P2 | fixed-unit | Config robustness | A UTF-8 BOM makes the whole config fall back to defaults |
 | R-12 | P2 | fixed-unit | Cache management | `catalogue::cleanup_cache()` has a caller and a fake-root test |
 | R-13 | P2 | fixed-unit | Single instance | Second launch retries endpoint/interface publication |
-| R-14 | P2 | partially-fixed | Shutdown | Linux D-Bus watchers are bounded now; the Windows accept loop and X11 watchers keep process lifetime |
+| R-14 | P2 | fixed-code | Shutdown | All watcher threads are bounded; live shutdown smoke still pending |
 | R-15 | P3 | fixed-code | Docs / CI | Docs reconciled, formatting gate fixed, release tags repeat the quality gates |
 
 ---
@@ -890,66 +890,73 @@ startup race still needs the smoke item in `docs/TESTING.md`.
 
 ---
 
-## R-14 — Shutdown contract for watchers remains weaker than documented
+## R-14 — Shutdown contract for watchers
 
 **Priority:** P2  
-**Status:** `partially-fixed` (Linux D-Bus watchers bounded; Windows accept loop and X11 watchers unchanged)
+**Status:** `fixed-code` (all watcher threads bounded; live smoke pending)
 
 **Where**
 
-- `docs/BACKEND_CONTRACT.md` §5 recorded that the Linux D-Bus
+- `docs/BACKEND_CONTRACT.md` §5 used to record that the Linux D-Bus
   session/lock/sleep/idle watchers block in `receive_signal` and are released
-  only at process exit; the resolution below replaces that text.
-- `crates/ferramari-platform/src/windows/dbus.rs:9-11` states the accept loop
-  also lives until process exit.
-- `crates/ferramari-platform/src/handlers.rs:84-380` had no stop token or join
-  for the Linux watchers (fixed by the resolution below).
-- The X11/monitor watcher `Drop` implementations deliberately detach threads
-  blocked in `wait_for_event` (`crates/ferramari-platform/src/monitors.rs:335-352`,
-  `crates/ferramari-platform/src/x11.rs:20-29`).
+  only at process exit.
+- `crates/ferramari-platform/src/windows/dbus.rs` used to keep the control
+  accept loop until process exit.
+- `crates/ferramari-platform/src/handlers.rs` had no stop token or join for the
+  Linux watchers.
+- The X11/monitor watcher `Drop` implementations deliberately detached threads
+  blocked in `wait_for_event` (`crates/ferramari-platform/src/monitors.rs`,
+  `crates/ferramari-platform/src/x11.rs`).
 
 **User impact**
 
-There is no current in-process restart of these sources, so the user does not
-see a leak today. The gap becomes a correctness problem for any future server
-restart or backend reinitialization, and it means `PlatformWatchers` promises
-less than its name.
+There is no current in-process restart of these sources, so the user did not
+see a leak. The gap became a correctness problem for any future server restart
+or backend reinitialization, and it meant `PlatformWatchers` promised less than
+its name.
 
 **Fix direction**
 
 Give each watcher an owned connection plus a wake/stop mechanism with a
 bounded join, or explicitly keep process-lifetime semantics and amend the
-contract. The audit recommends fixing the D-Bus watchers before any in-process
-backend restart is introduced.
+contract. The audit recommended fixing the D-Bus watchers before any in-process
+backend restart was introduced.
 
 **Regression test**
 
-- Start a watcher, drop the token, assert the thread joins within a deadline.
-- Shutdown smoke: start the server, quit, assert no process/thread remains.
+- Drop the idle watcher: the thread must stop without waiting for its poll.
+- Drop a charger watcher: the thread must stop within the deadline.
+- Drop a `ControlServer`: the accept loop must stop within the deadline.
+- Drop the X11 watcher: `shutdown(2)` on a socket pair must wake a blocked
+  reader and clear the fd slot.
+- Live shutdown smoke: start the server, quit, assert no process/thread
+  remains and no watcher logs a missed deadline.
 
-**Resolution (2026-11-18, Linux code only)**
+**Resolution (2026-11-19)**
 
 `handlers.rs` now exposes `SessionWatchers`, which owns every D-Bus watcher and
 the idle poller. Each D-Bus watcher keeps a clone of its async
 `zbus::Connection` in a shared slot and runs one thread. Dropping the token
 sets the stop flag, closes every stored connection — which releases the
-blocked signal iterator — and then joins all threads under one
-two-second deadline. A thread that misses the deadline is detached and logged.
-Signal groups use separate connections so one wedged service cannot delay
-another's stop. The idle watcher checks its stop flag every 250 ms instead of
-sleeping through the full 15 s poll interval. The GNOME end-session watcher
-keeps a single registered client and reads `QueryEndSession` and `EndSession`
-through one match-rule iterator, so it is not registered twice. The Linux
-target passes cross-target clippy with `-D warnings` and an all-target build.
-The new `join_bounded_*` tests cover the deadline path, and the idle watcher has
-a start/drop test. A real D-Bus start/drop assertion needs a bus, so it and the
-live quit smoke are recorded in `docs/TESTING.md`; neither can run on this
-Windows host.
+blocked signal iterator — and then joins all threads under one two-second
+deadline. A thread that misses the deadline is detached and logged. Signal
+groups use separate connections so one wedged service cannot delay another's
+stop. The idle watcher checks its stop flag every 250 ms instead of sleeping
+through the full 15 s poll interval. The GNOME end-session watcher keeps a
+single registered client and reads `QueryEndSession` and `EndSession` through
+one match-rule iterator, so it is not registered twice.
 
-The Windows control accept loop, the inotify charger watcher and the X11
-window/monitor watchers keep their process-lifetime/detach semantics;
-`docs/BACKEND_CONTRACT.md` §5 now states this explicitly instead of describing
-the D-Bus watchers as an unaddressed gap.
+`power_events.rs` now stores the charger thread and its stop flag. The worker
+checks the flag on every drain slice, and `Drop` joins it under the same
+two-second deadline. `windows/dbus.rs` stores the accept handle on
+`ControlServer`; `Drop` removes the endpoint, wakes `accept()` with a loopback
+connection, and joins the thread under the deadline. The X11 window and monitor
+watchers store the raw X socket; `Drop` calls `shutdown(2)` to release
+`wait_for_event`, clears the fd slot before the connection closes it, and joins
+under the deadline. All three mechanisms have shutdown tests; the X11 fd test
+runs only on Linux. The Linux target passes cross-target clippy with
+`-D warnings` and an all-target build. The live quit smoke remains in
+`docs/TESTING.md`; it could not run on this Windows host.
 
 ---
 
@@ -1096,6 +1103,7 @@ the audit and verification results separate.
 | R-11: UTF-8 BOM handling | New config test |
 | R-12: catalogue cache cleanup | Startup call plus fake-root cleanup test |
 | R-13: second-launch retry | New util timeout tests; two-process smoke still open |
+| R-14: bounded watcher shutdown | Drop tests for idle, charger, control accept and X11 fd wake-up; Linux cross-build; live smoke pending |
 | R-15: docs and release gates | Docs reconciled; release workflow repeats fmt/clippy/test/build |
 
 Post-change gates on the branch:

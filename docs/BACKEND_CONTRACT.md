@@ -90,6 +90,15 @@ catalogue work) acknowledge acceptance only; their later outcome is reported
 through `operation_status`/`operation_seq`. A backend that replaces either
 transport must keep the same distinction and the 5-second reply deadline.
 
+### 2.2 Playback facts
+
+`Snapshot.is_playing` means a live surface and IPC worker are running and the
+Eco plan says the player should play. `Snapshot.is_decoding` means the same
+live player has not produced a frame yet. The second fact exists because a
+cold start is neither “stopped” nor “playing normally”; the Iced MPV Engine
+chip shows `Starting` while it is set. Both facts must travel over any control
+transport, and a snapshot must not turn the first-frame wait into `Idle`.
+
 ## 3. Threading and ownership
 
 One thread owns playback state; everything else produces messages.

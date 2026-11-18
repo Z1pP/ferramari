@@ -18,6 +18,9 @@ pub struct ServerState {
     pub blur_radius: i32,
     pub is_mute: bool,
     pub is_playing: bool,
+    /// The server has a live player but has not decoded a frame yet. The UI
+    /// shows `Starting` instead of guessing between `Running` and `Idle`.
+    pub is_decoding: bool,
     pub is_paused_by_user: bool,
     pub is_static_wallpaper: bool,
     pub is_pause_when_maximized: bool,

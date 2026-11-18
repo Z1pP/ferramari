@@ -116,7 +116,7 @@ Statuses used below:
 | R-03 | P1 | fixed-unit | Display identity | A corrupt `display-ids.json` ignores a valid `.bak` and loses assignments |
 | R-04 | P1 | fixed-code | Config reload | `reload_config` discards a pending debounced setting |
 | R-05 | P1 | fixed-unit | Error reporting | Synchronous commands now return an application result; async commands still report through the snapshot |
-| R-06 | P1 | partially-fixed | Playback state | `is_playing` now requires a live player; cold-start decode is still not a separate fact |
+| R-06 | P1 | fixed-unit | Playback state | `is_playing` is live; `is_decoding` separates the first-frame wait |
 | R-07 | P1 | fixed-unit | Mixed DPI | Windows physical geometry is multiplied by `scale_factor` a second time |
 | R-08 | P1 | fixed-unit | Windows control transport | Request line and concurrent client threads are bounded |
 | R-09 | P2 | fixed-unit | UI status | Tracked commands drive the status line; stale status and optimistic play expire |
@@ -491,7 +491,7 @@ continue to report later failures through `operation_status`/`operation_seq`.
 ## R-06 — `is_playing` reports policy intent, not a live player
 
 **Priority:** P1  
-**Status:** `partially-fixed`
+**Status:** `fixed-unit` (live kill/restart smoke pending)
 
 **Where**
 
@@ -532,14 +532,20 @@ fact). Refresh the snapshot after any automatic restart or give-up.
 - Live smoke: kill mpv, assert state transitions and no false "playing" after
   give-up.
 
-**Resolution (2026-11-18, partial)**
+**Resolution (2026-11-18)**
 
-`Engine::player_ready()` now requires a live surface and a live IPC worker, and
-`any_playing()` requires that before the Eco policy can report playback.
-`watch_players()` republishes the snapshot after a player set change. The new
-`a_dead_ipc_or_stopped_worker_is_not_alive` test covers the non-blocking worker
-flags. `is_playing` still does not distinguish "player ready but no frame has
-decoded yet"; that remains a separate `is_decoding` fact if the UI needs it.
+`Engine::player_ready()` requires a live surface and a live IPC worker, and
+`watch_players()` republishes the snapshot after a player set change.
+`ferramari_core::bus::PlaybackFacts` now separates a live player the Eco plan
+says should play (`playing`) from that same player before its first frame
+(`decoding`). `Snapshot.is_decoding` travels over both D-Bus interfaces and the
+Windows control JSON; the Iced MPV Engine chip shows `Starting` while it is
+set, instead of choosing between `Running` and `Idle`. `Engine` gained
+`cached_playback_stats()`, which reads the last probe without queueing another
+one, so `sync_snapshot()` stays non-blocking. The `PlaybackFacts` truth table
+and both UI client parsers have tests. The live kill/restart smoke remains in
+`docs/TESTING.md`; the dead-engine and post-restart snapshot cases are covered
+by the pure fact calculation.
 
 ---
 
@@ -1082,7 +1088,7 @@ the audit and verification results separate.
 | R-03: primary-then-backup display registry load | New display-id test; full `ferramari-core` suite |
 | R-04: flush before `reload_config` | Pre-fix live reproduction recorded; post-fix app-level regression test still pending |
 | R-05: tracked command results | New core mapping tests and Windows request-result test; D-Bus method compiled only by CI |
-| R-06: live-player check for `is_playing` | New media liveness test; decode-before-frame state still separate |
+| R-06: live-player check and decode state | `PlaybackFacts` truth table; UI/control parser tests; live kill/restart smoke pending |
 | R-07: physical/logical monitor geometry | New dashboard unit test; live mixed-DPI matrix still open |
 | R-08: bounded control transport | New platform tests for line size and client slots |
 | R-09: tracked UI commands and status expiry | UI/client compile and existing tests; live UI click-through still pending |

@@ -227,6 +227,7 @@ impl Server {
             state.blur_radius = int_of(&values, "blur_radius");
             state.is_mute = bool_of(&values, "is_mute");
             state.is_playing = bool_of(&values, "is_playing");
+            state.is_decoding = bool_of(&values, "is_decoding");
             state.is_paused_by_user = bool_of(&values, "is_paused_by_user");
             state.is_static_wallpaper = bool_of(&values, "is_static_wallpaper");
             state.is_pause_when_maximized = bool_of(&values, "is_pause_when_maximized");
@@ -391,6 +392,7 @@ mod tests {
         assert_eq!(int_of(&values, "idle_timeout_sec"), 0);
         assert!(!bool_of(&values, "is_mute"));
         assert!(!bool_of(&values, "is_playing"));
+        assert!(!bool_of(&values, "is_decoding"));
         assert!(!bool_of(&values, "is_paused_by_user"));
         assert!(!bool_of(&values, "is_static_wallpaper"));
         assert!(!bool_of(&values, "pause_on_battery"));
@@ -409,6 +411,8 @@ mod tests {
         assert!(!state.reachable);
         assert_eq!(state.mode, "");
         assert_eq!(state.volume, 0);
+        assert!(!state.is_playing);
+        assert!(!state.is_decoding);
         assert!(state.data_source.is_empty());
         assert!(state.monitor_states.is_empty());
         assert!(state.rotations.is_empty());

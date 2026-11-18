@@ -190,6 +190,7 @@ fn state_from_json(value: &Value) -> ServerState {
         blur_radius: int(value, "blur_radius"),
         is_mute: boolean(value, "is_mute"),
         is_playing: boolean(value, "is_playing"),
+        is_decoding: boolean(value, "is_decoding"),
         is_paused_by_user: boolean(value, "is_paused_by_user"),
         is_static_wallpaper: boolean(value, "is_static_wallpaper"),
         is_pause_when_maximized: boolean(value, "is_pause_when_maximized"),
@@ -289,6 +290,7 @@ mod tests {
             "blur_radius": 12,
             "is_mute": true,
             "is_playing": true,
+            "is_decoding": true,
             "is_paused_by_user": false,
             "is_static_wallpaper": false,
             "is_pause_when_maximized": true,
@@ -333,6 +335,7 @@ mod tests {
         assert_eq!(state.blur_radius, 12);
         assert!(state.is_mute);
         assert!(state.is_playing);
+        assert!(state.is_decoding);
         assert!(state.is_pause_when_maximized);
         assert_eq!(state.theme, "dark");
         assert_eq!(state.language, "ru");

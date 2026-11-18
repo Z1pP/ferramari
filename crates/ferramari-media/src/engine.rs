@@ -253,6 +253,19 @@ impl Engine {
         stats
     }
 
+    /// The last probe without queueing another one.
+    ///
+    /// A snapshot can ask this on every tick; the supervisory probe stays on
+    /// [`Engine::playback_stats`], so reading the playback facts does not add
+    /// IPC traffic.
+    pub fn cached_playback_stats(&self) -> mpv::PlaybackStats {
+        let Content::Video { mpv } = &self.content;
+        let Ok(mpv) = mpv.lock() else {
+            return mpv::PlaybackStats::default();
+        };
+        mpv.stats()
+    }
+
     /// Whether the surface and the player currently have live resources.
     ///
     /// This is deliberately non-blocking: it reads the player's worker flags

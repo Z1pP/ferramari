@@ -60,7 +60,7 @@ const CONFIG_FLUSH_AFTER: Duration = Duration::from_millis(500);
 // The command bus (Command, PackageReport, Snapshot, CommandSender)
 // lives in ferramari-core. Re-export it under `app` so the pre-split call
 // sites (`crate::app::Command`, …) keep resolving.
-pub use crate::bus::{Command, CommandSender, PackageReport, Snapshot};
+pub use crate::bus::{Command, CommandSender, PackageReport, PlaybackFacts, Snapshot};
 
 pub struct App {
     pub config: Config,
@@ -1721,14 +1721,21 @@ impl App {
         log::trace!("[Eco] apply_mute_states done");
     }
 
-    fn any_playing(&self) -> bool {
-        self.windows.iter().any(|window| {
-            // `is_playing` is a fact about a live decoder, not only an Eco
-            // policy decision. During a crash/restart loop the policy still
-            // says "play"; without this check the UI would claim playback
-            // while every mpv is dying.
-            window.player_ready() && self.eco_plan_for(&window.key().monitor).play
-        })
+    fn playback_facts(&self) -> PlaybackFacts {
+        self.windows
+            .iter()
+            .fold(PlaybackFacts::default(), |facts, window| {
+                // `is_playing` is a fact about a live decoder, not only an Eco
+                // policy decision. During a crash/restart loop the policy still
+                // says "play"; without this check the UI would claim playback
+                // while every mpv is dying. `is_decoding` covers the other
+                // edge: the player is alive but has not produced a frame yet.
+                facts.merge(PlaybackFacts::observe(
+                    window.player_ready(),
+                    self.eco_plan_for(&window.key().monitor).play,
+                    window.cached_playback_stats().active,
+                ))
+            })
     }
 
     fn eco_state_for(&self, monitor: &str) -> eco::State {
@@ -2014,12 +2021,14 @@ impl App {
 
     fn sync_snapshot(&self) {
         log::trace!("[Snapshot] publishing");
+        let playback = self.playback_facts();
         let snapshot = Snapshot {
             mode: self.config.mode,
             volume: self.config.volume,
             blur_radius: self.config.blur_radius,
             is_mute: self.config.is_mute,
-            is_playing: self.any_playing(),
+            is_playing: playback.playing,
+            is_decoding: playback.decoding,
             is_paused_by_user: self.paused_by_user,
             is_static_wallpaper: self.config.is_static_wallpaper,
             is_pause_when_maximized: self.config.is_pause_when_maximized,

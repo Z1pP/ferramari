@@ -3,7 +3,7 @@
 ## Unreleased
 
 **Stability pass after the 2.2.0 audit.** The Windows-hosted suite now has
-**469 tests** (17 binary + 361 core + 18 media + 59 platform + 8 UI library +
+**471 tests** (17 binary + 363 core + 18 media + 59 platform + 8 UI library +
 6 UI binary).
 
 - **Windows playback with static wallpaper off** no longer enters a restart
@@ -16,7 +16,9 @@
   over D-Bus and the Windows loopback transport while the legacy
   fire-and-forget methods remain available.
 - **Live playback state** requires a live surface and IPC worker, and the
-  status/pending-play UI state expires instead of sticking.
+  status/pending-play UI state expires instead of sticking. A separate
+  `is_decoding` fact covers the first-frame wait, so the control surface shows
+  `Starting` instead of a false `Idle`.
 - **Windows mixed-DPI geometry** is marked physical and is no longer scaled
   twice for occlusion checks.
 - **Control transport** limits requests to 64 KiB and 16 concurrent clients.

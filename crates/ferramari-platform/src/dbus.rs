@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use ferramari_core::paths;
 use ferramari_core::{Command, CommandSender, Snapshot};
@@ -63,7 +64,14 @@ pub fn request_show_gui() -> anyhow::Result<()> {
         SERVER_PATH,
         SERVER_INTERFACE,
     )?;
-    proxy.call::<_, _, ()>("show_gui", &())?;
+    // The name can be owned while `register()` is still exporting the
+    // interfaces. A second launch during that window should wait for the
+    // interface instead of silently exiting.
+    ferramari_core::util::retry_until(Duration::from_secs(3), Duration::from_millis(100), || {
+        proxy
+            .call::<_, _, ()>("show_gui", &())
+            .map_err(anyhow::Error::from)
+    })?;
     Ok(())
 }
 

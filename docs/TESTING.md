@@ -35,6 +35,9 @@ Build the complete 2.0 workspace with `cargo build --workspace --release --locke
 ### Startup and shutdown
 - [ ] App starts with no existing config and shows the Home page.
 - [ ] A second launch only asks the first instance to show its window.
+- [ ] Start the server with `-b -p 5`; launch a second instance during the
+      delay. The second launch waits briefly for the endpoint/interface and
+      opens the UI instead of exiting silently.
 - [ ] Quit from Settings and from the tray; no `mpv`, `ffmpeg` or `ffprobe`
       processes remain.
 - [ ] SIGTERM during playback shuts down cleanly.

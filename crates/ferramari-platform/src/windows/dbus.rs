@@ -93,11 +93,20 @@ pub fn acquire() -> anyhow::Result<Acquired> {
 
 /// Ask the running instance to show its window.
 pub fn request_show_gui() -> anyhow::Result<()> {
-    let endpoint =
-        control::read_endpoint().ok_or_else(|| anyhow::anyhow!("the server is not running"))?;
-    control::call(&endpoint, "command", json!({ "name": "show_gui" }))
-        .map(|_| ())
-        .map_err(anyhow::Error::msg)?;
+    // The mutex can be owned before the endpoint file is published or the
+    // accept loop is ready. Retry briefly so a second launch during startup
+    // does not silently do nothing.
+    ferramari_core::util::retry_until(
+        std::time::Duration::from_secs(3),
+        std::time::Duration::from_millis(100),
+        || {
+            let endpoint = control::read_endpoint()
+                .ok_or_else(|| anyhow::anyhow!("the server is not running"))?;
+            control::call(&endpoint, "command", json!({ "name": "show_gui" }))
+                .map(|_| ())
+                .map_err(anyhow::Error::msg)
+        },
+    )?;
     // `show_gui` spawns a UI process; when a window is already open that
     // process loses the instance mutex and exits. Raise the existing window
     // from this freshly launched process, which still has foreground rights.

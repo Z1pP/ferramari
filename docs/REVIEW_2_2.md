@@ -123,7 +123,7 @@ Statuses used below:
 | R-10 | P2 | fixed-unit | Config validation | Loaded volume/blur/fade values are range-checked and persisted |
 | R-11 | P2 | fixed-unit | Config robustness | A UTF-8 BOM makes the whole config fall back to defaults |
 | R-12 | P2 | fixed-code | Cache management | `catalogue::cleanup_cache()` has no caller |
-| R-13 | P2 | risk | Single instance | Second launch can silently lose the startup race |
+| R-13 | P2 | fixed-unit | Single instance | Second launch retries endpoint/interface publication |
 | R-14 | P2 | documented-gap | Shutdown | Linux D-Bus watchers and the Windows accept loop live until process exit |
 | R-15 | P3 | partially-fixed | Docs / CI | Linux formatting gate fixed; stale docs/release gating remain |
 
@@ -836,7 +836,7 @@ global cache paths; a fake-root test remains open.
 ## R-13 — Second launch can silently lose the single-instance startup race
 
 **Priority:** P2  
-**Status:** `risk` (code path clear; timing not reproduced)
+**Status:** `fixed-unit` (live startup race still to be exercised)
 
 **Where**
 
@@ -868,6 +868,14 @@ startup-race test with a delayed endpoint/interface.
 - Windows integration test with a deliberately delayed accept loop.
 - Linux D-Bus test with a name owner that registers the interface after a
   delay, if a test bus is available; otherwise a documented smoke item.
+
+**Resolution (2026-11-18, unit only)**
+
+`ferramari_core::util::retry_until()` retries a closure until a deadline; both
+`request_show_gui()` implementations now use a three-second window with 100 ms
+intervals. The second launch logs a failed request instead of discarding it.
+The helper has transient-success and deadline tests; the actual two-process
+startup race still needs the smoke item in `docs/TESTING.md`.
 
 ---
 
@@ -1049,6 +1057,7 @@ the audit and verification results separate.
 | R-10: numeric config ranges | New parse test |
 | R-11: UTF-8 BOM handling | New config test |
 | R-12: catalogue cache cleanup call | Startup call added; fake-root test still open |
+| R-13: second-launch retry | New util timeout tests; two-process smoke still open |
 | R-15: Linux formatting gate | `cargo fmt --all -- --check`; docs cleanup still open |
 
 Post-change gates on the branch:
@@ -1059,7 +1068,7 @@ cargo test --workspace --locked                                 exit 0
 cargo build --workspace --release --locked                      exit 0
 ```
 
-Test totals after the change set: **460 passed, 0 failed** (16 binary + 355
+Test totals after the change set: **462 passed, 0 failed** (16 binary + 357
 core + 18 media + 57 platform + 8 UI library + 6 UI binary).
 
 ## Phase 0 exit

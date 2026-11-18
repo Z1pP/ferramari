@@ -65,4 +65,7 @@ pub struct ServerState {
     pub is_show_systray: bool,
     pub operation_status: String,
     pub operation_error: bool,
+    /// Server-side sequence for `operation_status`; a repeated message with a
+    /// new sequence is a new event.
+    pub operation_seq: u64,
 }

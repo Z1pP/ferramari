@@ -407,6 +407,7 @@ fn snapshot_json(snapshot: &Arc<Mutex<Snapshot>>) -> Value {
         "is_show_systray": state.is_show_systray,
         "operation_status": state.operation_status,
         "operation_error": state.operation_error,
+        "operation_seq": state.operation_seq,
         "data_source": state.data_source,
         "monitor_states": state.monitor_states,
         "monitor_resolutions": state.monitor_resolutions,
@@ -480,6 +481,7 @@ mod tests {
             "hwdec_running",
             "player_stats",
             "operation_status",
+            "operation_seq",
             "server_pid",
         ] {
             assert!(value.get(key).is_some(), "missing {key}");

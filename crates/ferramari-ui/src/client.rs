@@ -206,6 +206,7 @@ impl Server {
             state.is_show_systray = bool_of(&values, "is_show_systray");
             state.operation_status = string_of(&values, "operation_status");
             state.operation_error = bool_of(&values, "operation_error");
+            state.operation_seq = u64_of(&values, "operation_seq");
         }
         if let Some(values) = self.get_all(PLAYER_PATH, PLAYER_INTERFACE).await {
             state.data_source = string_map_of(&values, "data_source");
@@ -257,6 +258,13 @@ fn bool_of(values: &HashMap<String, OwnedValue>, key: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn u64_of(values: &HashMap<String, OwnedValue>, key: &str) -> u64 {
+    values
+        .get(key)
+        .and_then(|value| u64::try_from(value).ok())
+        .unwrap_or(0)
+}
+
 fn string_map_of(values: &HashMap<String, OwnedValue>, key: &str) -> HashMap<String, String> {
     values
         .get(key)
@@ -293,9 +301,11 @@ mod tests {
         values.insert("mode".to_string(), owned(Value::from("MODE_VIDEO")));
         values.insert("volume".to_string(), owned(Value::from(77i32)));
         values.insert("is_mute".to_string(), owned(Value::from(true)));
+        values.insert("operation_seq".to_string(), owned(Value::from(9u64)));
         assert_eq!(string_of(&values, "mode"), "MODE_VIDEO");
         assert_eq!(int_of(&values, "volume"), 77);
         assert!(bool_of(&values, "is_mute"));
+        assert_eq!(u64_of(&values, "operation_seq"), 9);
     }
 
     fn owned(value: Value<'static>) -> OwnedValue {
@@ -345,6 +355,7 @@ mod tests {
         assert!(!bool_of(&values, "web_allow_network"));
         assert!(!bool_of(&values, "autostart_enabled"));
         assert!(!bool_of(&values, "operation_error"));
+        assert_eq!(u64_of(&values, "operation_seq"), 0);
         assert!(string_map_of(&values, "data_source").is_empty());
         assert!(string_map_of(&values, "monitor_states").is_empty());
         assert!(string_map_of(&values, "rotations").is_empty());

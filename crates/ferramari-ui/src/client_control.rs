@@ -186,6 +186,10 @@ fn state_from_json(value: &Value) -> ServerState {
         is_show_systray: boolean(value, "is_show_systray"),
         operation_status: string(value, "operation_status"),
         operation_error: boolean(value, "operation_error"),
+        operation_seq: value
+            .get("operation_seq")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
     }
 }
 
@@ -276,6 +280,7 @@ mod tests {
             "is_show_systray": true,
             "operation_status": "Saved",
             "operation_error": false,
+            "operation_seq": 7,
             "data_source": { "Default": "/videos/wall.mp4" },
             "monitor_states": { "DISPLAY1": "active" },
             "monitor_resolutions": { "DISPLAY1": "1920 × 1080" },
@@ -315,6 +320,7 @@ mod tests {
         assert!(state.autostart_enabled);
         assert!(state.is_show_systray);
         assert_eq!(state.operation_status, "Saved");
+        assert_eq!(state.operation_seq, 7);
         assert_eq!(state.player_stats.codec, "hevc");
         assert_eq!(state.player_stats.width, Some(1920));
     }

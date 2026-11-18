@@ -119,7 +119,7 @@ Statuses used below:
 | R-06 | P1 | partially-fixed | Playback state | `is_playing` now requires a live player; cold-start decode is still not a separate fact |
 | R-07 | P1 | fixed-unit | Mixed DPI | Windows physical geometry is multiplied by `scale_factor` a second time |
 | R-08 | P1 | fixed-unit | Windows control transport | Request line and concurrent client threads are bounded |
-| R-09 | P2 | confirmed-code | UI status | Sticky status banner; one-snapshot optimistic play state |
+| R-09 | P2 | partially-fixed | UI status | Status expires, new server operations have a sequence, optimistic play has a timeout |
 | R-10 | P2 | fixed-unit | Config validation | Loaded volume/blur/fade values are range-checked and persisted |
 | R-11 | P2 | fixed-unit | Config robustness | A UTF-8 BOM makes the whole config fall back to defaults |
 | R-12 | P2 | fixed-code | Cache management | `catalogue::cleanup_cache()` has no caller |
@@ -480,7 +480,8 @@ without a sequence id.
 `notify_user_error()` now publishes `error.message()` through the existing
 `operation_status`/`operation_error` snapshot fields and refreshes the snapshot,
 so the control surface can display an apply/playback failure instead of only
-writing a log line. The command API is still fire-and-forget and the status has
+writing a log line. `operation_seq` lets the UI distinguish a repeated message
+from a new event. The command API is still fire-and-forget and the status has
 no request id; per-command acknowledgement and rollback remain open (R-09).
 
 ---
@@ -654,7 +655,7 @@ slot exhaustion and slot reuse.
 ## R-09 — Sticky UI status and a one-snapshot optimistic play state
 
 **Priority:** P2  
-**Status:** `confirmed-code`, UI interaction not exercised in this pass
+**Status:** `partially-fixed`, UI interaction not exercised in this pass
 
 **Where**
 
@@ -691,6 +692,15 @@ a bounded display time.
 - UI state test: pending play, contradictory snapshot; assert the final state
   follows the server after the timeout and an error remains visible.
 - Server test: package operation status lifecycle.
+
+**Resolution (2026-11-18, partial)**
+
+The server emits an additive `operation_seq` alongside `operation_status` and
+`operation_error`. The UI now treats a repeated status string as the same
+event, expires a status line after eight one-second ticks, and keeps a pending
+play/pause intent for at most three polls before accepting the server value.
+The old error is still not tied to a specific command, so the full ack/rollback
+design remains open.
 
 ---
 
@@ -1035,6 +1045,7 @@ the audit and verification results separate.
 | R-06: live-player check for `is_playing` | New media liveness test; decode-before-frame state still separate |
 | R-07: physical/logical monitor geometry | New dashboard unit test; live mixed-DPI matrix still open |
 | R-08: bounded control transport | New platform tests for line size and client slots |
+| R-09: status sequence and optimistic timeout | UI/client compile and existing tests; no new UI-state harness yet |
 | R-10: numeric config ranges | New parse test |
 | R-11: UTF-8 BOM handling | New config test |
 | R-12: catalogue cache cleanup call | Startup call added; fake-root test still open |

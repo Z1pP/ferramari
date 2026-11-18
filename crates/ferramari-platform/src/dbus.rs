@@ -442,6 +442,11 @@ impl ServerInterface {
         self.snapshot().operation_error
     }
 
+    #[zbus(property, name = "operation_seq")]
+    fn operation_seq(&self) -> u64 {
+        self.snapshot().operation_seq
+    }
+
     #[zbus(property, name = "autostart_enabled")]
     fn set_autostart_enabled(&self, enabled: bool) {
         send(&self.tx, Command::SetAutostart(enabled));

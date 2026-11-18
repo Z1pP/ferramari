@@ -117,6 +117,7 @@ pub struct App {
     gui_shown: bool,
     operation_status: String,
     operation_error: bool,
+    operation_seq: u64,
     /// What the players report as the decoder actually in use, from the
     /// supervision tick. Empty while nothing has decoded. The setting in the
     /// config is what the user asked for; this is what the machine does.
@@ -204,6 +205,7 @@ impl App {
             gui_shown: false,
             operation_status: String::new(),
             operation_error: false,
+            operation_seq: 0,
             hwdec_running: String::new(),
             player_stats: ferramari_core::stats::PlaybackStats::default(),
             tray: None,
@@ -1864,6 +1866,7 @@ impl App {
     fn set_operation_status(&mut self, status: impl Into<String>, error: bool) {
         self.operation_status = status.into();
         self.operation_error = error;
+        self.operation_seq = self.operation_seq.wrapping_add(1);
     }
 
     fn sync_snapshot(&self) {
@@ -1935,6 +1938,7 @@ impl App {
             rotations: self.config.rotations.clone(),
             operation_status: self.operation_status.clone(),
             operation_error: self.operation_error,
+            operation_seq: self.operation_seq,
         };
         if let Ok(mut shared) = self.snapshot.lock() {
             *shared = snapshot;

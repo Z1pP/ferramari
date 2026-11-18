@@ -224,9 +224,10 @@ Windows is the second backend. Its status against this checklist:
       `--doctor` shows the reason.
 - [x] Stable display ids use the strongest identity the OS exposes; the
       fallback rule and its limits are recorded in §6.
-- [x] Event sources can be stopped, and §5 has no "only at process exit" case
-      for the session/window/monitor watchers. The control listener is tied to
-      process lifetime, like the Linux bus connection.
+- [x] Event sources that can be woken stop on teardown; §5 names the ones
+      that cannot (the Windows control listener, the inotify charger watcher
+      and the X11 window/monitor watchers) instead of pretending the token
+      covers them.
 - [x] Surface lifecycle survives a player crash and a surface destruction and
       re-creation without leaking native handles.
 - [x] Contract tests run against the fake providers in

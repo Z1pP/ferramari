@@ -73,6 +73,23 @@ Rules that apply to all of them:
    from the command-loop thread. Any probe that can stall (D-Bus, subprocess,
    GPU query) runs behind a deadline or on its own thread.
 
+### 2.1 Tracked commands
+
+The Iced control surface uses a tracked path for actions that can fail
+synchronously. It sends `request_command(method, args)` or
+`request_property(name, value)`; Linux exposes them as methods on the server
+interface, Windows as JSON methods on the loopback control transport. Both map
+through `ferramari_core::command_api` to `Command::Request`, which carries a
+reply channel. The App records the first `notify_user_error` raised while
+handling the nested command and sends `Err(message)` to the transport; without
+an error it sends `Ok(())` after the command has been applied.
+
+The legacy fire-and-forget methods remain for scripts and compatibility.
+Commands that finish on a worker (stream resolution, package import/export,
+catalogue work) acknowledge acceptance only; their later outcome is reported
+through `operation_status`/`operation_seq`. A backend that replaces either
+transport must keep the same distinction and the 5-second reply deadline.
+
 ## 3. Threading and ownership
 
 One thread owns playback state; everything else produces messages.
@@ -264,8 +281,10 @@ Windows is the second backend. Its status against this checklist:
   "some of it" rather than "nothing". If the GPU counter set is missing, the
   Performance page shows `N/A` instead of zero.
 - **Display geometry.** All rectangles are physical pixels; `scale_factor` is
-  `DPI/96`. This differs from the X11 backend's logical pixels and is why core
-  never derives scale from a rectangle.
+  `DPI/96` and `physical_geometry` is `true`. The X11 backend reports logical
+  pixels with `physical_geometry=false`; core scales only that backend's
+  rectangle. This keeps a 1920×1080 panel at 150% from becoming a 3840×2160
+  occlusion rectangle.
 - **Static wallpaper.** `SystemParametersInfoW` reads and writes the desktop
   image. The previous path is saved in
   `%APPDATA%\ferramari\background-original.json` before our first frame is

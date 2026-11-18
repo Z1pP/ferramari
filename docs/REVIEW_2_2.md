@@ -115,11 +115,11 @@ Statuses used below:
 | R-02 | P1 | fixed-unit | Config durability | Recovery overwrites the valid `.bak` with the corrupt primary |
 | R-03 | P1 | fixed-unit | Display identity | A corrupt `display-ids.json` ignores a valid `.bak` and loses assignments |
 | R-04 | P1 | fixed-code | Config reload | `reload_config` discards a pending debounced setting |
-| R-05 | P1 | partially-fixed | Error reporting | Errors now publish to `operation_status`; per-command result semantics remain open |
+| R-05 | P1 | fixed-unit | Error reporting | Synchronous commands now return an application result; async commands still report through the snapshot |
 | R-06 | P1 | partially-fixed | Playback state | `is_playing` now requires a live player; cold-start decode is still not a separate fact |
 | R-07 | P1 | fixed-unit | Mixed DPI | Windows physical geometry is multiplied by `scale_factor` a second time |
 | R-08 | P1 | fixed-unit | Windows control transport | Request line and concurrent client threads are bounded |
-| R-09 | P2 | partially-fixed | UI status | Status expires, new server operations have a sequence, optimistic play has a timeout |
+| R-09 | P2 | fixed-unit | UI status | Tracked commands drive the status line; stale status and optimistic play expire |
 | R-10 | P2 | fixed-unit | Config validation | Loaded volume/blur/fade values are range-checked and persisted |
 | R-11 | P2 | fixed-unit | Config robustness | A UTF-8 BOM makes the whole config fall back to defaults |
 | R-12 | P2 | fixed-unit | Cache management | `catalogue::cleanup_cache()` has a caller and a fake-root test |
@@ -417,7 +417,7 @@ test remains to be added with the next app-level test harness.
 ## R-05 — Server-side application errors never reach the control surface
 
 **Priority:** P1  
-**Status:** `partially-fixed`
+**Status:** `fixed-unit` (synchronous application errors; async work stays snapshot-driven)
 
 **Where**
 
@@ -475,14 +475,16 @@ without a sequence id.
   observable error snapshot) rather than plain `ok`.
 - Server test: `notify_user_error` publishes to the snapshot.
 
-**Resolution (2026-11-18, partial)**
+**Resolution (2026-11-18)**
 
-`notify_user_error()` now publishes `error.message()` through the existing
-`operation_status`/`operation_error` snapshot fields and refreshes the snapshot,
-so the control surface can display an apply/playback failure instead of only
-writing a log line. `operation_seq` lets the UI distinguish a repeated message
-from a new event. The command API is still fire-and-forget and the status has
-no request id; per-command acknowledgement and rollback remain open (R-09).
+Synchronous commands now have a real result path: `Command::Request` carries a
+reply channel, the App records the first `notify_user_error` for the command
+being handled, and the D-Bus/Windows tracked entry points wait for that reply.
+The shared `command_api` module maps the JSON vocabulary to `Command` values.
+Both transports retain their old fire-and-forget methods for compatibility;
+the Iced surface uses the tracked ones. Commands that finish on a worker
+(streams, package imports, catalogue work) initially acknowledge "accepted" and
+continue to report later failures through `operation_status`/`operation_seq`.
 
 ---
 
@@ -655,7 +657,7 @@ slot exhaustion and slot reuse.
 ## R-09 — Sticky UI status and a one-snapshot optimistic play state
 
 **Priority:** P2  
-**Status:** `partially-fixed`, UI interaction not exercised in this pass
+**Status:** `fixed-unit`, UI interaction not exercised in this pass
 
 **Where**
 
@@ -693,14 +695,15 @@ a bounded display time.
   follows the server after the timeout and an error remains visible.
 - Server test: package operation status lifecycle.
 
-**Resolution (2026-11-18, partial)**
+**Resolution (2026-11-18)**
 
 The server emits an additive `operation_seq` alongside `operation_status` and
-`operation_error`. The UI now treats a repeated status string as the same
-event, expires a status line after eight one-second ticks, and keeps a pending
+`operation_error`. The UI treats a repeated status string as the same event,
+expires a status line after eight one-second ticks, and keeps a pending
 play/pause intent for at most three polls before accepting the server value.
-The old error is still not tied to a specific command, so the full ack/rollback
-design remains open.
+The Iced command/property helpers now use the tracked transport methods, so a
+synchronous rejection arrives as `CommandFinished(Err(...))` instead of only a
+snapshot hint. A live UI click-through is still the remaining verification.
 
 ---
 
@@ -1052,11 +1055,11 @@ the audit and verification results separate.
 | R-02: validated, atomic backup promotion | New config tests; full `ferramari-core` suite |
 | R-03: primary-then-backup display registry load | New display-id test; full `ferramari-core` suite |
 | R-04: flush before `reload_config` | Pre-fix live reproduction recorded; post-fix app-level regression test still pending |
-| R-05: publish errors to the snapshot | Code path now calls `set_operation_status`; per-command ack still open |
+| R-05: tracked command results | New core mapping tests and Windows request-result test; D-Bus method compiled only by CI |
 | R-06: live-player check for `is_playing` | New media liveness test; decode-before-frame state still separate |
 | R-07: physical/logical monitor geometry | New dashboard unit test; live mixed-DPI matrix still open |
 | R-08: bounded control transport | New platform tests for line size and client slots |
-| R-09: status sequence and optimistic timeout | UI/client compile and existing tests; no new UI-state harness yet |
+| R-09: tracked UI commands and status expiry | UI/client compile and existing tests; live UI click-through still pending |
 | R-10: numeric config ranges | New parse test |
 | R-11: UTF-8 BOM handling | New config test |
 | R-12: catalogue cache cleanup | Startup call plus fake-root cleanup test |
@@ -1071,8 +1074,8 @@ cargo test --workspace --locked                                 exit 0
 cargo build --workspace --release --locked                      exit 0
 ```
 
-Test totals after the change set: **463 passed, 0 failed** (16 binary + 358
-core + 18 media + 57 platform + 8 UI library + 6 UI binary).
+Test totals after the change set: **466 passed, 0 failed** (16 binary + 360
+core + 18 media + 58 platform + 8 UI library + 6 UI binary).
 
 ## Phase 0 exit
 

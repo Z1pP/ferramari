@@ -7,11 +7,13 @@
 //! with `#[zbus(name = ...)]`.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
+use ferramari_core::command_api;
 use ferramari_core::paths;
 use ferramari_core::{Command, CommandSender, Snapshot};
+use serde_json::Value;
 
 pub const SERVER_INTERFACE: &str = "io.github.ferramari.ferramari.server";
 #[allow(dead_code)] // documented API surface, asserted in tests
@@ -133,6 +135,19 @@ impl ServerInterface {
             .map(|snapshot| snapshot.clone())
             .unwrap_or_default()
     }
+
+    fn request(&self, command: Command) -> Result<(), String> {
+        let (reply, response) = mpsc::sync_channel(1);
+        self.tx
+            .send(Command::Request {
+                command: Box::new(command),
+                reply,
+            })
+            .map_err(|_| "the server command loop is not running".to_string())?;
+        response
+            .recv_timeout(Duration::from_secs(5))
+            .map_err(|_| "the server did not apply the command in time".to_string())?
+    }
 }
 
 #[zbus::interface(name = "io.github.ferramari.ferramari.server")]
@@ -225,6 +240,31 @@ impl ServerInterface {
     #[zbus(name = "show_gui")]
     fn show_gui(&self) {
         send(&self.tx, Command::ShowGui);
+    }
+
+    /// Tracked command entry for the Iced control surface. The JSON string
+    /// carries the same `{"args": [...]}` shape the Windows transport uses.
+    #[zbus(name = "request_command")]
+    fn request_command(&self, method: String, args_json: String) -> Result<(), zbus::fdo::Error> {
+        let args: Value = serde_json::from_str(&args_json)
+            .map_err(|err| zbus::fdo::Error::Failed(format!("invalid command arguments: {err}")))?;
+        let params = serde_json::json!({ "args": args });
+        let command =
+            command_api::command_from_json(&method, &params).map_err(zbus::fdo::Error::Failed)?;
+        self.request(command).map_err(zbus::fdo::Error::Failed)
+    }
+
+    #[zbus(name = "request_property")]
+    fn request_property(
+        &self,
+        property: String,
+        value_json: String,
+    ) -> Result<(), zbus::fdo::Error> {
+        let value: Value = serde_json::from_str(&value_json)
+            .map_err(|err| zbus::fdo::Error::Failed(format!("invalid property value: {err}")))?;
+        let command =
+            command_api::property_from_json(&property, &value).map_err(zbus::fdo::Error::Failed)?;
+        self.request(command).map_err(zbus::fdo::Error::Failed)
     }
 
     #[zbus(name = "quit")]

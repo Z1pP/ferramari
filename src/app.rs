@@ -118,6 +118,9 @@ pub struct App {
     operation_status: String,
     operation_error: bool,
     operation_seq: u64,
+    /// Reply slot for a tracked control request currently being handled.
+    request_reply: Option<std::sync::mpsc::SyncSender<Result<(), String>>>,
+    request_error: Option<String>,
     /// What the players report as the decoder actually in use, from the
     /// supervision tick. Empty while nothing has decoded. The setting in the
     /// config is what the user asked for; this is what the machine does.
@@ -206,6 +209,8 @@ impl App {
             operation_status: String::new(),
             operation_error: false,
             operation_seq: 0,
+            request_reply: None,
+            request_error: None,
             hwdec_running: String::new(),
             player_stats: ferramari_core::stats::PlaybackStats::default(),
             tray: None,
@@ -319,6 +324,19 @@ impl App {
     fn handle(&mut self, command: Command) {
         log::trace!("[Command] {command:?}");
         match command {
+            Command::Request { command, reply } => {
+                if self.request_reply.is_some() {
+                    let _ = reply.send(Err("a tracked request is already being handled".into()));
+                    return;
+                }
+                self.request_reply = Some(reply);
+                self.request_error = None;
+                self.handle(*command);
+                let result = self.request_error.take().map_or(Ok(()), Err);
+                if let Some(reply) = self.request_reply.take() {
+                    let _ = reply.send(result);
+                }
+            }
             Command::ShowGui => self.show_gui(),
             Command::Null => {
                 self.config.mode = Mode::Null;
@@ -820,6 +838,10 @@ impl App {
             }
             let used_path = path.clone();
             if !assign_video(&mut self.config, &self.monitors, path, monitor.as_deref()) {
+                self.notify_user_error(UserError::new(
+                    ErrorKind::FileSystem,
+                    format!("Unknown monitor: {}", monitor.as_deref().unwrap_or("all")),
+                ));
                 return;
             }
             self.save_config();
@@ -1948,6 +1970,9 @@ impl App {
 
     fn notify_user_error(&mut self, error: UserError) {
         error.log();
+        if self.request_reply.is_some() {
+            self.request_error.get_or_insert_with(|| error.message());
+        }
         // The control surface is a separate process and only reads snapshots.
         // Publishing the error here is what turns a log-only failure into a
         // visible status line; package operations keep using the same field.

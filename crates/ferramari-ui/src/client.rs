@@ -108,24 +108,66 @@ impl Server {
             .map_err(|e| e.to_string())
     }
 
+    /// Send a command through the tracked D-Bus entry point. The call only
+    /// returns after the server has applied it or reported an application
+    /// error; transport errors are returned the same way.
+    pub async fn request_command<B>(&self, method: &str, body: &B) -> Result<(), String>
+    where
+        B: serde::Serialize + Sync,
+    {
+        let args = serde_json::to_string(body).map_err(|err| err.to_string())?;
+        self.connection
+            .call_method(
+                Some(SERVER_NAME),
+                SERVER_PATH,
+                Some(SERVER_INTERFACE),
+                "request_command",
+                &(method, args),
+            )
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Tracked property write, used by the control surface for settings.
+    pub async fn request_property(
+        &self,
+        property: &str,
+        value: serde_json::Value,
+    ) -> Result<(), String> {
+        let value = serde_json::to_string(&value).map_err(|err| err.to_string())?;
+        self.connection
+            .call_method(
+                Some(SERVER_NAME),
+                SERVER_PATH,
+                Some(SERVER_INTERFACE),
+                "request_property",
+                &(property, value),
+            )
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
     pub async fn import_package(&self, source: String) -> Result<(), String> {
-        self.command_args("import_package", &(source,)).await
+        self.request_command("import_package", &(source,)).await
     }
 
     pub async fn export_package(&self, video: String, parent: String) -> Result<(), String> {
-        self.command_args("export_package", &(video, parent)).await
+        self.request_command("export_package", &(video, parent))
+            .await
     }
 
     pub async fn sign_package(&self, directory: String) -> Result<(), String> {
-        self.command_args("sign_package", &(directory,)).await
+        self.request_command("sign_package", &(directory,)).await
     }
 
     pub async fn verify_package(&self, directory: String) -> Result<(), String> {
-        self.command_args("verify_package", &(directory,)).await
+        self.request_command("verify_package", &(directory,)).await
     }
 
     pub async fn trust_key(&self, source: String) -> Result<(), String> {
-        self.command_args("trust_key", &(source,)).await
+        self.request_command("trust_key", &(source,)).await
     }
 
     pub async fn set_monitor_rotation(
@@ -133,7 +175,7 @@ impl Server {
         monitor: String,
         collection: String,
     ) -> Result<(), String> {
-        self.player_command_args("set_monitor_rotation", &(monitor, collection))
+        self.request_command("set_monitor_rotation", &(monitor, collection))
             .await
     }
 

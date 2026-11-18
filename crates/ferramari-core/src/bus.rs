@@ -17,6 +17,15 @@ use crate::ytdlp;
 
 #[derive(Debug, Clone)]
 pub enum Command {
+    /// Execute `command` and send its synchronous outcome to `reply`.
+    ///
+    /// Used by the control transports for the first application error after a
+    /// UI action. Commands that complete on a worker later still report their
+    /// progress through `operation_status`/`operation_error`.
+    Request {
+        command: Box<Command>,
+        reply: mpsc::SyncSender<Result<(), String>>,
+    },
     ShowGui,
     Null,
     Video {

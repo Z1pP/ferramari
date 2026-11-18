@@ -13,9 +13,9 @@
 use std::collections::HashMap;
 use std::io::{BufRead, Read};
 use std::net::TcpListener;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::Duration;
 
 use serde_json::{json, Value};
 
@@ -252,6 +252,30 @@ fn dispatch(request: &Request, tx: &CommandSender, snapshot: &Arc<Mutex<Snapshot
             }
             Err(err) => Response::error(err),
         },
+        "request_command" => {
+            let method = request
+                .params
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let args = request.params.get("args").cloned().unwrap_or(Value::Null);
+            match ferramari_core::command_api::command_from_json(method, &json!({ "args": args })) {
+                Ok(command) => request_result(command, tx),
+                Err(err) => Response::error(err),
+            }
+        }
+        "request_property" => {
+            let property = request
+                .params
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let value = request.params.get("value").cloned().unwrap_or(Value::Null);
+            match ferramari_core::command_api::property_from_json(property, &value) {
+                Ok(command) => request_result(command, tx),
+                Err(err) => Response::error(err),
+            }
+        }
         other => Response::error(format!("unknown control method {other:?}")),
     }
 }
@@ -262,24 +286,22 @@ fn send(tx: &CommandSender, command: Command) {
     }
 }
 
-fn string_param(params: &Value, index: usize) -> Result<String, String> {
-    params
-        .get("args")
-        .and_then(Value::as_array)
-        .and_then(|args| args.get(index))
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .ok_or_else(|| format!("missing string argument {index}"))
-}
-
-fn optional_string_param(params: &Value, index: usize) -> Option<String> {
-    params
-        .get("args")
-        .and_then(Value::as_array)
-        .and_then(|args| args.get(index))
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
+fn request_result(command: Command, tx: &CommandSender) -> Response {
+    let (reply, response) = mpsc::sync_channel(1);
+    if tx
+        .send(Command::Request {
+            command: Box::new(command),
+            reply,
+        })
+        .is_err()
+    {
+        return Response::error("the server command loop is not running");
+    }
+    match response.recv_timeout(Duration::from_secs(5)) {
+        Ok(Ok(())) => Response::ok(Value::Null),
+        Ok(Err(err)) => Response::error(err),
+        Err(_) => Response::error("the server did not apply the command in time"),
+    }
 }
 
 /// Map the shared method vocabulary onto the command bus. The spelling follows
@@ -289,44 +311,7 @@ fn command_from(params: &Value) -> Result<Command, String> {
         .get("name")
         .and_then(Value::as_str)
         .ok_or_else(|| "missing command name".to_string())?;
-    let command = match method {
-        "null" => Command::Null,
-        "video" => Command::Video {
-            path: optional_string_param(params, 0),
-            monitor: optional_string_param(params, 1),
-        },
-        "stream" => Command::Stream {
-            url: string_param(params, 0)?,
-        },
-        "webpage" => Command::Webpage {
-            url: string_param(params, 0)?,
-        },
-        "import_package" => Command::ImportPackage(PathBuf::from(string_param(params, 0)?)),
-        "export_package" => Command::ExportPackage {
-            video: PathBuf::from(string_param(params, 0)?),
-            parent: PathBuf::from(string_param(params, 1)?),
-        },
-        "sign_package" => Command::SignPackage(PathBuf::from(string_param(params, 0)?)),
-        "verify_package" => Command::VerifyPackage(PathBuf::from(string_param(params, 0)?)),
-        "trust_key" => Command::TrustKey(PathBuf::from(string_param(params, 0)?)),
-        "library_changed" => Command::LibraryChanged,
-        "pause_playback" => Command::PausePlayback,
-        "start_playback" => Command::StartPlayback,
-        "quit_player" => Command::QuitPlayer,
-        "reload" => Command::Reload,
-        "reload_config" => Command::ReloadConfig,
-        "feeling_lucky" => Command::FeelingLucky,
-        "show_gui" => Command::ShowGui,
-        "quit" => Command::Quit,
-        "toggle_mute" => Command::ToggleMute,
-        "toggle_pause" => Command::TogglePause,
-        "set_monitor_rotation" => Command::SetMonitorRotation {
-            monitor: string_param(params, 0)?,
-            collection: optional_string_param(params, 1),
-        },
-        other => return Err(format!("unknown server method {other:?}")),
-    };
-    Ok(command)
+    ferramari_core::command_api::command_from_json(method, params)
 }
 
 /// Property writes, `name` plus `value`, matching the D-Bus property names.
@@ -338,48 +323,7 @@ fn property_command(params: &Value) -> Result<Command, String> {
     let value = params
         .get("value")
         .ok_or_else(|| format!("missing value for {name}"))?;
-    let command = match name {
-        "volume" => Command::SetVolume(json_int(value)?),
-        "blur_radius" => Command::SetBlurRadius(json_int(value)?),
-        "is_mute" => Command::SetMute(json_bool(value)?),
-        "is_paused_by_user" => Command::SetPausedByUser(json_bool(value)?),
-        "is_static_wallpaper" => Command::SetStaticWallpaper(json_bool(value)?),
-        "is_pause_when_maximized" => Command::SetPauseWhenMaximized(json_bool(value)?),
-        "is_mute_when_maximized" => Command::SetMuteWhenMaximized(json_bool(value)?),
-        "theme" => Command::SetTheme(json_string(value)?),
-        "language" => Command::SetLanguage(json_string(value)?),
-        "rotation_mode" => Command::SetRotationMode(json_string(value)?),
-        "rotation_interval_sec" => Command::SetRotationInterval(json_int(value)?),
-        "playback_profile" => Command::SetPlaybackProfile(json_string(value)?),
-        "pause_on_battery" => Command::SetPauseOnBattery(json_bool(value)?),
-        "idle_timeout_sec" => Command::SetIdleTimeout(json_int(value)?),
-        "hwdec" => Command::SetHardwareDecoding(json_string(value)?),
-        "web_allow_network" => Command::SetWebNetwork(json_bool(value)?),
-        "is_show_systray" => Command::SetShowSystray(json_bool(value)?),
-        "autostart_enabled" => Command::SetAutostart(json_bool(value)?),
-        other => return Err(format!("unknown or read-only property {other:?}")),
-    };
-    Ok(command)
-}
-
-fn json_int(value: &Value) -> Result<i64, String> {
-    value
-        .as_i64()
-        .or_else(|| value.as_f64().map(|number| number as i64))
-        .ok_or_else(|| "expected an integer".to_string())
-}
-
-fn json_bool(value: &Value) -> Result<bool, String> {
-    value
-        .as_bool()
-        .ok_or_else(|| "expected a boolean".to_string())
-}
-
-fn json_string(value: &Value) -> Result<String, String> {
-    value
-        .as_str()
-        .map(str::to_string)
-        .ok_or_else(|| "expected a string".to_string())
+    ferramari_core::command_api::property_from_json(name, value)
 }
 
 /// The merged state the UI polls. Keys are exactly the `ServerState` fields;
@@ -495,6 +439,22 @@ mod tests {
         ] {
             assert!(value.get(key).is_some(), "missing {key}");
         }
+    }
+
+    #[test]
+    fn a_tracked_request_returns_the_application_error() {
+        let (sender, receiver) = std::sync::mpsc::channel::<Command>();
+        let tx = CommandSender::new(sender);
+        let worker = std::thread::spawn(move || {
+            let Command::Request { reply, .. } = receiver.recv().unwrap() else {
+                panic!("expected a tracked request");
+            };
+            reply.send(Err("playback failed".to_string())).unwrap();
+        });
+        let response = request_result(Command::Null, &tx);
+        worker.join().unwrap();
+        assert!(!response.ok);
+        assert_eq!(response.error.as_deref(), Some("playback failed"));
     }
 
     #[test]

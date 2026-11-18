@@ -969,7 +969,7 @@ impl App {
             return Task::none();
         };
         Task::perform(
-            async move { server.command("library_changed").await },
+            async move { server.request_command("library_changed", &()).await },
             Message::CommandFinished,
         )
     }
@@ -5044,7 +5044,7 @@ fn call(server: Option<&Server>, method: &'static str) -> Task<Message> {
         return Task::none();
     };
     Task::perform(
-        async move { server.command(method).await },
+        async move { server.request_command(method, &()).await },
         Message::CommandFinished,
     )
 }
@@ -5054,7 +5054,11 @@ fn set_i32(server: Option<&Server>, property: &'static str, value: i32) -> Task<
         return Task::none();
     };
     Task::perform(
-        async move { server.set_i32(property, value).await },
+        async move {
+            server
+                .request_property(property, serde_json::json!(value))
+                .await
+        },
         Message::CommandFinished,
     )
 }
@@ -5064,7 +5068,11 @@ fn set_bool(server: Option<&Server>, property: &'static str, value: bool) -> Tas
         return Task::none();
     };
     Task::perform(
-        async move { server.set_bool(property, value).await },
+        async move {
+            server
+                .request_property(property, serde_json::json!(value))
+                .await
+        },
         Message::CommandFinished,
     )
 }
@@ -5074,7 +5082,11 @@ fn set_string(server: Option<&Server>, property: &'static str, value: String) ->
         return Task::none();
     };
     Task::perform(
-        async move { server.set_string(property, value).await },
+        async move {
+            server
+                .request_property(property, serde_json::json!(value))
+                .await
+        },
         Message::CommandFinished,
     )
 }
@@ -5088,7 +5100,7 @@ fn play_video_on_monitor(server: Option<&Server>, path: String, monitor: String)
         return Task::none();
     };
     Task::perform(
-        async move { server.command_args("video", &(path, monitor)).await },
+        async move { server.request_command("video", &(path, monitor)).await },
         Message::CommandFinished,
     )
 }

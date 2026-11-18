@@ -87,24 +87,57 @@ impl Server {
         self.command_args(method, body).await
     }
 
+    /// Tracked command: the server replies only after the command loop has
+    /// applied the command or recorded an application error.
+    pub async fn request_command<B>(&self, method: &str, body: &B) -> Result<(), String>
+    where
+        B: serde::Serialize + Sync,
+    {
+        let value = serde_json::to_value(body).map_err(|err| err.to_string())?;
+        let args = match value {
+            Value::Array(items) => items,
+            other => vec![other],
+        };
+        self.call(
+            "request_command",
+            serde_json::json!({ "name": method, "args": args }),
+        )
+        .await
+        .map(|_| ())
+    }
+
+    pub async fn request_property(
+        &self,
+        property: &str,
+        value: serde_json::Value,
+    ) -> Result<(), String> {
+        self.call(
+            "request_property",
+            serde_json::json!({ "name": property, "value": value }),
+        )
+        .await
+        .map(|_| ())
+    }
+
     pub async fn import_package(&self, source: String) -> Result<(), String> {
-        self.command_args("import_package", &(source,)).await
+        self.request_command("import_package", &(source,)).await
     }
 
     pub async fn export_package(&self, video: String, parent: String) -> Result<(), String> {
-        self.command_args("export_package", &(video, parent)).await
+        self.request_command("export_package", &(video, parent))
+            .await
     }
 
     pub async fn sign_package(&self, directory: String) -> Result<(), String> {
-        self.command_args("sign_package", &(directory,)).await
+        self.request_command("sign_package", &(directory,)).await
     }
 
     pub async fn verify_package(&self, directory: String) -> Result<(), String> {
-        self.command_args("verify_package", &(directory,)).await
+        self.request_command("verify_package", &(directory,)).await
     }
 
     pub async fn trust_key(&self, source: String) -> Result<(), String> {
-        self.command_args("trust_key", &(source,)).await
+        self.request_command("trust_key", &(source,)).await
     }
 
     pub async fn set_monitor_rotation(
@@ -112,7 +145,7 @@ impl Server {
         monitor: String,
         collection: String,
     ) -> Result<(), String> {
-        self.player_command_args("set_monitor_rotation", &(monitor, collection))
+        self.request_command("set_monitor_rotation", &(monitor, collection))
             .await
     }
 
@@ -186,6 +219,10 @@ fn state_from_json(value: &Value) -> ServerState {
         is_show_systray: boolean(value, "is_show_systray"),
         operation_status: string(value, "operation_status"),
         operation_error: boolean(value, "operation_error"),
+        operation_seq: value
+            .get("operation_seq")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
     }
 }
 
@@ -276,6 +313,7 @@ mod tests {
             "is_show_systray": true,
             "operation_status": "Saved",
             "operation_error": false,
+            "operation_seq": 7,
             "data_source": { "Default": "/videos/wall.mp4" },
             "monitor_states": { "DISPLAY1": "active" },
             "monitor_resolutions": { "DISPLAY1": "1920 × 1080" },
@@ -315,6 +353,7 @@ mod tests {
         assert!(state.autostart_enabled);
         assert!(state.is_show_systray);
         assert_eq!(state.operation_status, "Saved");
+        assert_eq!(state.operation_seq, 7);
         assert_eq!(state.player_stats.codec, "hevc");
         assert_eq!(state.player_stats.width, Some(1920));
     }

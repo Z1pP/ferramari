@@ -18,11 +18,12 @@
 //! socket rather than to the panel, which is still better than following
 //! enumeration order, and it is the honest limit of the session.
 
+use std::fs;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::{read_with_backup, write_atomic};
+use crate::config::write_atomic;
 use crate::monitor::MonitorInfo;
 use crate::paths;
 
@@ -52,16 +53,23 @@ impl DisplayIdRegistry {
     }
 
     fn load_from(path: &Path) -> Self {
-        let Some(text) = read_with_backup(path) else {
-            return Self::default();
-        };
-        match serde_json::from_str(&text) {
-            Ok(registry) => registry,
-            Err(err) => {
-                log::warn!("[DisplayIds] Ignoring {}: {err}", path.display());
-                Self::default()
+        // Try the primary, then the backup. `read_with_backup` cannot do this
+        // alone because a truncated primary is still readable and its parse
+        // error must not hide the last good registry.
+        let mut last_error = None;
+        for candidate in [path.to_path_buf(), crate::config::backup_path(path)] {
+            let Ok(text) = fs::read_to_string(&candidate) else {
+                continue;
+            };
+            match serde_json::from_str::<Self>(crate::config::strip_bom(&text)) {
+                Ok(registry) => return registry,
+                Err(err) => last_error = Some((candidate, err)),
             }
         }
+        if let Some((candidate, err)) = last_error {
+            log::warn!("[DisplayIds] Ignoring {}: {err}", candidate.display());
+        }
+        Self::default()
     }
 
     pub fn save(&self) -> Result<(), String> {
@@ -166,6 +174,7 @@ mod tests {
             width: 1920,
             height: 1080,
             scale_factor: 1,
+            physical_geometry: false,
             refresh_hz: None,
             is_primary: false,
             identity: DisplayIdentity {
@@ -276,6 +285,7 @@ mod tests {
             width: 1920,
             height: 1080,
             scale_factor: 1,
+            physical_geometry: false,
             refresh_hz: None,
             is_primary: true,
             identity: DisplayIdentity::default(),
@@ -383,6 +393,30 @@ mod tests {
         fs::write(&file, "{ not json").unwrap();
         let registry = DisplayIdRegistry::load_from(&file);
         assert!(registry.is_empty());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_corrupt_primary_falls_back_to_the_valid_backup() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!(
+            "ferramari-display-ids-backup-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("display-ids.json");
+        let backup = crate::config::backup_path(&file);
+        let mut registry = DisplayIdRegistry::default();
+        registry.bind(&mut [screen("DELL U2412M", b"edid-dell")]);
+        registry.save_to(&backup).unwrap();
+        fs::write(&file, "{ not json").unwrap();
+
+        let loaded = DisplayIdRegistry::load_from(&file);
+        assert_eq!(loaded, registry);
+        let backup_text = fs::read_to_string(&backup).unwrap();
+        let backup_value: serde_json::Value = serde_json::from_str(&backup_text).unwrap();
+        assert!(backup_value.is_object());
+
         let _ = fs::remove_dir_all(dir);
     }
 

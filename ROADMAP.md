@@ -1,9 +1,11 @@
 # Roadmap
 
-Ferramari 1.0 is a Linux/X11 (including XWayland) live-wallpaper
+Ferramari 2.2 is a Linux/X11 (including XWayland) and Windows desktop
 application. Reliability and predictable state come before new surface area.
+The 1.0 section below is the historical baseline; current work is tracked from
+2.2 upward.
 
-## 1.0
+## 1.0 (historical baseline)
 
 - [x] Local video, streaming and web-page wallpapers
 - [x] Per-monitor sources and hotplug handling
@@ -19,8 +21,9 @@ application. Reliability and predictable state come before new surface area.
 - [x] Performance baseline and known limitations documented
 
 Known limitations are listed in `README.md` and `docs/TESTING.md`: native
-Wayland is unsupported, GNOME X11/KDE rows are not yet tested, and the Flatpak
-bundle uses host media tools.
+Wayland is unsupported, GNOME X11 and KDE rows are not yet tested, the Windows
+multi-monitor/mixed-DPI matrix is still open, and the Flatpak bundle uses host
+media tools.
 
 ## After 1.0
 

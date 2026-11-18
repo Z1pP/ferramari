@@ -9,6 +9,7 @@ pub mod bus;
 pub mod catalog_api;
 pub mod catalogue;
 pub mod cli;
+pub mod command_api;
 pub mod config;
 pub mod display_ids;
 pub mod eco;

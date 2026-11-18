@@ -11,9 +11,11 @@
 //! not stop it early; there is no in-process restart of the server today.
 
 use std::collections::HashMap;
+use std::io::{BufRead, Read};
 use std::net::TcpListener;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::Duration;
 
 use serde_json::{json, Value};
 
@@ -91,11 +93,20 @@ pub fn acquire() -> anyhow::Result<Acquired> {
 
 /// Ask the running instance to show its window.
 pub fn request_show_gui() -> anyhow::Result<()> {
-    let endpoint =
-        control::read_endpoint().ok_or_else(|| anyhow::anyhow!("the server is not running"))?;
-    control::call(&endpoint, "command", json!({ "name": "show_gui" }))
-        .map(|_| ())
-        .map_err(anyhow::Error::msg)?;
+    // The mutex can be owned before the endpoint file is published or the
+    // accept loop is ready. Retry briefly so a second launch during startup
+    // does not silently do nothing.
+    ferramari_core::util::retry_until(
+        std::time::Duration::from_secs(3),
+        std::time::Duration::from_millis(100),
+        || {
+            let endpoint = control::read_endpoint()
+                .ok_or_else(|| anyhow::anyhow!("the server is not running"))?;
+            control::call(&endpoint, "command", json!({ "name": "show_gui" }))
+                .map(|_| ())
+                .map_err(anyhow::Error::msg)
+        },
+    )?;
     // `show_gui` spawns a UI process; when a window is already open that
     // process loses the instance mutex and exits. Raise the existing window
     // from this freshly launched process, which still has foreground rights.
@@ -125,21 +136,48 @@ pub fn register(
     std::thread::Builder::new()
         .name("ferramari-control".to_string())
         .spawn(move || {
+            let active = Arc::new(AtomicUsize::new(0));
             for stream in listener.incoming() {
                 match stream {
                     Ok(stream) => {
+                        let Some(slot) = try_acquire_client(&active) else {
+                            log::debug!("[Control] Rejecting a client: all slots are busy");
+                            drop(stream);
+                            continue;
+                        };
                         let tx = tx.clone();
                         let snapshot = Arc::clone(&snapshot);
                         let token = token.clone();
                         let _ = std::thread::Builder::new()
                             .name("ferramari-control-client".to_string())
-                            .spawn(move || handle_client(stream, &token, &tx, &snapshot));
+                            .spawn(move || {
+                                let _slot = slot;
+                                handle_client(stream, &token, &tx, &snapshot);
+                            });
                     }
                     Err(err) => log::warn!("[Control] Accept failed: {err}"),
                 }
             }
         })?;
     Ok(())
+}
+
+/// Releases one connection slot even if the handler unwinds.
+struct ClientSlot(Arc<AtomicUsize>);
+
+impl Drop for ClientSlot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+fn try_acquire_client(active: &Arc<AtomicUsize>) -> Option<ClientSlot> {
+    if active.fetch_add(1, Ordering::AcqRel) >= control::MAX_CLIENTS {
+        active.fetch_sub(1, Ordering::AcqRel);
+        None
+    } else {
+        Some(ClientSlot(Arc::clone(active)))
+    }
 }
 
 fn handle_client(
@@ -154,14 +192,13 @@ fn handle_client(
         return;
     };
     let mut reader = std::io::BufReader::new(stream);
-    let mut line = String::new();
-    let response = match std::io::BufRead::read_line(&mut reader, &mut line) {
-        Ok(0) => return,
-        Ok(_) => match serde_json::from_str::<Request>(&line) {
+    let response = match read_request_line(&mut reader) {
+        Ok(Some(line)) => match serde_json::from_str::<Request>(&line) {
             Ok(request) if request.token == token => dispatch(&request, tx, snapshot),
             Ok(_) => Response::error("invalid control token"),
             Err(err) => Response::error(format!("invalid request: {err}")),
         },
+        Ok(None) => return,
         Err(err) => Response::error(format!("could not read the request: {err}")),
     };
     if let Ok(text) = serde_json::to_string(&response) {
@@ -169,6 +206,29 @@ fn handle_client(
         let _ = writeln!(writer, "{text}");
         let _ = writer.flush();
     }
+}
+
+/// Read one newline-delimited request with a hard upper bound.
+///
+/// `read_line` on a plain `BufReader` grows until it finds a newline, so a
+/// local client could force an allocation before the token is checked. The
+/// `take` limit makes the failure bounded and explicit.
+fn read_request_line(reader: &mut impl BufRead) -> std::io::Result<Option<String>> {
+    let mut line = String::new();
+    let mut limited = reader
+        .by_ref()
+        .take((control::MAX_REQUEST_BYTES + 1) as u64);
+    let read = limited.read_line(&mut line)?;
+    if read == 0 {
+        return Ok(None);
+    }
+    if line.len() > control::MAX_REQUEST_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("request exceeds {} bytes", control::MAX_REQUEST_BYTES),
+        ));
+    }
+    Ok(Some(line))
 }
 
 fn dispatch(request: &Request, tx: &CommandSender, snapshot: &Arc<Mutex<Snapshot>>) -> Response {
@@ -192,6 +252,30 @@ fn dispatch(request: &Request, tx: &CommandSender, snapshot: &Arc<Mutex<Snapshot
             }
             Err(err) => Response::error(err),
         },
+        "request_command" => {
+            let method = request
+                .params
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let args = request.params.get("args").cloned().unwrap_or(Value::Null);
+            match ferramari_core::command_api::command_from_json(method, &json!({ "args": args })) {
+                Ok(command) => request_result(command, tx),
+                Err(err) => Response::error(err),
+            }
+        }
+        "request_property" => {
+            let property = request
+                .params
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let value = request.params.get("value").cloned().unwrap_or(Value::Null);
+            match ferramari_core::command_api::property_from_json(property, &value) {
+                Ok(command) => request_result(command, tx),
+                Err(err) => Response::error(err),
+            }
+        }
         other => Response::error(format!("unknown control method {other:?}")),
     }
 }
@@ -202,24 +286,22 @@ fn send(tx: &CommandSender, command: Command) {
     }
 }
 
-fn string_param(params: &Value, index: usize) -> Result<String, String> {
-    params
-        .get("args")
-        .and_then(Value::as_array)
-        .and_then(|args| args.get(index))
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .ok_or_else(|| format!("missing string argument {index}"))
-}
-
-fn optional_string_param(params: &Value, index: usize) -> Option<String> {
-    params
-        .get("args")
-        .and_then(Value::as_array)
-        .and_then(|args| args.get(index))
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
+fn request_result(command: Command, tx: &CommandSender) -> Response {
+    let (reply, response) = mpsc::sync_channel(1);
+    if tx
+        .send(Command::Request {
+            command: Box::new(command),
+            reply,
+        })
+        .is_err()
+    {
+        return Response::error("the server command loop is not running");
+    }
+    match response.recv_timeout(Duration::from_secs(5)) {
+        Ok(Ok(())) => Response::ok(Value::Null),
+        Ok(Err(err)) => Response::error(err),
+        Err(_) => Response::error("the server did not apply the command in time"),
+    }
 }
 
 /// Map the shared method vocabulary onto the command bus. The spelling follows
@@ -229,46 +311,7 @@ fn command_from(params: &Value) -> Result<Command, String> {
         .get("name")
         .and_then(Value::as_str)
         .ok_or_else(|| "missing command name".to_string())?;
-    let command = match method {
-        "null" => Command::Null,
-        "video" => Command::Video {
-            path: optional_string_param(params, 0),
-            monitor: optional_string_param(params, 1),
-        },
-        "stream" => Command::Stream {
-            url: string_param(params, 0)?,
-        },
-        "webpage" => Command::Webpage {
-            url: string_param(params, 0)?,
-        },
-        "import_package" => Command::ImportPackage(PathBuf::from(string_param(params, 0)?)),
-        "export_package" => Command::ExportPackage {
-            video: PathBuf::from(string_param(params, 0)?),
-            parent: PathBuf::from(string_param(params, 1)?),
-        },
-        "sign_package" => Command::SignPackage(PathBuf::from(string_param(params, 0)?)),
-        "verify_package" => Command::VerifyPackage(PathBuf::from(string_param(params, 0)?)),
-        "trust_key" => Command::TrustKey(PathBuf::from(string_param(params, 0)?)),
-        "library_changed" => Command::LibraryChanged,
-        "pause_playback" => Command::PausePlayback,
-        "start_playback" => Command::StartPlayback,
-        "quit_player" => Command::QuitPlayer,
-        "reload" => Command::Reload,
-        "reload_config" => Command::ReloadConfig,
-        "feeling_lucky" => Command::FeelingLucky,
-        "next_wallpaper" => Command::NextWallpaper,
-        "previous_wallpaper" => Command::PreviousWallpaper,
-        "show_gui" => Command::ShowGui,
-        "quit" => Command::Quit,
-        "toggle_mute" => Command::ToggleMute,
-        "toggle_pause" => Command::TogglePause,
-        "set_monitor_rotation" => Command::SetMonitorRotation {
-            monitor: string_param(params, 0)?,
-            collection: optional_string_param(params, 1),
-        },
-        other => return Err(format!("unknown server method {other:?}")),
-    };
-    Ok(command)
+    ferramari_core::command_api::command_from_json(method, params)
 }
 
 /// Property writes, `name` plus `value`, matching the D-Bus property names.
@@ -280,48 +323,7 @@ fn property_command(params: &Value) -> Result<Command, String> {
     let value = params
         .get("value")
         .ok_or_else(|| format!("missing value for {name}"))?;
-    let command = match name {
-        "volume" => Command::SetVolume(json_int(value)?),
-        "blur_radius" => Command::SetBlurRadius(json_int(value)?),
-        "is_mute" => Command::SetMute(json_bool(value)?),
-        "is_paused_by_user" => Command::SetPausedByUser(json_bool(value)?),
-        "is_static_wallpaper" => Command::SetStaticWallpaper(json_bool(value)?),
-        "is_pause_when_maximized" => Command::SetPauseWhenMaximized(json_bool(value)?),
-        "is_mute_when_maximized" => Command::SetMuteWhenMaximized(json_bool(value)?),
-        "theme" => Command::SetTheme(json_string(value)?),
-        "language" => Command::SetLanguage(json_string(value)?),
-        "rotation_mode" => Command::SetRotationMode(json_string(value)?),
-        "rotation_interval_sec" => Command::SetRotationInterval(json_int(value)?),
-        "playback_profile" => Command::SetPlaybackProfile(json_string(value)?),
-        "pause_on_battery" => Command::SetPauseOnBattery(json_bool(value)?),
-        "idle_timeout_sec" => Command::SetIdleTimeout(json_int(value)?),
-        "hwdec" => Command::SetHardwareDecoding(json_string(value)?),
-        "web_allow_network" => Command::SetWebNetwork(json_bool(value)?),
-        "is_show_systray" => Command::SetShowSystray(json_bool(value)?),
-        "autostart_enabled" => Command::SetAutostart(json_bool(value)?),
-        other => return Err(format!("unknown or read-only property {other:?}")),
-    };
-    Ok(command)
-}
-
-fn json_int(value: &Value) -> Result<i64, String> {
-    value
-        .as_i64()
-        .or_else(|| value.as_f64().map(|number| number as i64))
-        .ok_or_else(|| "expected an integer".to_string())
-}
-
-fn json_bool(value: &Value) -> Result<bool, String> {
-    value
-        .as_bool()
-        .ok_or_else(|| "expected a boolean".to_string())
-}
-
-fn json_string(value: &Value) -> Result<String, String> {
-    value
-        .as_str()
-        .map(str::to_string)
-        .ok_or_else(|| "expected a string".to_string())
+    ferramari_core::command_api::property_from_json(name, value)
 }
 
 /// The merged state the UI polls. Keys are exactly the `ServerState` fields;
@@ -358,6 +360,7 @@ fn snapshot_json(snapshot: &Arc<Mutex<Snapshot>>) -> Value {
         "is_show_systray": state.is_show_systray,
         "operation_status": state.operation_status,
         "operation_error": state.operation_error,
+        "operation_seq": state.operation_seq,
         "data_source": state.data_source,
         "monitor_states": state.monitor_states,
         "monitor_resolutions": state.monitor_resolutions,
@@ -431,9 +434,62 @@ mod tests {
             "hwdec_running",
             "player_stats",
             "operation_status",
+            "operation_seq",
             "server_pid",
         ] {
             assert!(value.get(key).is_some(), "missing {key}");
         }
+    }
+
+    #[test]
+    fn a_tracked_request_returns_the_application_error() {
+        let (sender, receiver) = std::sync::mpsc::channel::<Command>();
+        let tx = CommandSender::new(sender);
+        let worker = std::thread::spawn(move || {
+            let Command::Request { reply, .. } = receiver.recv().unwrap() else {
+                panic!("expected a tracked request");
+            };
+            reply.send(Err("playback failed".to_string())).unwrap();
+        });
+        let response = request_result(Command::Null, &tx);
+        worker.join().unwrap();
+        assert!(!response.ok);
+        assert_eq!(response.error.as_deref(), Some("playback failed"));
+    }
+
+    #[test]
+    fn control_connections_have_a_concurrency_limit() {
+        let active = Arc::new(AtomicUsize::new(0));
+        let mut slots = Vec::new();
+        for _ in 0..control::MAX_CLIENTS {
+            slots.push(try_acquire_client(&active).expect("slot available"));
+        }
+        assert!(try_acquire_client(&active).is_none());
+        assert_eq!(active.load(Ordering::Acquire), control::MAX_CLIENTS);
+
+        slots.pop();
+        let extra = try_acquire_client(&active).expect("slot reused");
+        assert_eq!(active.load(Ordering::Acquire), control::MAX_CLIENTS);
+        drop(extra);
+        assert_eq!(active.load(Ordering::Acquire), control::MAX_CLIENTS - 1);
+    }
+
+    #[test]
+    fn control_request_lines_have_a_hard_size_limit() {
+        let mut normal = std::io::Cursor::new(
+            br#"{"token":"t","method":"ping"}
+"#
+            .to_vec(),
+        );
+        assert!(read_request_line(&mut normal)
+            .expect("normal line")
+            .is_some());
+
+        let mut empty = std::io::Cursor::new(Vec::new());
+        assert!(read_request_line(&mut empty).expect("eof").is_none());
+
+        let mut oversized = std::io::Cursor::new(vec![b'x'; control::MAX_REQUEST_BYTES + 2]);
+        let error = read_request_line(&mut oversized).expect_err("oversized line");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
     }
 }

@@ -108,24 +108,66 @@ impl Server {
             .map_err(|e| e.to_string())
     }
 
+    /// Send a command through the tracked D-Bus entry point. The call only
+    /// returns after the server has applied it or reported an application
+    /// error; transport errors are returned the same way.
+    pub async fn request_command<B>(&self, method: &str, body: &B) -> Result<(), String>
+    where
+        B: serde::Serialize + Sync,
+    {
+        let args = serde_json::to_string(body).map_err(|err| err.to_string())?;
+        self.connection
+            .call_method(
+                Some(SERVER_NAME),
+                SERVER_PATH,
+                Some(SERVER_INTERFACE),
+                "request_command",
+                &(method, args),
+            )
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Tracked property write, used by the control surface for settings.
+    pub async fn request_property(
+        &self,
+        property: &str,
+        value: serde_json::Value,
+    ) -> Result<(), String> {
+        let value = serde_json::to_string(&value).map_err(|err| err.to_string())?;
+        self.connection
+            .call_method(
+                Some(SERVER_NAME),
+                SERVER_PATH,
+                Some(SERVER_INTERFACE),
+                "request_property",
+                &(property, value),
+            )
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
     pub async fn import_package(&self, source: String) -> Result<(), String> {
-        self.command_args("import_package", &(source,)).await
+        self.request_command("import_package", &(source,)).await
     }
 
     pub async fn export_package(&self, video: String, parent: String) -> Result<(), String> {
-        self.command_args("export_package", &(video, parent)).await
+        self.request_command("export_package", &(video, parent))
+            .await
     }
 
     pub async fn sign_package(&self, directory: String) -> Result<(), String> {
-        self.command_args("sign_package", &(directory,)).await
+        self.request_command("sign_package", &(directory,)).await
     }
 
     pub async fn verify_package(&self, directory: String) -> Result<(), String> {
-        self.command_args("verify_package", &(directory,)).await
+        self.request_command("verify_package", &(directory,)).await
     }
 
     pub async fn trust_key(&self, source: String) -> Result<(), String> {
-        self.command_args("trust_key", &(source,)).await
+        self.request_command("trust_key", &(source,)).await
     }
 
     pub async fn set_monitor_rotation(
@@ -133,7 +175,7 @@ impl Server {
         monitor: String,
         collection: String,
     ) -> Result<(), String> {
-        self.player_command_args("set_monitor_rotation", &(monitor, collection))
+        self.request_command("set_monitor_rotation", &(monitor, collection))
             .await
     }
 
@@ -206,6 +248,7 @@ impl Server {
             state.is_show_systray = bool_of(&values, "is_show_systray");
             state.operation_status = string_of(&values, "operation_status");
             state.operation_error = bool_of(&values, "operation_error");
+            state.operation_seq = u64_of(&values, "operation_seq");
         }
         if let Some(values) = self.get_all(PLAYER_PATH, PLAYER_INTERFACE).await {
             state.data_source = string_map_of(&values, "data_source");
@@ -257,6 +300,13 @@ fn bool_of(values: &HashMap<String, OwnedValue>, key: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn u64_of(values: &HashMap<String, OwnedValue>, key: &str) -> u64 {
+    values
+        .get(key)
+        .and_then(|value| u64::try_from(value).ok())
+        .unwrap_or(0)
+}
+
 fn string_map_of(values: &HashMap<String, OwnedValue>, key: &str) -> HashMap<String, String> {
     values
         .get(key)
@@ -293,9 +343,11 @@ mod tests {
         values.insert("mode".to_string(), owned(Value::from("MODE_VIDEO")));
         values.insert("volume".to_string(), owned(Value::from(77i32)));
         values.insert("is_mute".to_string(), owned(Value::from(true)));
+        values.insert("operation_seq".to_string(), owned(Value::from(9u64)));
         assert_eq!(string_of(&values, "mode"), "MODE_VIDEO");
         assert_eq!(int_of(&values, "volume"), 77);
         assert!(bool_of(&values, "is_mute"));
+        assert_eq!(u64_of(&values, "operation_seq"), 9);
     }
 
     fn owned(value: Value<'static>) -> OwnedValue {
@@ -345,6 +397,7 @@ mod tests {
         assert!(!bool_of(&values, "web_allow_network"));
         assert!(!bool_of(&values, "autostart_enabled"));
         assert!(!bool_of(&values, "operation_error"));
+        assert_eq!(u64_of(&values, "operation_seq"), 0);
         assert!(string_map_of(&values, "data_source").is_empty());
         assert!(string_map_of(&values, "monitor_states").is_empty());
         assert!(string_map_of(&values, "rotations").is_empty());

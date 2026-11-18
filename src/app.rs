@@ -122,6 +122,10 @@ pub struct App {
     gui_shown: bool,
     operation_status: String,
     operation_error: bool,
+    operation_seq: u64,
+    /// Reply slot for a tracked control request currently being handled.
+    request_reply: Option<std::sync::mpsc::SyncSender<Result<(), String>>>,
+    request_error: Option<String>,
     /// What the players report as the decoder actually in use, from the
     /// supervision tick. Empty while nothing has decoded. The setting in the
     /// config is what the user asked for; this is what the machine does.
@@ -153,6 +157,10 @@ impl App {
                 let age = Duration::from_secs(3600);
                 util::cleanup_partial_files(&paths::thumbnail_cache_dir(), age);
                 util::cleanup_partial_files(&paths::static_cache_dir(), age);
+                // The catalogue cache has its own seven-day / 2 GiB budget.
+                // Keep that work off the command loop; it is startup
+                // housekeeping, not part of the first frame.
+                crate::catalogue::cleanup_cache();
             })
             .ok();
         let mut monitors = display_provider.displays();
@@ -206,6 +214,9 @@ impl App {
             gui_shown: false,
             operation_status: String::new(),
             operation_error: false,
+            operation_seq: 0,
+            request_reply: None,
+            request_error: None,
             hwdec_running: String::new(),
             player_stats: ferramari_core::stats::PlaybackStats::default(),
             tray: None,
@@ -319,6 +330,19 @@ impl App {
     fn handle(&mut self, command: Command) {
         log::trace!("[Command] {command:?}");
         match command {
+            Command::Request { command, reply } => {
+                if self.request_reply.is_some() {
+                    let _ = reply.send(Err("a tracked request is already being handled".into()));
+                    return;
+                }
+                self.request_reply = Some(reply);
+                self.request_error = None;
+                self.handle(*command);
+                let result = self.request_error.take().map_or(Ok(()), Err);
+                if let Some(reply) = self.request_reply.take() {
+                    let _ = reply.send(result);
+                }
+            }
             Command::ShowGui => self.show_gui(),
             Command::Null => {
                 self.config.mode = Mode::Null;
@@ -831,6 +855,10 @@ impl App {
             }
             let used_path = path.clone();
             if !assign_video(&mut self.config, &self.monitors, path, monitor.as_deref()) {
+                self.notify_user_error(UserError::new(
+                    ErrorKind::FileSystem,
+                    format!("Unknown monitor: {}", monitor.as_deref().unwrap_or("all")),
+                ));
                 return;
             }
             self.save_config();
@@ -1230,7 +1258,7 @@ impl App {
         }
     }
 
-    fn notify_window_error(&self, key: &WindowKey, err: anyhow::Error) {
+    fn notify_window_error(&mut self, key: &WindowKey, err: anyhow::Error) {
         let (kind, summary) = match key.kind {
             ContentKind::Video => {
                 let name = Path::new(&key.source)
@@ -1270,6 +1298,9 @@ impl App {
 
     /// Re-read `config.json` from disk (D-Bus `reload_config`).
     fn reload_config(&mut self) {
+        // A volume/blur slider change is written after a short debounce. An
+        // external reload must not re-read the old file and silently undo it.
+        self.flush_config();
         let names: Vec<String> = self
             .monitors
             .iter()
@@ -1429,6 +1460,10 @@ impl App {
             .collect();
         if due.is_empty() {
             log::trace!("[Player] no retries due");
+            // The liveness check above may have removed a dead engine or
+            // observed a new one. Publish that fact even when no restart is
+            // due, otherwise the snapshot can describe the previous player.
+            self.sync_snapshot();
             return;
         }
         log::trace!("[Player] creating {} window(s)", due.len());
@@ -1485,6 +1520,7 @@ impl App {
                 }
             }
         }
+        self.sync_snapshot();
     }
 
     /// Collect the decoder each player reports and keep the one worth showing.
@@ -1686,9 +1722,13 @@ impl App {
     }
 
     fn any_playing(&self) -> bool {
-        self.windows
-            .iter()
-            .any(|window| self.eco_plan_for(&window.key().monitor).play)
+        self.windows.iter().any(|window| {
+            // `is_playing` is a fact about a live decoder, not only an Eco
+            // policy decision. During a crash/restart loop the policy still
+            // says "play"; without this check the UI would claim playback
+            // while every mpv is dying.
+            window.player_ready() && self.eco_plan_for(&window.key().monitor).play
+        })
     }
 
     fn eco_state_for(&self, monitor: &str) -> eco::State {
@@ -1955,7 +1995,7 @@ impl App {
         }
     }
 
-    fn save_config(&self) {
+    fn save_config(&mut self) {
         log::debug!("[Config] Saving {}", paths::config_path().display());
         if let Err(err) = self.config.save() {
             self.notify_user_error(UserError::with_detail(
@@ -1969,6 +2009,7 @@ impl App {
     fn set_operation_status(&mut self, status: impl Into<String>, error: bool) {
         self.operation_status = status.into();
         self.operation_error = error;
+        self.operation_seq = self.operation_seq.wrapping_add(1);
     }
 
     fn sync_snapshot(&self) {
@@ -2040,6 +2081,7 @@ impl App {
             rotations: self.config.rotations.clone(),
             operation_status: self.operation_status.clone(),
             operation_error: self.operation_error,
+            operation_seq: self.operation_seq,
         };
         if let Ok(mut shared) = self.snapshot.lock() {
             *shared = snapshot;
@@ -2047,8 +2089,16 @@ impl App {
         log::trace!("[Snapshot] published");
     }
 
-    fn notify_user_error(&self, error: UserError) {
+    fn notify_user_error(&mut self, error: UserError) {
         error.log();
+        if self.request_reply.is_some() {
+            self.request_error.get_or_insert_with(|| error.message());
+        }
+        // The control surface is a separate process and only reads snapshots.
+        // Publishing the error here is what turns a log-only failure into a
+        // visible status line; package operations keep using the same field.
+        self.set_operation_status(error.message(), true);
+        self.sync_snapshot();
     }
 }
 
@@ -2167,9 +2217,13 @@ fn bind_display_ids(monitors: &mut [MonitorInfo], registry: &mut DisplayIdRegist
 }
 
 /// X11 root coordinates are device pixels; monitor geometry from RandR is
-/// logical pixels on HiDPI/XWayland layouts. Convert once so the visibility
-/// check and its tests use the same rectangle.
+/// logical pixels on HiDPI/XWayland layouts. Windows already reports physical
+/// pixels, so its geometry must not be scaled a second time. The backend
+/// declares the coordinate space in `MonitorInfo::physical_geometry`.
 fn monitor_rect(info: &MonitorInfo) -> (i32, i32, i32, i32) {
+    if info.physical_geometry {
+        return (info.x, info.y, info.width, info.height);
+    }
     let scale = info.scale_factor.max(1);
     (
         info.x.saturating_mul(scale),
@@ -2296,6 +2350,7 @@ mod tests {
             width: 1920,
             height: 1080,
             scale_factor: 1,
+            physical_geometry: false,
             refresh_hz: None,
             is_primary: name == "eDP-1",
             identity: DisplayIdentity::default(),
@@ -2462,6 +2517,17 @@ mod tests {
     }
 
     #[test]
+    fn physical_monitor_geometry_is_not_scaled_twice() {
+        let mut info = monitor("eDP-1", 0);
+        info.scale_factor = 2;
+        info.physical_geometry = true;
+        // Windows reports 1920×1080 physical pixels and 150% DPI. The
+        // occlusion rectangle must remain physical; scaling it again would
+        // make a fullscreen window appear not to cover the monitor.
+        assert_eq!(monitor_rect(&info), (0, 0, 1920, 1080));
+    }
+
+    #[test]
     fn local_webpages_accept_paths_and_file_uris() {
         #[cfg(unix)]
         let (plain, uri, decoded) = ("/tmp/a.html", "file:///tmp/a%20b.html", "/tmp/a b.html");
@@ -2521,6 +2587,7 @@ mod tests {
                     width: 1920,
                     height: 1080,
                     scale_factor: 1,
+                    physical_geometry: false,
                     refresh_hz: None,
                     is_primary: true,
                     identity: DisplayIdentity::default(),
@@ -2533,6 +2600,7 @@ mod tests {
                     width: 1920,
                     height: 1080,
                     scale_factor: 1,
+                    physical_geometry: false,
                     refresh_hz: None,
                     is_primary: false,
                     identity: DisplayIdentity::default(),

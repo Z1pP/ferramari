@@ -98,7 +98,9 @@ fn main() {
     // Single instance: a second launch only asks the first to show its GUI.
     let dbus_connection = match dbus::acquire() {
         Ok(dbus::Acquired::AlreadyRunning) => {
-            let _ = dbus::request_show_gui();
+            if let Err(err) = dbus::request_show_gui() {
+                log::warn!("[SingleInstance] Could not show the running control surface: {err}");
+            }
             return;
         }
         Ok(dbus::Acquired::Primary(connection)) => {

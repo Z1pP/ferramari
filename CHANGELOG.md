@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+**Stability pass after the 2.2.0 audit.** The Windows-hosted suite now has
+**469 tests** (17 binary + 361 core + 18 media + 59 platform + 8 UI library +
+6 UI binary).
+
+- **Windows playback with static wallpaper off** no longer enters a restart
+  loop. Restoring the original image is now a no-op when Explorer already
+  shows it.
+- **Configuration and display-id recovery** no longer overwrite a valid
+  `.bak` with a corrupt primary; UTF-8 BOMs are accepted, and out-of-range
+  numeric settings are clamped.
+- **Tracked commands** return application errors to the Iced control surface
+  over D-Bus and the Windows loopback transport while the legacy
+  fire-and-forget methods remain available.
+- **Live playback state** requires a live surface and IPC worker, and the
+  status/pending-play UI state expires instead of sticking.
+- **Windows mixed-DPI geometry** is marked physical and is no longer scaled
+  twice for occlusion checks.
+- **Control transport** limits requests to 64 KiB and 16 concurrent clients.
+- **Catalogue cleanup** now actually runs at startup, removes expired sheets
+  with their videos, and has a fake-root test.
+- **Linux session watchers** now stop at shutdown: each watcher owns a
+  connection that is closed to wake its blocking signal iterator, and every
+  watcher thread is joined under one two-second deadline. GNOME registers a
+  single session client for both end-session signals.
+- **Release tags** repeat formatting, clippy, tests and the release build.
+
 ## 2.2.4 - 2026-11-18
 
 - **Settings copy reviewed.** Every Settings section now describes what the

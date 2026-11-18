@@ -172,6 +172,7 @@ pub fn list() -> Vec<MonitorInfo> {
             width: (monitor.rect.right - monitor.rect.left).max(0),
             height: (monitor.rect.bottom - monitor.rect.top).max(0),
             scale_factor,
+            physical_geometry: true,
             refresh_hz: refresh_hz(&monitor.device),
             is_primary: monitor.primary,
             identity: DisplayIdentity {

@@ -73,6 +73,23 @@ Rules that apply to all of them:
    from the command-loop thread. Any probe that can stall (D-Bus, subprocess,
    GPU query) runs behind a deadline or on its own thread.
 
+### 2.1 Tracked commands
+
+The Iced control surface uses a tracked path for actions that can fail
+synchronously. It sends `request_command(method, args)` or
+`request_property(name, value)`; Linux exposes them as methods on the server
+interface, Windows as JSON methods on the loopback control transport. Both map
+through `ferramari_core::command_api` to `Command::Request`, which carries a
+reply channel. The App records the first `notify_user_error` raised while
+handling the nested command and sends `Err(message)` to the transport; without
+an error it sends `Ok(())` after the command has been applied.
+
+The legacy fire-and-forget methods remain for scripts and compatibility.
+Commands that finish on a worker (stream resolution, package import/export,
+catalogue work) acknowledge acceptance only; their later outcome is reported
+through `operation_status`/`operation_seq`. A backend that replaces either
+transport must keep the same distinction and the 5-second reply deadline.
+
 ## 3. Threading and ownership
 
 One thread owns playback state; everything else produces messages.
@@ -136,9 +153,10 @@ Guarantees the core relies on, which a new backend must keep:
 - Watcher threads stop when the command channel closes: `send` fails and the
   thread returns. This is the portable cancellation mechanism, and it is why
   watchers hold no state worth flushing.
-- Watchers with a native event loop additionally take a stop flag and are
-  joined when their token is dropped, so the X connection is not torn down
-  while an event thread still reads it.
+- Watchers with a native event loop take a stop flag. Where the loop can be
+  woken (the Linux D-Bus connections) the thread is joined when its token is
+  dropped; X11's `wait_for_event` and the inotify charger loop keep their
+  existing process-lifetime/detach behaviour (see below).
 - `PlatformEventSource::start` returns `Box<dyn PlatformWatchers>`; dropping
   that box is the documented teardown signal. A backend that cannot stop a
   subscription must say so in this document rather than pretend the token
@@ -149,14 +167,23 @@ Guarantees the core relies on, which a new backend must keep:
 - `Drop` on a surface releases its native resources; on a media engine it
   stops the fade threads and kills the player.
 
-**Known gap.** The D-Bus session/lock/sleep/idle watchers in
-`ferramari-platform/src/handlers.rs` block on `receive_signal` and are only
-released when the process exits: the token does not stop them. Today the only
-in-process teardown of the whole app is process exit, so the gap is not
-reachable, but a backend that restarts its event sources without exiting would
-inherit it. Fix shape: give each watcher an owned `zbus::blocking::Connection`
-plus a self-message or a poll deadline, so the signal loop can be woken and the
-thread joined. Until then `PlatformWatchers` promises less than its name.
+- **Linux D-Bus watchers are bounded.** Each session/lock/sleep/end-session
+  watcher owns one blocking `zbus` connection on one thread. Dropping
+  `SessionWatchers` sets every stop flag, closes each stored connection —
+  which is what releases a blocking signal iterator parked on the bus — and
+  then joins all threads under one shared two-second deadline. A thread that
+  misses the deadline is detached and logged; it exits when its D-Bus call
+  returns. The idle watcher checks its stop flag every 250 ms and is joined
+  under the same deadline. One GNOME session client serves both
+  `QueryEndSession` and `EndSession` through a single match-rule iterator, so
+  gnome-session never sees the app registered twice.
+- **Still process-lifetime or detached.** The Windows control accept loop
+  (`ferramari-platform/src/windows/dbus.rs`) deliberately lives until process
+  exit; the inotify charger watcher exits only when the command channel
+  closes, which happens at process exit; and the X11 window/monitor watchers
+  detach their `wait_for_event` threads because that call has no portable
+  wake-up. A future in-process backend restart must not assume those sources
+  stop.
 
 ## 6. Display identity
 
@@ -197,9 +224,10 @@ Windows is the second backend. Its status against this checklist:
       `--doctor` shows the reason.
 - [x] Stable display ids use the strongest identity the OS exposes; the
       fallback rule and its limits are recorded in §6.
-- [x] Event sources can be stopped, and §5 has no "only at process exit" case
-      for the session/window/monitor watchers. The control listener is tied to
-      process lifetime, like the Linux bus connection.
+- [x] Event sources that can be woken stop on teardown; §5 names the ones
+      that cannot (the Windows control listener, the inotify charger watcher
+      and the X11 window/monitor watchers) instead of pretending the token
+      covers them.
 - [x] Surface lifecycle survives a player crash and a surface destruction and
       re-creation without leaking native handles.
 - [x] Contract tests run against the fake providers in
@@ -264,8 +292,10 @@ Windows is the second backend. Its status against this checklist:
   "some of it" rather than "nothing". If the GPU counter set is missing, the
   Performance page shows `N/A` instead of zero.
 - **Display geometry.** All rectangles are physical pixels; `scale_factor` is
-  `DPI/96`. This differs from the X11 backend's logical pixels and is why core
-  never derives scale from a rectangle.
+  `DPI/96` and `physical_geometry` is `true`. The X11 backend reports logical
+  pixels with `physical_geometry=false`; core scales only that backend's
+  rectangle. This keeps a 1920×1080 panel at 150% from becoming a 3840×2160
+  occlusion rectangle.
 - **Static wallpaper.** `SystemParametersInfoW` reads and writes the desktop
   image. The previous path is saved in
   `%APPDATA%\ferramari\background-original.json` before our first frame is

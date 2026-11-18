@@ -165,6 +165,26 @@ fn user_replaced_background(
     }
 }
 
+/// Whether restoring the recorded original would only repeat what Explorer is
+/// already showing.
+///
+/// This is deliberately separate from [`StaticBackground::restore`] so the
+/// decision can be tested without touching the live desktop. It only skips
+/// when no frame is active: an active frame means disabling the static
+/// wallpaper must still put the original back.
+fn restore_can_be_skipped(
+    current: Option<&Path>,
+    background: &Background,
+    active: Option<&Path>,
+) -> bool {
+    active.is_none()
+        && matches!(
+            background,
+            Background::Original(original)
+                if current.is_some_and(|value| same_path(value, original))
+        )
+}
+
 /// The real wallpaper to remember before installing a frame, or `None` when
 /// the desktop still shows what Ferramari already knows about. A user-chosen
 /// image must become the new original before it is covered, otherwise a later
@@ -338,6 +358,20 @@ impl StaticBackground {
         // not a state to roll back. Without this check quitting would restore
         // the image captured at startup and silently discard the newer one.
         let current = current_wallpaper();
+
+        // `update_static_wallpaper` calls this after every rebuild while the
+        // static wallpaper is off. `SPI_SETDESKWALLPAPER` is not a cheap
+        // no-op: Explorer replaces its wallpaper WorkerW and the live surface
+        // dies with it. If the desktop already shows the recorded original,
+        // there is nothing to restore and nothing to touch.
+        if restore_can_be_skipped(
+            current.as_deref(),
+            &self.background,
+            self.active_file.as_deref(),
+        ) {
+            return;
+        }
+
         let original = match &self.background {
             Background::Original(path) => Some(path.as_path()),
             Background::Ours | Background::Missing => None,
@@ -622,5 +656,27 @@ mod tests {
         let _ = current_wallpaper();
         let _ = background_diagnostic();
         let _ = protected_cache_files();
+    }
+
+    #[test]
+    fn restoring_the_original_that_is_already_shown_is_a_no_op() {
+        let root = temp_dir("restore-noop");
+        let original = make(&root, "original.png");
+        let other = make(&root, "other.png");
+        let background = Background::Original(original.clone());
+
+        assert!(restore_can_be_skipped(Some(&original), &background, None));
+        assert!(!restore_can_be_skipped(Some(&other), &background, None));
+        assert!(!restore_can_be_skipped(None, &background, None));
+
+        // An installed frame must still be replaced by the original when the
+        // user disables static wallpaper.
+        assert!(!restore_can_be_skipped(
+            Some(&original),
+            &background,
+            Some(&other)
+        ));
+
+        let _ = fs::remove_dir_all(root);
     }
 }

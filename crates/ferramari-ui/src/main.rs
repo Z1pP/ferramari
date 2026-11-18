@@ -715,6 +715,12 @@ impl Section {
 /// over two minutes: enough to see a load ramp, short enough that a spike from
 /// a wallpaper switch scrolls off while the user is still on the page.
 const HISTORY_LEN: usize = 140;
+/// How many one-second ticks a status line stays on screen. Server errors are
+/// also visible for this long unless a newer sequence replaces them.
+const STATUS_TTL_TICKS: u8 = 8;
+/// How many polls an optimistic play/pause state may override the server
+/// before the UI accepts the server value again.
+const PENDING_PLAY_TICKS: u8 = 3;
 
 /// The resource traces the Home tiles and the Performance page draw.
 ///
@@ -785,6 +791,8 @@ struct App {
     state: ServerState,
     system_dark: bool,
     status: Option<StatusLine>,
+    status_ticks: u8,
+    last_operation_seq: u64,
 
     /// The window this UI owns, learned from the runtime when it opens. The
     /// chrome buttons address a window by id, so until it is known they are
@@ -846,6 +854,7 @@ struct App {
     /// snapshots that contradict the user's intent (e.g. user clicked Resume
     /// but server hasn't started playback yet, so snapshot still says paused).
     pending_play: Option<bool>,
+    pending_play_ticks: u8,
     /// Windows close-to-tray: the window is hidden but the process stays alive
     /// so the tray (or a second launch) can raise it again.
     hidden: bool,
@@ -868,6 +877,8 @@ impl App {
                 state: ServerState::default(),
                 system_dark: theme::system_prefers_dark(),
                 status: None,
+                status_ticks: 0,
+                last_operation_seq: 0,
                 window: None,
                 maximized: false,
                 width: boot.size.width,
@@ -895,6 +906,7 @@ impl App {
                 },
                 ticks: 0,
                 pending_play: None,
+                pending_play_ticks: 0,
                 hidden: false,
             },
             // Connecting to the server and asking GitHub about a new release
@@ -920,25 +932,32 @@ impl App {
         Semantics::resolve(&self.state.theme, self.system_dark)
     }
 
+    fn show_status(&mut self, text: impl Into<String>, error: bool) {
+        self.status = Some(StatusLine {
+            text: text.into(),
+            error,
+        });
+        self.status_ticks = 0;
+    }
+
+    fn clear_status(&mut self) {
+        self.status = None;
+        self.status_ticks = 0;
+    }
+
     fn send_package_request<F, Fut>(&mut self, request: F, needs_parent: bool) -> Task<Message>
     where
         F: FnOnce(Server, String, String) -> Fut,
         Fut: std::future::Future<Output = Result<(), String>> + Send + 'static,
     {
         let Some(server) = self.server.clone() else {
-            self.status = Some(StatusLine {
-                text: tr("Server is unavailable"),
-                error: true,
-            });
+            self.show_status(tr("Server is unavailable"), true);
             return Task::none();
         };
         let source = self.package_source.trim().to_string();
         let parent = self.package_parent.trim().to_string();
         if source.is_empty() || (needs_parent && parent.is_empty()) {
-            self.status = Some(StatusLine {
-                text: tr("Enter the required package paths"),
-                error: true,
-            });
+            self.show_status(tr("Enter the required package paths"), true);
             return Task::none();
         }
         Task::perform(
@@ -949,17 +968,14 @@ impl App {
 
     fn persist_library(&mut self) -> Task<Message> {
         if let Err(error) = self.library.save() {
-            self.status = Some(StatusLine {
-                text: error,
-                error: true,
-            });
+            self.show_status(error, true);
             return Task::none();
         }
         let Some(server) = self.server.clone() else {
             return Task::none();
         };
         Task::perform(
-            async move { server.command("library_changed").await },
+            async move { server.request_command("library_changed", &()).await },
             Message::CommandFinished,
         )
     }
@@ -983,6 +999,15 @@ impl App {
 
             Message::Tick => {
                 self.ticks = self.ticks.wrapping_add(1);
+                if self.status.is_some() {
+                    self.status_ticks = self.status_ticks.saturating_add(1);
+                    if self.status_ticks >= STATUS_TTL_TICKS {
+                        self.clear_status();
+                    }
+                }
+                if self.pending_play.is_some() {
+                    self.pending_play_ticks = self.pending_play_ticks.saturating_add(1);
+                }
                 let Some(server) = self.server.clone() else {
                     // Reconnect every few seconds while the server is down.
                     if self.ticks.is_multiple_of(5) {
@@ -1081,10 +1106,10 @@ impl App {
                 // the next start must not silently forget it.
                 self.update.automatic = enabled;
                 if let Err(error) = self.update.store() {
-                    self.status = Some(StatusLine {
-                        text: format!("{}: {error}", tr("Could not save the update setting")),
-                        error: true,
-                    });
+                    self.show_status(
+                        format!("{}: {error}", tr("Could not save the update setting")),
+                        true,
+                    );
                 }
                 Task::none()
             }
@@ -1146,16 +1171,19 @@ impl App {
                 self.state.is_playing = true;
                 self.state.is_paused_by_user = false;
                 self.pending_play = Some(true);
+                self.pending_play_ticks = 0;
                 call(self.server.as_ref(), "start_playback")
             }
             Message::StopEngine => {
                 self.state.is_playing = false;
                 self.pending_play = Some(false);
+                self.pending_play_ticks = 0;
                 call(self.server.as_ref(), "quit_player")
             }
             Message::RestartEngine => {
                 self.state.is_playing = true;
                 self.pending_play = Some(true);
+                self.pending_play_ticks = 0;
                 call(self.server.as_ref(), "reload")
             }
             Message::ToggleSystray(enabled) => {
@@ -1165,16 +1193,14 @@ impl App {
 
             Message::Connected(Ok(server)) => {
                 self.server = Some(server.clone());
-                self.status = None;
+                self.clear_status();
+                self.last_operation_seq = 0;
                 Task::perform(async move { server.snapshot().await }, |s| {
                     Message::StateUpdated(s.into())
                 })
             }
             Message::Connected(Err(error)) => {
-                self.status = Some(StatusLine {
-                    text: error,
-                    error: true,
-                });
+                self.show_status(error, true);
                 Task::none()
             }
 
@@ -1183,16 +1209,20 @@ impl App {
                 let reachable = state_ref.reachable;
                 // Unwrap the Box into a clone to avoid keeping a dangling reference.
                 let mut new_state = (*state).clone();
-                if !new_state.operation_status.is_empty() {
-                    self.status = Some(StatusLine {
-                        text: new_state.operation_status.clone(),
-                        error: new_state.operation_error,
-                    });
+                if new_state.operation_seq != self.last_operation_seq {
+                    if !new_state.operation_status.is_empty() {
+                        self.show_status(
+                            new_state.operation_status.clone(),
+                            new_state.operation_error,
+                        );
+                    }
+                    self.last_operation_seq = new_state.operation_seq;
                 }
                 if !reachable {
                     self.server = None;
                     self.applied_language.clear();
                     self.pending_play = None;
+                    self.pending_play_ticks = 0;
                     // A hidden window whose server is gone has no tray left to
                     // reopen it: it would sit in memory invisible until the
                     // session ends. Closing the last window ends the process.
@@ -1226,10 +1256,17 @@ impl App {
                 // pending_play = Some(true). If the server responds with
                 // is_playing = false (because mpv hasn't started yet), we
                 // keep our optimistic true value.
-                if let Some(pending) = self.pending_play.take() {
-                    if new_state.is_playing != pending {
-                        // Server's snapshot contradicts user's action — keep
-                        // our optimistic value.
+                if let Some(pending) = self.pending_play {
+                    if new_state.is_playing == pending
+                        || self.pending_play_ticks >= PENDING_PLAY_TICKS
+                    {
+                        // The server caught up, or had long enough to apply
+                        // the action; accept its value from now on.
+                        self.pending_play = None;
+                        self.pending_play_ticks = 0;
+                    } else {
+                        // A snapshot taken before the command reached the
+                        // player must not flip the button back.
                         new_state.is_playing = pending;
                     }
                 }
@@ -1239,24 +1276,20 @@ impl App {
 
             Message::CommandFinished(result) => {
                 if let Err(error) = result {
-                    self.status = Some(StatusLine {
-                        text: error,
-                        error: true,
-                    });
+                    self.pending_play = None;
+                    self.pending_play_ticks = 0;
+                    self.show_status(error, true);
                 }
                 Task::none()
             }
             Message::PackageRequestFinished(result) => {
-                self.status = Some(match result {
-                    Ok(()) => StatusLine {
-                        text: tr("Package request queued; processing continues in the server"),
-                        error: false,
-                    },
-                    Err(error) => StatusLine {
-                        text: error,
-                        error: true,
-                    },
-                });
+                match result {
+                    Ok(()) => self.show_status(
+                        tr("Package request queued; processing continues in the server"),
+                        false,
+                    ),
+                    Err(error) => self.show_status(error, true),
+                }
                 Task::none()
             }
 
@@ -1275,6 +1308,7 @@ impl App {
                 // Hold the expected value so the chip does not contradict the
                 // button while the server catches up.
                 self.pending_play = Some(resume);
+                self.pending_play_ticks = 0;
                 set_bool(self.server.as_ref(), "is_paused_by_user", !resume)
             }
             Message::ToggleMute => {
@@ -1455,17 +1489,14 @@ impl App {
             ),
             Message::VideoPicked(None) => Task::none(),
             Message::VideoImported(Ok(path)) => {
-                self.status = Some(StatusLine {
-                    text: format!("{}: {}", tr("Added to library"), path.display()),
-                    error: false,
-                });
+                self.show_status(
+                    format!("{}: {}", tr("Added to library"), path.display()),
+                    false,
+                );
                 play_video(self.server.as_ref(), path.to_string_lossy().into_owned())
             }
             Message::VideoImported(Err(error)) => {
-                self.status = Some(StatusLine {
-                    text: error,
-                    error: true,
-                });
+                self.show_status(error, true);
                 Task::none()
             }
             Message::PickPackageSource => Task::perform(
@@ -1676,10 +1707,7 @@ impl App {
                 self.online.downloading = None;
                 match result {
                     Ok(path) => {
-                        self.status = Some(StatusLine {
-                            text: format!("{}: {}", tr("Downloaded"), title),
-                            error: false,
-                        });
+                        self.show_status(format!("{}: {}", tr("Downloaded"), title), false);
                         play_video(self.server.as_ref(), path.to_string_lossy().into_owned())
                     }
                     Err(error) => {
@@ -5036,7 +5064,7 @@ fn call(server: Option<&Server>, method: &'static str) -> Task<Message> {
         return Task::none();
     };
     Task::perform(
-        async move { server.command(method).await },
+        async move { server.request_command(method, &()).await },
         Message::CommandFinished,
     )
 }
@@ -5046,7 +5074,11 @@ fn set_i32(server: Option<&Server>, property: &'static str, value: i32) -> Task<
         return Task::none();
     };
     Task::perform(
-        async move { server.set_i32(property, value).await },
+        async move {
+            server
+                .request_property(property, serde_json::json!(value))
+                .await
+        },
         Message::CommandFinished,
     )
 }
@@ -5056,7 +5088,11 @@ fn set_bool(server: Option<&Server>, property: &'static str, value: bool) -> Tas
         return Task::none();
     };
     Task::perform(
-        async move { server.set_bool(property, value).await },
+        async move {
+            server
+                .request_property(property, serde_json::json!(value))
+                .await
+        },
         Message::CommandFinished,
     )
 }
@@ -5066,7 +5102,11 @@ fn set_string(server: Option<&Server>, property: &'static str, value: String) ->
         return Task::none();
     };
     Task::perform(
-        async move { server.set_string(property, value).await },
+        async move {
+            server
+                .request_property(property, serde_json::json!(value))
+                .await
+        },
         Message::CommandFinished,
     )
 }
@@ -5080,7 +5120,7 @@ fn play_video_on_monitor(server: Option<&Server>, path: String, monitor: String)
         return Task::none();
     };
     Task::perform(
-        async move { server.command_args("video", &(path, monitor)).await },
+        async move { server.request_command("video", &(path, monitor)).await },
         Message::CommandFinished,
     )
 }

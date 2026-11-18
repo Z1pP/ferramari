@@ -306,6 +306,7 @@ pub fn list() -> Vec<MonitorInfo> {
             width: raw.width,
             height: raw.height,
             scale_factor: scale,
+            physical_geometry: false,
             refresh_hz: raw.refresh_hz,
             is_primary: Some(index as i32) == primary_index,
             identity: raw.identity.clone(),

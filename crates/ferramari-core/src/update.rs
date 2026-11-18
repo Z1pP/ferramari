@@ -114,7 +114,7 @@ impl Record {
     fn load_from(path: &Path) -> Self {
         fs::read_to_string(path)
             .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
+            .and_then(|text| serde_json::from_str(crate::config::strip_bom(&text)).ok())
             .unwrap_or_default()
     }
 

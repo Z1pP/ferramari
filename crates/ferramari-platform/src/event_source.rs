@@ -16,6 +16,7 @@ pub struct LinuxPlatformEventSource;
 
 struct LinuxWatchers {
     _power: Option<power_events::InotifyPowerWatcher>,
+    _session: handlers::SessionWatchers,
     _window: Option<x11::Watcher>,
     _monitors: Option<monitors::Watcher>,
 }
@@ -28,16 +29,13 @@ impl PlatformEventSource for LinuxPlatformEventSource {
         tx: CommandSender,
         idle_threshold: Arc<AtomicU64>,
     ) -> Box<dyn PlatformWatchers> {
-        handlers::start_screen_lock_watcher(tx.clone());
-        handlers::start_end_session_watcher(tx.clone());
-        handlers::start_sleep_watcher(tx.clone());
-        handlers::start_logind_lock_watcher(tx.clone());
-        handlers::start_idle_watcher(tx.clone(), idle_threshold);
+        let session = handlers::SessionWatchers::start(tx.clone(), idle_threshold);
         // Real-time charger detection (inotify on /sys/class/power_supply).
         let _power = power_events::InotifyPowerWatcher::start(tx.clone());
 
         Box::new(LinuxWatchers {
             _power: Some(_power),
+            _session: session,
             _window: x11::start(tx.clone()),
             _monitors: monitors::start(tx),
         })

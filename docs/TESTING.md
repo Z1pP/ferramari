@@ -1,12 +1,13 @@
 # Testing matrix
 
 Ferramari is a desktop application, so CI can only cover the parts that do not
-need a live session. This document contains historical live-session results
-for the 1.9.x GTK build. They are not evidence that the 2.0.0 Iced migration
-has passed equivalent smoke tests. The 2.0 workspace must be tested separately
-using the checklist below; do not carry forward old “tested” labels as 2.0
-certification. Windows has its own checklist at the end; a green Windows CI
-job proves the build and unit tests, not wallpaper playback.
+need a live session. The first rows below are historical 1.9.x GTK results and
+are not evidence for the 2.0+ Iced workspace. The Windows 2.2 results are
+partial: single-display playback, recovery, tray and installer paths have been
+exercised, while multi-monitor, mixed-DPI, real lock/sleep and the full
+Linux matrix remain unchecked. Do not carry forward old “tested” labels as
+certification. A green CI job proves the build and unit tests, not wallpaper
+playback.
 
 ## Environment matrix
 
@@ -35,9 +36,20 @@ Build the complete 2.0 workspace with `cargo build --workspace --release --locke
 ### Startup and shutdown
 - [ ] App starts with no existing config and shows the Home page.
 - [ ] A second launch only asks the first instance to show its window.
+- [ ] Start the server with `-b -p 5`; launch a second instance during the
+      delay. The second launch waits briefly for the endpoint/interface and
+      opens the UI instead of exiting silently.
 - [ ] Quit from Settings and from the tray; no `mpv`, `ffmpeg` or `ffprobe`
       processes remain.
 - [ ] SIGTERM during playback shuts down cleanly.
+- [ ] Linux: start with `RUST_LOG=ferramari_platform=debug`, then quit from the
+      tray and with SIGTERM. The process exits within three seconds and the log
+      contains no `did not stop before the shutdown deadline` warning.
+- [ ] Linux: lock, unlock, suspend and resume the session. Each transition
+      reaches the server once, and playback pauses and resumes once for each.
+- [ ] Linux GNOME: log out. `QueryEndSession` is answered immediately (the
+      shell does not wait for its timeout), `EndSession` quits the app, and
+      `org.gnome.SessionManager` lists one Ferramari client, not two.
 
 ### Theme and appearance
 - [ ] Settings → System → Theme switches between System default, Light and Dark.
@@ -383,6 +395,26 @@ profile.
       `%APPDATA%\ferramari` and `%LOCALAPPDATA%\ferramari` intact.
 - [x] Extract the portable ZIP to a folder with a space in its path; both
       binaries start and find their locale catalogs.
+
+### Phase 1 reliability regressions (2026-11-18)
+
+These target the findings in `docs/REVIEW_2_2.md`. They are separate from the
+full matrix above and do not certify the Windows row by themselves.
+
+- [x] With `is_static_wallpaper=false`, apply a local video and wait: the mpv
+      PID stays stable, the log has no `lost its wallpaper host`/restart
+      sequence, and the snapshot reports `player_stats.active=true`.
+      Verified 2026-11-18 on Windows 11 26200, 1920×1080 @125%, after the
+      idempotent-restore fix.
+- [ ] Set the volume through the control endpoint to 77, immediately send
+      `reload_config`, and confirm the snapshot and `config.json` still say 77.
+- [ ] Apply a missing video path through the control endpoint and confirm the
+      UI shows a visible error rather than the command only succeeding in the
+      log.
+- [ ] On a 150% or 200% display, cover the monitor with a fullscreen window and
+      confirm Eco reports `Occluded`; repeat on a mixed-DPI two-monitor layout.
+- [ ] Open more than 16 control connections or send a request over 64 KiB and
+      confirm the server rejects it without spawning unbounded work.
 
 Record the Windows build number, GPU, monitor layout and mpv/ffmpeg versions
 next to the results. Do not mark the Windows row in the environment matrix as

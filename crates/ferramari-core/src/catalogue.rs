@@ -1053,7 +1053,11 @@ pub fn clear_cached(id: &str) {
 
 /// Drop old page/preview entries and keep the video cache under 2 GB.
 pub fn cleanup_cache() {
-    let now = SystemTime::now();
+    cleanup_cache_in(&cache_dir(), SystemTime::now());
+}
+
+/// Test seam: same policy against an explicit cache root and clock.
+fn cleanup_cache_in(root: &Path, now: SystemTime) {
     let too_old = |path: &Path, age: Duration| {
         fs::metadata(path)
             .ok()
@@ -1062,24 +1066,25 @@ pub fn cleanup_cache() {
             .is_some_and(|elapsed| elapsed > age)
     };
 
-    for directory in [page_cache_dir(), preview_cache_dir()] {
+    for (directory, age) in [
+        (root.join("pages"), Duration::from_secs(24 * 60 * 60)),
+        (
+            root.join("previews"),
+            Duration::from_secs(30 * 24 * 60 * 60),
+        ),
+    ] {
         let Ok(entries) = fs::read_dir(&directory) else {
             continue;
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            let age = if directory.ends_with("pages") {
-                Duration::from_secs(24 * 60 * 60)
-            } else {
-                Duration::from_secs(30 * 24 * 60 * 60)
-            };
             if too_old(&path, age) {
                 let _ = fs::remove_file(path);
             }
         }
     }
 
-    let videos_dir = video_cache_dir();
+    let videos_dir = root.join("videos");
     let Ok(entries) = fs::read_dir(&videos_dir) else {
         return;
     };
@@ -1102,6 +1107,14 @@ pub fn cleanup_cache() {
             },
         ) {
             let _ = fs::remove_file(&path);
+            if !is_partial {
+                let id = path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .unwrap_or_default();
+                let _ = fs::remove_file(root.join("sheets").join(format!("{id}.png")));
+                let _ = fs::remove_file(videos_dir.join(format!("{id}.name")));
+            }
             continue;
         }
         if path
@@ -1133,7 +1146,7 @@ pub fn cleanup_cache() {
                 .unwrap_or_default()
                 .to_string();
             let _ = fs::remove_file(&path);
-            let _ = fs::remove_file(sheet_path(&id));
+            let _ = fs::remove_file(root.join("sheets").join(format!("{id}.png")));
             let _ = fs::remove_file(videos_dir.join(format!("{id}.name")));
             remaining = remaining.saturating_sub(size);
         }
@@ -1654,5 +1667,65 @@ mod tests {
         assert_eq!(base.join("previews"), preview_cache_dir());
         assert_eq!(base.join("pages"), page_cache_dir());
         assert_eq!(base.join("sheets"), sheet_cache_dir());
+    }
+
+    #[test]
+    fn cleanup_cache_removes_expired_entries_and_keeps_fresh_ones() {
+        use std::time::Duration;
+
+        fn write(path: &Path, age: Duration) {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, b"x").unwrap();
+            let file = fs::OpenOptions::new().write(true).open(path).unwrap();
+            let modified = SystemTime::now() - age;
+            file.set_times(fs::FileTimes::new().set_modified(modified))
+                .unwrap();
+        }
+
+        let root = std::env::temp_dir().join(format!(
+            "ferramari-catalogue-cleanup-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let pages = root.join("pages");
+        let previews = root.join("previews");
+        let videos = root.join("videos");
+        let sheets = root.join("sheets");
+
+        let old_page = pages.join("old.html");
+        let fresh_page = pages.join("fresh.html");
+        let old_preview = previews.join("old.jpg");
+        let fresh_preview = previews.join("fresh.jpg");
+        let old_video = videos.join("old.mp4");
+        let fresh_video = videos.join("fresh.mp4");
+        let old_partial = videos.join("old.part");
+        let old_sheet = sheets.join("old.png");
+        let fresh_sheet = sheets.join("fresh.png");
+        write(&old_page, Duration::from_secs(2 * 24 * 60 * 60));
+        write(&fresh_page, Duration::from_secs(60));
+        write(&old_preview, Duration::from_secs(31 * 24 * 60 * 60));
+        write(&fresh_preview, Duration::from_secs(60));
+        write(&old_video, Duration::from_secs(8 * 24 * 60 * 60));
+        write(&fresh_video, Duration::from_secs(60));
+        write(&old_partial, Duration::from_secs(2 * 60 * 60));
+        write(&old_sheet, Duration::from_secs(60));
+        write(&fresh_sheet, Duration::from_secs(60));
+
+        cleanup_cache_in(&root, SystemTime::now());
+
+        assert!(!old_page.exists());
+        assert!(fresh_page.exists());
+        assert!(!old_preview.exists());
+        assert!(fresh_preview.exists());
+        assert!(!old_video.exists());
+        assert!(fresh_video.exists());
+        assert!(!old_partial.exists());
+        assert!(!old_sheet.exists());
+        assert!(fresh_sheet.exists());
+
+        let _ = fs::remove_dir_all(root);
     }
 }

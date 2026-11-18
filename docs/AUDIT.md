@@ -89,7 +89,7 @@ monitor (pause/mute).
 | --- | --- | --- |
 | B1 | Pause/mute decisions were global (`is_any_maximized`, `is_any_fullscreen`, `should_play`). A fullscreen game on one monitor paused every monitor. | **fixed** — per-monitor `eco::plan` + X11 rectangles |
 | B2 | `Mpv::spawn` waited up to 3 s for the IPC socket on the GTK thread; every volume/pause command performed a synchronous IPC round-trip with a 2 s timeout on the GTK thread. A wedged mpv froze the UI. | **fixed** — dedicated IPC worker; spawn returns immediately |
-| B3 | `start_sleep_watcher` and `start_end_session_watcher` created system/session-bus connections and registered the GNOME client on the GTK thread. A missing bus delayed startup. | **fixed** — all setup moved to worker threads |
+| B3 | The sleep and end-session watchers created system/session-bus connections and registered the GNOME client on the GTK thread. A missing bus delayed startup. | **fixed** — all setup moved to worker threads |
 | B4 | `Command::MonitorsChanged` called `Config::load` while a debounced volume/blur write was pending, silently reverting the edit. | **fixed** — flush before reload |
 | B5 | The X11 watcher used `query(...).unwrap_or_default()`; a transient X error looked like “no maximised window” and resumed playback behind a fullscreen game. | **fixed** — keep the previous sample on error |
 | B6 | `Command::Webpage` sent `file://` URLs through the network reachability check, so a local HTML document reported a network error. | **fixed** — local path handling |

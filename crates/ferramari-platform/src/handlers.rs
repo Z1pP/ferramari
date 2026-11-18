@@ -1,9 +1,18 @@
 //! Session integrations that only produce events: screen lock, logout, sleep
 //! and desktop idle time.
+//!
+//! D-Bus signal iterators block. A watcher therefore keeps a clone of its
+//! connection in a shared slot; dropping the watcher closes that connection,
+//! which wakes the iterator. All watchers are then joined under one deadline,
+//! and a thread that still refuses to exit is detached instead of holding the
+//! caller indefinitely. Closing the connection is the only reliable wake-up
+//! for the blocking zbus API; a stop flag alone would leave the thread asleep
+//! until the next signal.
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use zbus::blocking::{Connection, Proxy};
 
@@ -16,6 +25,10 @@ use ferramari_core::{Command, CommandSender};
 /// and flipping to `Unknown` (and therefore resuming playback) during that
 /// gap would stutter the wallpaper.
 const IDLE_MISSINGS_BEFORE_UNKNOWN: u8 = 4;
+
+const IDLE_POLL_EVERY: Duration = Duration::from_secs(15);
+const STOP_POLL_EVERY: Duration = Duration::from_millis(250);
+const STOP_JOIN_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Idle polling rule, separated from the thread so it can be tested.
 ///
@@ -77,26 +90,202 @@ impl IdlePoller {
     }
 }
 
+/// Owns every session watcher started by the Linux backend.
+pub struct SessionWatchers {
+    _dbus: Vec<DbusWatcher>,
+    _idle: Option<IdleWatcher>,
+}
+
+impl SessionWatchers {
+    pub fn start(tx: CommandSender, threshold_secs: Arc<AtomicU64>) -> Self {
+        let mut dbus = Vec::new();
+        dbus.extend(screen_lock_watchers(tx.clone()));
+        dbus.extend(logind_lock_watchers(tx.clone()));
+        dbus.extend(sleep_watcher(tx.clone()));
+        dbus.extend(end_session_watchers(tx.clone()));
+        let idle = start_idle_watcher(tx, threshold_secs);
+        Self {
+            _dbus: dbus,
+            _idle: idle,
+        }
+    }
+}
+
+impl Drop for SessionWatchers {
+    fn drop(&mut self) {
+        // Two phases on purpose: ask every watcher to stop before waiting on
+        // any one of them. Each close wakes one blocked iterator immediately,
+        // so the whole teardown fits in a single deadline instead of one per
+        // watcher.
+        for watcher in &mut self._dbus {
+            watcher.signal_stop();
+        }
+        if let Some(idle) = &mut self._idle {
+            idle.signal_stop();
+        }
+        let deadline = Instant::now() + STOP_JOIN_TIMEOUT;
+        for watcher in &mut self._dbus {
+            watcher.join(deadline);
+        }
+        if let Some(idle) = &mut self._idle {
+            idle.join(deadline);
+        }
+    }
+}
+
+struct DbusWatcher {
+    name: String,
+    stop: Arc<AtomicBool>,
+    connection: Arc<Mutex<Option<zbus::Connection>>>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl DbusWatcher {
+    /// Ask the thread to finish and wake it if it is parked in a signal
+    /// iterator.
+    fn signal_stop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Ok(mut slot) = self.connection.lock() {
+            if let Some(connection) = slot.take() {
+                // Closing the connection is what releases a blocking signal
+                // iterator; the stop flag alone would only be seen after the
+                // next signal arrived.
+                let _ = zbus::blocking::Connection::from(connection).close();
+            }
+        }
+    }
+
+    fn join(&mut self, deadline: Instant) {
+        join_bounded(&self.name, &mut self.thread, deadline);
+    }
+}
+
+impl Drop for DbusWatcher {
+    fn drop(&mut self) {
+        self.signal_stop();
+        self.join(Instant::now() + STOP_JOIN_TIMEOUT);
+    }
+}
+
+struct IdleWatcher {
+    stop: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl IdleWatcher {
+    fn signal_stop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+    }
+
+    fn join(&mut self, deadline: Instant) {
+        join_bounded("ferramari-idle", &mut self.thread, deadline);
+    }
+}
+
+impl Drop for IdleWatcher {
+    fn drop(&mut self) {
+        self.signal_stop();
+        self.join(Instant::now() + STOP_JOIN_TIMEOUT);
+    }
+}
+
+/// Join a watcher without letting a wedged D-Bus call hold shutdown forever.
+/// If the deadline expires the handle is detached; the closed connection is
+/// expected to make the thread exit on its own.
+fn join_bounded(name: &str, thread: &mut Option<JoinHandle<()>>, deadline: Instant) {
+    let Some(handle) = thread.take() else {
+        return;
+    };
+    while !handle.is_finished() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    if handle.is_finished() {
+        let _ = handle.join();
+    } else {
+        log::warn!("[Session] {name} did not stop before the shutdown deadline");
+    }
+}
+
+/// Spawn a watcher whose bus connection is created on its worker thread.
+/// D-Bus can block for seconds when the bus is slow or absent, and startup
+/// must not stall on it.
+fn spawn_dbus<F>(
+    name: &str,
+    connect: fn() -> zbus::Result<Connection>,
+    setup: F,
+) -> Option<DbusWatcher>
+where
+    F: FnOnce(&Connection, &AtomicBool) -> anyhow::Result<()> + Send + 'static,
+{
+    let stop = Arc::new(AtomicBool::new(false));
+    let connection = Arc::new(Mutex::new(None));
+    let thread_stop = Arc::clone(&stop);
+    let thread_connection = Arc::clone(&connection);
+    let thread_name = name.to_string();
+    let log_name = thread_name.clone();
+    let thread = std::thread::Builder::new()
+        .name(thread_name.clone())
+        .spawn(move || {
+            let connection = match connect() {
+                Ok(connection) => connection,
+                Err(err) => {
+                    log::debug!("[Session] {log_name} could not connect: {err}");
+                    return;
+                }
+            };
+            if let Ok(mut slot) = thread_connection.lock() {
+                *slot = Some(connection.inner().clone());
+            }
+            if thread_stop.load(Ordering::SeqCst) {
+                return;
+            }
+            if let Err(err) = setup(&connection, &thread_stop) {
+                log::debug!("[Session] {log_name} stopped: {err}");
+            }
+        })
+        .ok()?;
+    Some(DbusWatcher {
+        name: thread_name,
+        stop,
+        connection,
+        thread: Some(thread),
+    })
+}
+
 /// Portable idle detection. There is no freedesktop signal for "the user has
 /// been idle for N seconds", so this polls the desktop's idle counter. The
 /// poll runs on its own thread and only turns into a command when the
 /// threshold is crossed, keeping the command loop untouched.
-pub fn start_idle_watcher(tx: CommandSender, threshold_secs: Arc<AtomicU64>) {
-    std::thread::Builder::new()
+fn start_idle_watcher(tx: CommandSender, threshold_secs: Arc<AtomicU64>) -> Option<IdleWatcher> {
+    let stop = Arc::new(AtomicBool::new(false));
+    let thread_stop = Arc::clone(&stop);
+    let thread = std::thread::Builder::new()
         .name("ferramari-idle".to_string())
         .spawn(move || {
             let mut poller = IdlePoller::default();
-            loop {
-                std::thread::sleep(Duration::from_secs(15));
+            while !thread_stop.load(Ordering::SeqCst) {
+                let mut waited = Duration::ZERO;
+                while waited < IDLE_POLL_EVERY {
+                    if thread_stop.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    let slice = STOP_POLL_EVERY.min(IDLE_POLL_EVERY - waited);
+                    std::thread::sleep(slice);
+                    waited += slice;
+                }
                 let threshold_ms = threshold_secs.load(Ordering::Relaxed).saturating_mul(1000);
                 if let Some(state) = poller.poll(session_idle_ms(), threshold_ms) {
                     if tx.send(Command::Idle(state)).is_err() {
-                        break;
+                        return;
                     }
                 }
             }
         })
-        .ok();
+        .ok()?;
+    Some(IdleWatcher {
+        stop,
+        thread: Some(thread),
+    })
 }
 
 fn session_idle_ms() -> Option<u64> {
@@ -145,235 +334,221 @@ fn session_idle_ms() -> Option<u64> {
 }
 
 /// Watch every screen-saver implementation we know about. Each service gets
-/// its own thread because a missing service must not stop the others.
-pub fn start_screen_lock_watcher(tx: CommandSender) {
+/// its own connection and thread because a missing service must not stop the
+/// others, and closing one while stopping must not disturb the rest.
+fn screen_lock_watchers(tx: CommandSender) -> Vec<DbusWatcher> {
+    let mut watchers = Vec::new();
     for service in [
         "org.gnome.ScreenSaver",
         "org.cinnamon.ScreenSaver",
         "org.freedesktop.ScreenSaver",
     ] {
         let tx = tx.clone();
-        std::thread::Builder::new()
-            .name(format!(
-                "ferramari-lock-{}",
-                service.rsplit('.').next().unwrap_or("saver")
-            ))
-            .spawn(move || {
-                let path = format!("/{}", service.replace('.', "/"));
-                let Ok(connection) = Connection::session() else {
-                    return;
-                };
-                let Ok(proxy) = Proxy::new(&connection, service, path.as_str(), service) else {
-                    return;
-                };
-                let Ok(signals) = proxy.receive_signal("ActiveChanged") else {
-                    return;
-                };
-                log::debug!("[ScreenLock] Watching {service}");
-                for message in signals {
-                    let Ok(active) = message.body().deserialize::<bool>() else {
-                        continue;
-                    };
-                    if tx
-                        .send(Command::LockChanged {
-                            source: LockSource::ScreenSaver,
-                            active,
-                        })
-                        .is_err()
-                    {
-                        break;
-                    }
+        let name = format!(
+            "ferramari-lock-{}",
+            service.rsplit('.').next().unwrap_or("saver")
+        );
+        let setup = move |connection: &Connection, stop: &AtomicBool| {
+            let path = format!("/{}", service.replace('.', "/"));
+            let proxy = Proxy::new(connection, service, path.as_str(), service)?;
+            let signals = proxy.receive_signal("ActiveChanged")?;
+            log::debug!("[ScreenLock] Watching {service}");
+            for message in signals {
+                if stop.load(Ordering::SeqCst) {
+                    break;
                 }
-            })
-            .ok();
+                let Ok(active) = message.body().deserialize::<bool>() else {
+                    continue;
+                };
+                if tx
+                    .send(Command::LockChanged {
+                        source: LockSource::ScreenSaver,
+                        active,
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            Ok(())
+        };
+        if let Some(watcher) = spawn_dbus(&name, Connection::session, setup) {
+            watchers.push(watcher);
+        }
     }
+    watchers
 }
 
 /// Watch the login session's lock/unlock signals as a fallback for
 /// compositors that do not expose one of the screensaver services above.
 /// Both sources are aggregated by the app, so a logind unlock cannot override
 /// a still-active screensaver lock.
-pub fn start_logind_lock_watcher(tx: CommandSender) {
-    std::thread::Builder::new()
-        .name("ferramari-logind-lock".to_string())
-        .spawn(move || {
-            let Ok(connection) = Connection::system() else {
-                return;
-            };
-            let Ok(proxy) = Proxy::new(
-                &connection,
+fn logind_lock_watchers(tx: CommandSender) -> Vec<DbusWatcher> {
+    let mut watchers = Vec::new();
+    for (member, active, name) in [
+        ("Lock", true, "ferramari-logind-lock-on"),
+        ("Unlock", false, "ferramari-logind-lock-off"),
+    ] {
+        let tx = tx.clone();
+        let setup = move |connection: &Connection, stop: &AtomicBool| {
+            let proxy = Proxy::new(
+                connection,
                 "org.freedesktop.login1",
                 "/org/freedesktop/login1/session/auto",
                 "org.freedesktop.login1.Session",
-            ) else {
-                return;
-            };
-            let unlock_proxy = proxy.clone();
-            let unlock_tx = tx.clone();
-            if let Ok(signals) = proxy.receive_signal("Lock") {
-                std::thread::Builder::new()
-                    .name("ferramari-logind-lock-on".to_string())
-                    .spawn(move || {
-                        for _ in signals {
-                            if tx
-                                .send(Command::LockChanged {
-                                    source: LockSource::SessionManager,
-                                    active: true,
-                                })
-                                .is_err()
-                            {
-                                break;
-                            }
-                        }
+            )?;
+            let signals = proxy.receive_signal(member)?;
+            for _ in signals {
+                if stop.load(Ordering::SeqCst) {
+                    break;
+                }
+                if tx
+                    .send(Command::LockChanged {
+                        source: LockSource::SessionManager,
+                        active,
                     })
-                    .ok();
+                    .is_err()
+                {
+                    break;
+                }
             }
-            if let Ok(signals) = unlock_proxy.receive_signal("Unlock") {
-                std::thread::Builder::new()
-                    .name("ferramari-logind-lock-off".to_string())
-                    .spawn(move || {
-                        for _ in signals {
-                            if unlock_tx
-                                .send(Command::LockChanged {
-                                    source: LockSource::SessionManager,
-                                    active: false,
-                                })
-                                .is_err()
-                            {
-                                break;
-                            }
-                        }
-                    })
-                    .ok();
-            }
-        })
-        .ok();
+            Ok(())
+        };
+        if let Some(watcher) = spawn_dbus(name, Connection::system, setup) {
+            watchers.push(watcher);
+        }
+    }
+    watchers
 }
 
 /// Pause playback while the machine is suspended. logind emits `true` right
 /// before sleep and `false` after resume.
-///
-/// The system-bus connection is created on the worker: D-Bus can block for
-/// seconds when the bus is slow or absent, and startup must not stall on
-/// it.
-pub fn start_sleep_watcher(tx: CommandSender) {
-    std::thread::Builder::new()
-        .name("ferramari-sleep".to_string())
-        .spawn(move || {
-            let Ok(connection) = Connection::system() else {
-                log::debug!("[Power] System bus unavailable; suspend watch disabled");
-                return;
+fn sleep_watcher(tx: CommandSender) -> Vec<DbusWatcher> {
+    let mut watchers = Vec::new();
+    let setup = move |connection: &Connection, stop: &AtomicBool| {
+        let proxy = Proxy::new(
+            connection,
+            "org.freedesktop.login1",
+            "/org/freedesktop/login1",
+            "org.freedesktop.login1.Manager",
+        )?;
+        let signals = proxy.receive_signal("PrepareForSleep")?;
+        for message in signals {
+            if stop.load(Ordering::SeqCst) {
+                break;
+            }
+            let Ok(sleeping) = message.body().deserialize::<bool>() else {
+                continue;
             };
-            let Ok(proxy) = Proxy::new(
-                &connection,
-                "org.freedesktop.login1",
-                "/org/freedesktop/login1",
-                "org.freedesktop.login1.Manager",
-            ) else {
-                return;
+            if tx.send(Command::Suspend(sleeping)).is_err() {
+                break;
+            }
+        }
+        Ok(())
+    };
+    if let Some(watcher) = spawn_dbus("ferramari-sleep", Connection::system, setup) {
+        watchers.push(watcher);
+    }
+    watchers
+}
+
+/// GNOME's session manager and logind expose different end-session protocols.
+/// Pick one at startup; `paths::is_gnome()` already knows the desktop.
+fn end_session_watchers(tx: CommandSender) -> Vec<DbusWatcher> {
+    if paths::is_gnome() {
+        gnome_session_watchers(tx)
+    } else {
+        logind_session_watchers(tx)
+    }
+}
+
+/// GNOME expects clients to register, answer `QueryEndSession` immediately and
+/// answer `EndSession` while quitting. Both arrive on the registered client's
+/// private interface.
+fn gnome_session_watchers(tx: CommandSender) -> Vec<DbusWatcher> {
+    let setup = move |connection: &Connection, stop: &AtomicBool| {
+        let manager = Proxy::new(
+            connection,
+            "org.gnome.SessionManager",
+            "/org/gnome/SessionManager",
+            "org.gnome.SessionManager",
+        )?;
+        let client_path: zbus::zvariant::OwnedObjectPath =
+            manager.call("RegisterClient", &("ferramari", ""))?;
+        // One client and one thread. Registering separately for the two
+        // signals would make gnome-session see the app twice and answer the
+        // same end-session query twice. A match rule for this client's
+        // interface delivers both signals to a single iterator; the member
+        // tells them apart.
+        let rule = zbus::MatchRule::builder()
+            .msg_type(zbus::message::Type::Signal)
+            .sender("org.gnome.SessionManager")?
+            .path(client_path.as_str())?
+            .interface("org.gnome.SessionManager.ClientPrivate")?
+            .build();
+        let signals = zbus::blocking::MessageIterator::for_match_rule(rule, connection, Some(4))?;
+        let client = Proxy::new_owned(
+            connection.clone(),
+            "org.gnome.SessionManager",
+            client_path.to_string(),
+            "org.gnome.SessionManager.ClientPrivate",
+        )?;
+        for message in signals {
+            if stop.load(Ordering::SeqCst) {
+                break;
+            }
+            let Ok(message) = message else {
+                continue;
             };
-            let Ok(signals) = proxy.receive_signal("PrepareForSleep") else {
-                return;
-            };
-            for message in signals {
-                let Ok(sleeping) = message.body().deserialize::<bool>() else {
-                    continue;
-                };
-                if tx.send(Command::Suspend(sleeping)).is_err() {
-                    break;
+            match message.header().member().map(|member| member.as_str()) {
+                // QueryEndSession must be answered immediately, otherwise
+                // the desktop waits for the full timeout before shutting
+                // down.
+                Some("QueryEndSession") => {
+                    let _ = client.call::<_, _, ()>("EndSessionResponse", &(true, ""));
                 }
+                Some("EndSession") => {
+                    // Answer before asking the app to quit: shutdown closes
+                    // this connection, and the response must reach
+                    // gnome-session first or the logout waits for its timeout.
+                    let _ = client.call::<_, _, ()>("EndSessionResponse", &(true, ""));
+                    let _ = tx.send(Command::Quit);
+                }
+                _ => {}
             }
-        })
-        .ok();
-}
-
-pub fn start_end_session_watcher(tx: CommandSender) {
-    let gnome = paths::is_gnome();
-    // Both venders register clients and query the session bus; do that off the
-    // command loop so a missing/slow bus cannot delay the first frame.
-    std::thread::Builder::new()
-        .name("ferramari-session".to_string())
-        .spawn(move || {
-            if gnome {
-                start_gnome_session_watcher(tx);
-            } else {
-                start_logind_watcher(tx);
-            }
-        })
-        .ok();
-}
-
-fn start_gnome_session_watcher(tx: CommandSender) {
-    let Ok(connection) = Connection::session() else {
-        return;
-    };
-    let Ok(manager) = Proxy::new(
-        &connection,
-        "org.gnome.SessionManager",
-        "/org/gnome/SessionManager",
-        "org.gnome.SessionManager",
-    ) else {
-        return;
-    };
-    let client_path: zbus::zvariant::OwnedObjectPath =
-        match manager.call("RegisterClient", &("ferramari", "")) {
-            Ok(path) => path,
-            Err(err) => {
-                log::debug!("[EndSession] RegisterClient failed: {err}");
-                return;
-            }
-        };
-    let Ok(client) = Proxy::new_owned(
-        connection.clone(),
-        "org.gnome.SessionManager",
-        client_path.to_string(),
-        "org.gnome.SessionManager.ClientPrivate",
-    ) else {
-        return;
-    };
-
-    // QueryEndSession must be answered immediately, otherwise the desktop
-    // waits for the full timeout before shutting down.
-    let query_client = client.clone();
-    if let Ok(signals) = query_client.receive_signal("QueryEndSession") {
-        std::thread::spawn(move || {
-            for _ in signals {
-                let _ = query_client.call::<_, _, ()>("EndSessionResponse", &(true, ""));
-            }
-        });
-    }
-
-    let Ok(signals) = client.receive_signal("EndSession") else {
-        return;
-    };
-    std::thread::spawn(move || {
-        for _ in signals {
-            let _ = tx.send(Command::Quit);
-            let _ = client.call::<_, _, ()>("EndSessionResponse", &(true, ""));
         }
-    });
+        Ok(())
+    };
+    spawn_dbus("ferramari-session", Connection::session, setup)
+        .into_iter()
+        .collect()
 }
 
-fn start_logind_watcher(tx: CommandSender) {
-    let Ok(connection) = Connection::system() else {
-        return;
-    };
-    let Ok(proxy) = Proxy::new(
-        &connection,
-        "org.freedesktop.login1",
-        "/org/freedesktop/login1",
-        "org.freedesktop.login1.Manager",
-    ) else {
-        return;
-    };
-    let Ok(signals) = proxy.receive_signal("PrepareForShutdown") else {
-        return;
-    };
-    for message in signals {
-        if message.body().deserialize::<bool>().unwrap_or(false) {
-            let _ = tx.send(Command::Quit);
+/// Non-GNOME sessions announce shutdown through logind's manager interface.
+fn logind_session_watchers(tx: CommandSender) -> Vec<DbusWatcher> {
+    let mut watchers = Vec::new();
+    let setup = move |connection: &Connection, stop: &AtomicBool| {
+        let proxy = Proxy::new(
+            connection,
+            "org.freedesktop.login1",
+            "/org/freedesktop/login1",
+            "org.freedesktop.login1.Manager",
+        )?;
+        let signals = proxy.receive_signal("PrepareForShutdown")?;
+        for message in signals {
+            if stop.load(Ordering::SeqCst) {
+                break;
+            }
+            if message.body().deserialize::<bool>().unwrap_or(false) {
+                let _ = tx.send(Command::Quit);
+            }
         }
+        Ok(())
+    };
+    if let Some(watcher) = spawn_dbus("ferramari-session", Connection::system, setup) {
+        watchers.push(watcher);
     }
+    watchers
 }
 
 #[cfg(test)]
@@ -460,5 +635,36 @@ mod tests {
         if let Some(milliseconds) = session_idle_ms() {
             assert!(milliseconds < 86_400_000, "{milliseconds}");
         }
+    }
+
+    #[test]
+    fn the_idle_watcher_stops_without_waiting_for_a_poll() {
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let watcher = start_idle_watcher(CommandSender::new(tx), Arc::new(AtomicU64::new(300)))
+            .expect("idle watcher thread");
+        drop(watcher);
+    }
+
+    #[test]
+    fn join_bounded_reaps_a_finished_thread() {
+        let mut thread = Some(std::thread::spawn(|| {}));
+        join_bounded("test", &mut thread, Instant::now() + Duration::from_secs(1));
+        assert!(thread.is_none(), "the finished thread is consumed");
+    }
+
+    #[test]
+    fn join_bounded_hands_the_thread_a_deadline() {
+        // A watcher that ignores its closed connection must not hold the
+        // caller past the deadline. The released thread finishes on its own
+        // after the test stops waiting for it.
+        let (release, wait) = std::sync::mpsc::channel();
+        let mut thread = Some(std::thread::spawn(move || {
+            let _ = wait.recv();
+        }));
+        let started = Instant::now();
+        join_bounded("test", &mut thread, Instant::now());
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert!(thread.is_none(), "the wedged thread was detached");
+        let _ = release.send(());
     }
 }

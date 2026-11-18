@@ -183,6 +183,28 @@ pub fn is_local_uri(uri: &str) -> bool {
     uri.starts_with("data:") || uri.starts_with("about:") || uri.starts_with("blob:")
 }
 
+/// Retry an operation until it succeeds or the deadline expires.
+///
+/// The first attempt runs immediately. The caller owns the deadline and the
+/// operation's own I/O timeout; this helper only removes the startup race where
+/// another process has claimed its instance name but has not published the
+/// endpoint/interface yet.
+pub fn retry_until<E, F>(deadline: Duration, interval: Duration, mut attempt: F) -> Result<(), E>
+where
+    F: FnMut() -> Result<(), E>,
+{
+    let ends_at = Instant::now() + deadline;
+    loop {
+        match attempt() {
+            Ok(()) => return Ok(()),
+            Err(_) if Instant::now() < ends_at => {
+                std::thread::sleep(interval);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
 /// Remove abandoned ffmpeg output files (`*.part.jpg`, `*.part.png`) left by
 /// a crashed process. Fresh partials are kept: another worker may still be
 /// writing them.
@@ -286,6 +308,7 @@ mod tests {
                 width: 1920,
                 height: 1080,
                 scale_factor: 1,
+                physical_geometry: false,
                 refresh_hz: None,
                 is_primary: true,
                 identity: DisplayIdentity::default(),
@@ -298,6 +321,7 @@ mod tests {
                 width: 1920,
                 height: 1080,
                 scale_factor: 1,
+                physical_geometry: false,
                 refresh_hz: None,
                 is_primary: false,
                 identity: DisplayIdentity::default(),
@@ -320,6 +344,33 @@ mod tests {
             assert_eq!(choice, PathBuf::from("/b.mp4"));
         }
         assert!(random_other_video(&videos, "/a.mp4").is_some());
+    }
+
+    #[test]
+    fn retry_succeeds_after_a_transient_failure() {
+        let mut attempts = 0;
+        let result = retry_until(Duration::from_millis(100), Duration::from_millis(1), || {
+            attempts += 1;
+            if attempts < 3 {
+                Err("not ready")
+            } else {
+                Ok(())
+            }
+        });
+        assert_eq!(result, Ok(()));
+        assert_eq!(attempts, 3);
+    }
+
+    #[test]
+    fn retry_returns_the_last_error_after_the_deadline() {
+        let mut attempts = 0;
+        let result: Result<(), &str> =
+            retry_until(Duration::from_millis(10), Duration::from_millis(2), || {
+                attempts += 1;
+                Err("still not ready")
+            });
+        assert_eq!(result, Err("still not ready"));
+        assert!(attempts > 1);
     }
 
     #[test]

@@ -17,6 +17,15 @@ use crate::ytdlp;
 
 #[derive(Debug, Clone)]
 pub enum Command {
+    /// Execute `command` and send its synchronous outcome to `reply`.
+    ///
+    /// Used by the control transports for the first application error after a
+    /// UI action. Commands that complete on a worker later still report their
+    /// progress through `operation_status`/`operation_error`.
+    Request {
+        command: Box<Command>,
+        reply: mpsc::SyncSender<Result<(), String>>,
+    },
     ShowGui,
     Null,
     Video {
@@ -180,9 +189,12 @@ pub struct Snapshot {
     pub autostart_enabled: bool,
     /// Monitor name → rotation collection id.
     pub rotations: std::collections::HashMap<String, String>,
-    /// Most recent long-running package operation result for UI clients.
+    /// Most recent long-running operation result for UI clients.
     pub operation_status: String,
     pub operation_error: bool,
+    /// Incremented whenever a status is published, so a client can tell a
+    /// repeated message from a new occurrence.
+    pub operation_seq: u64,
 }
 
 impl Default for Snapshot {
@@ -220,6 +232,7 @@ impl Default for Snapshot {
             rotations: std::collections::HashMap::new(),
             operation_status: String::new(),
             operation_error: false,
+            operation_seq: 0,
         }
     }
 }

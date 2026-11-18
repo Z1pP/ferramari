@@ -18,7 +18,7 @@ use crate::paths;
 const CONFIG_BACKUP_EXTENSION: &str = "json.bak";
 const CONFIG_TEMP_EXTENSION: &str = "json.tmp";
 
-fn backup_path(path: &Path) -> PathBuf {
+pub(crate) fn backup_path(path: &Path) -> PathBuf {
     path.with_extension(CONFIG_BACKUP_EXTENSION)
 }
 
@@ -26,21 +26,44 @@ fn temp_path(path: &Path) -> PathBuf {
     path.with_extension(CONFIG_TEMP_EXTENSION)
 }
 
+pub(crate) fn strip_bom(text: &str) -> &str {
+    text.strip_prefix('\u{feff}').unwrap_or(text)
+}
+
 fn is_json_object(text: &str) -> bool {
-    serde_json::from_str::<Value>(text)
+    serde_json::from_str::<Value>(strip_bom(text))
         .map(|value| value.is_object())
         .unwrap_or(false)
 }
 
 pub(crate) fn read_with_backup(path: &Path) -> Option<String> {
-    fs::read_to_string(path)
+    // A readable primary is not necessarily a valid one. Returning it without
+    // checking would make the caller treat a truncated file as authoritative
+    // and ignore the good `.bak` beside it.
+    let primary = fs::read_to_string(path).ok();
+    if primary.as_deref().is_some_and(is_json_object) {
+        return primary;
+    }
+    fs::read_to_string(backup_path(path))
         .ok()
-        .or_else(|| fs::read_to_string(backup_path(path)).ok())
+        .filter(|text| is_json_object(text))
+        .or(primary)
+}
+
+fn is_json_object_bytes(contents: &[u8]) -> bool {
+    std::str::from_utf8(contents)
+        .ok()
+        .is_some_and(is_json_object)
 }
 
 /// Write through a temporary file and rename it over the target, keeping the
-/// previous copy as `config.json.bak`. The rename is atomic on one filesystem,
-/// so a crash never leaves a half-written config behind.
+/// previous copy as `config.json.bak`. The backup itself is promoted through a
+/// temporary file: a crash can leave an old valid copy, but never a truncated
+/// one.
+///
+/// Only a previous primary that is a valid JSON object is promoted. If the
+/// primary is the corrupt file being repaired, copying it over the backup
+/// would destroy the last good copy.
 pub(crate) fn write_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -51,9 +74,13 @@ pub(crate) fn write_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> 
         file.write_all(contents)?;
         file.sync_all()?;
     }
-    if path.is_file() {
-        fs::copy(path, backup_path(path))?;
+
+    if let Ok(previous) = fs::read(path) {
+        if is_json_object_bytes(&previous) {
+            write_backup_atomic(path, &previous)?;
+        }
     }
+
     fs::rename(&temp, path)?;
     // Make the rename durable as well; ignore platforms/filesystems that do
     // not allow opening a directory.
@@ -61,6 +88,18 @@ pub(crate) fn write_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> 
     if let Some(parent) = path.parent() {
         let _ = fs::File::open(parent).and_then(|dir| dir.sync_all());
     }
+    Ok(())
+}
+
+fn write_backup_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    let backup = backup_path(path);
+    let temp = backup.with_extension("json.tmp");
+    {
+        let mut file = fs::File::create(&temp)?;
+        file.write_all(contents)?;
+        file.sync_all()?;
+    }
+    fs::rename(&temp, &backup)?;
     Ok(())
 }
 
@@ -221,7 +260,7 @@ impl Config {
     pub fn language_override() -> Option<String> {
         let path = paths::config_path();
         let text = read_with_backup(&path)?;
-        let value: Value = serde_json::from_str(&text).ok()?;
+        let value: Value = serde_json::from_str(strip_bom(&text)).ok()?;
         let language = value.get("language")?.as_str()?.trim();
         if language.is_empty() || language == "system" {
             None
@@ -276,7 +315,7 @@ impl Config {
         let template = Self::template(monitors);
         let template_value = serde_json::to_value(&template).expect("template is serializable");
 
-        let mut value: Value = match serde_json::from_str(text) {
+        let mut value: Value = match serde_json::from_str(strip_bom(text)) {
             Ok(value @ Value::Object(_)) => value,
             _ => return (template, true),
         };
@@ -329,6 +368,31 @@ impl Config {
         }
         if !matches!(config.theme.as_str(), "light" | "dark") {
             config.theme = default_theme();
+        }
+
+        // Keep the on-disk values inside the same ranges the runtime setters
+        // enforce. A hand-edited or older file must not be able to feed a huge
+        // blur radius or a negative/very small fade interval into the fade and
+        // ffmpeg workers.
+        let volume = config.volume.clamp(0, 100);
+        if volume != config.volume {
+            config.volume = volume;
+            changed = true;
+        }
+        let blur = config.blur_radius.clamp(0, 20);
+        if blur != config.blur_radius {
+            config.blur_radius = blur;
+            changed = true;
+        }
+        let fade_duration = config.fade_duration_sec.clamp(0.0, 60.0);
+        if fade_duration != config.fade_duration_sec {
+            config.fade_duration_sec = fade_duration;
+            changed = true;
+        }
+        let fade_interval = config.fade_interval.clamp(0.001, 10.0);
+        if fade_interval != config.fade_interval {
+            config.fade_interval = fade_interval;
+            changed = true;
         }
 
         // Monitors come and go; a new monitor inherits the Default source.
@@ -575,6 +639,85 @@ mod tests {
         let recovered = Config::load_from(&path, &monitors());
         assert_eq!(recovered.volume, 11);
         assert!(is_json_object(&fs::read_to_string(&path).unwrap()));
+        // The repair must not overwrite the last good backup with the corrupt
+        // primary it just replaced.
+        let repaired_backup = fs::read_to_string(backup_path(&path)).unwrap();
+        assert!(is_json_object(&repaired_backup));
+        assert_eq!(
+            serde_json::from_str::<Config>(&repaired_backup)
+                .unwrap()
+                .volume,
+            11
+        );
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_corrupt_primary_is_not_promoted_to_the_backup() {
+        let dir = temp_dir("corrupt-primary");
+        let path = dir.join("config.json");
+        let mut first = Config::template(&monitors());
+        first.volume = 11;
+        write_atomic(
+            &path,
+            format!("{}\n", serde_json::to_string(&first).unwrap()).as_bytes(),
+        )
+        .unwrap();
+        let mut second = first.clone();
+        second.volume = 77;
+        write_atomic(
+            &path,
+            format!("{}\n", serde_json::to_string(&second).unwrap()).as_bytes(),
+        )
+        .unwrap();
+
+        // Damage the primary, then repair it with a new value. The backup
+        // must remain the last valid copy, not become the damaged file.
+        fs::write(&path, b"{\"version\": 4, \"audio_volume\"").unwrap();
+        let mut third = second.clone();
+        third.volume = 99;
+        write_atomic(
+            &path,
+            format!("{}\n", serde_json::to_string(&third).unwrap()).as_bytes(),
+        )
+        .unwrap();
+
+        let primary: Config = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let backup: Config =
+            serde_json::from_str(&fs::read_to_string(backup_path(&path)).unwrap()).unwrap();
+        assert_eq!(primary.volume, 99);
+        assert_eq!(backup.volume, 11);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn read_with_backup_prefers_a_valid_primary_and_falls_back_on_corruption() {
+        let dir = temp_dir("read-backup");
+        let path = dir.join("config.json");
+        let mut good = Config::template(&monitors());
+        good.volume = 33;
+        fs::write(
+            backup_path(&path),
+            format!("{}\n", serde_json::to_string(&good).unwrap()),
+        )
+        .unwrap();
+
+        fs::write(&path, b"{broken").unwrap();
+        let text = read_with_backup(&path).expect("backup is readable");
+        assert!(is_json_object(&text));
+        assert_eq!(serde_json::from_str::<Config>(&text).unwrap().volume, 33);
+
+        let mut primary = good.clone();
+        primary.volume = 44;
+        fs::write(
+            &path,
+            format!("{}\n", serde_json::to_string(&primary).unwrap()),
+        )
+        .unwrap();
+        let text = read_with_backup(&path).expect("primary is readable");
+        assert_eq!(serde_json::from_str::<Config>(&text).unwrap().volume, 44);
 
         let _ = fs::remove_dir_all(dir);
     }
@@ -774,6 +917,34 @@ mod tests {
         let (config, _) = Config::parse(text, &monitors());
         assert_eq!(config.volume, 50);
         assert_eq!(config.fade_duration_sec, 0.25);
+    }
+
+    #[test]
+    fn a_utf8_bom_is_not_a_corrupt_config() {
+        let mut template = Config::template(&monitors());
+        template.volume = 21;
+        let text = format!("\u{feff}{}\n", serde_json::to_string(&template).unwrap());
+        let (config, _) = Config::parse(&text, &monitors());
+        assert_eq!(config.volume, 21);
+        assert!(is_json_object(&text));
+    }
+
+    #[test]
+    fn out_of_range_numbers_are_clamped_and_persisted() {
+        let text = r#"{
+            "version": 4, "mode": "MODE_NULL",
+            "data_source": {"Default": ""},
+            "audio_volume": 999,
+            "static_wallpaper_blur_radius": -4,
+            "fade_duration_sec": 999.0,
+            "fade_interval": 0.0
+        }"#;
+        let (config, changed) = Config::parse(text, &monitors());
+        assert!(changed);
+        assert_eq!(config.volume, 100);
+        assert_eq!(config.blur_radius, 0);
+        assert_eq!(config.fade_duration_sec, 60.0);
+        assert_eq!(config.fade_interval, 0.001);
     }
 
     #[test]

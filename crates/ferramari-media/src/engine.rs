@@ -253,6 +253,20 @@ impl Engine {
         stats
     }
 
+    /// Whether the surface and the player currently have live resources.
+    ///
+    /// This is deliberately non-blocking: it reads the player's worker flags
+    /// instead of polling the child, so a snapshot can ask it without turning
+    /// into a player restart check.
+    pub fn player_ready(&self) -> bool {
+        if !self.surface_alive() {
+            return false;
+        }
+        match &self.content {
+            Content::Video { mpv } => mpv.lock().map(|mpv| mpv.is_alive()).unwrap_or(false),
+        }
+    }
+
     /// True while the embedded player is alive.
     pub fn player_alive(&mut self) -> bool {
         match &mut self.content {
@@ -532,6 +546,7 @@ mod tests {
             width: 1920,
             height: 1080,
             scale_factor: 1,
+            physical_geometry: false,
             refresh_hz: None,
             is_primary: true,
             identity: DisplayIdentity::default(),

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-**Stability pass after the 2.2.0 audit.** The suite now has **466 tests**.
+**Stability pass after the 2.2.0 audit.** The Windows-hosted suite now has **466 tests**.
 
 - **Windows playback with static wallpaper off** no longer enters a restart
   loop. Restoring the original image is now a no-op when Explorer already

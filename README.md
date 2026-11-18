@@ -64,7 +64,6 @@ these captures carry the test machine's own media library.
 - Browse a catalogue of live wallpapers with categories, search and
   pagination, over a featured carousel and a row of category tiles
 - Streaming URLs through `yt-dlp` (YouTube and many other sites)
-- Web-page wallpapers are currently unavailable; a replacement browser engine is required before this feature can return
 - GNOME static wallpaper with a blurred frame from the video
 - Pause or mute playback per monitor when that monitor is covered by a
   maximized or fullscreen window; the other monitors keep playing

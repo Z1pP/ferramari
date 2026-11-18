@@ -1,12 +1,13 @@
 # Testing matrix
 
 Ferramari is a desktop application, so CI can only cover the parts that do not
-need a live session. This document contains historical live-session results
-for the 1.9.x GTK build. They are not evidence that the 2.0.0 Iced migration
-has passed equivalent smoke tests. The 2.0 workspace must be tested separately
-using the checklist below; do not carry forward old “tested” labels as 2.0
-certification. Windows has its own checklist at the end; a green Windows CI
-job proves the build and unit tests, not wallpaper playback.
+need a live session. The first rows below are historical 1.9.x GTK results and
+are not evidence for the 2.0+ Iced workspace. The Windows 2.2 results are
+partial: single-display playback, recovery, tray and installer paths have been
+exercised, while multi-monitor, mixed-DPI, real lock/sleep and the full
+Linux matrix remain unchecked. Do not carry forward old “tested” labels as
+certification. A green CI job proves the build and unit tests, not wallpaper
+playback.
 
 ## Environment matrix
 

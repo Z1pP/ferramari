@@ -122,7 +122,7 @@ Statuses used below:
 | R-09 | P2 | partially-fixed | UI status | Status expires, new server operations have a sequence, optimistic play has a timeout |
 | R-10 | P2 | fixed-unit | Config validation | Loaded volume/blur/fade values are range-checked and persisted |
 | R-11 | P2 | fixed-unit | Config robustness | A UTF-8 BOM makes the whole config fall back to defaults |
-| R-12 | P2 | fixed-code | Cache management | `catalogue::cleanup_cache()` has no caller |
+| R-12 | P2 | fixed-unit | Cache management | `catalogue::cleanup_cache()` has a caller and a fake-root test |
 | R-13 | P2 | fixed-unit | Single instance | Second launch retries endpoint/interface publication |
 | R-14 | P2 | documented-gap | Shutdown | Linux D-Bus watchers and the Windows accept loop live until process exit |
 | R-15 | P3 | partially-fixed | Docs / CI | Linux formatting gate fixed; stale docs/release gating remain |
@@ -796,7 +796,7 @@ document and preserves its value.
 ## R-12 — `catalogue::cleanup_cache()` has no caller
 
 **Priority:** P2  
-**Status:** `fixed-code` (startup call added; fake-root test open)
+**Status:** `fixed-unit` (startup call and fake-root test added)
 
 **Where**
 
@@ -825,11 +825,13 @@ Linux if it is safe to identify files from dead PIDs.
   partial file; assert old data is removed and the current limit is applied.
 - A start-up test/fake-clock assertion that the cleanup function is invoked.
 
-**Resolution (2026-11-18, partial)**
+**Resolution (2026-11-18)**
 
-The startup cache-clean thread now calls `catalogue::cleanup_cache()` alongside
-the thumbnail/static partial cleanup. The function itself still reads the
-global cache paths; a fake-root test remains open.
+The startup cache-clean thread calls `catalogue::cleanup_cache()` alongside the
+thumbnail/static partial cleanup. The policy is now a testable
+`cleanup_cache_in(root, now)` function; the new test covers expired pages,
+previews, videos and partials, keeps fresh files, and verifies that an expired
+video's sheet is removed with it.
 
 ---
 
@@ -967,7 +969,8 @@ the historical audit.
 
 The Linux CI formatting step now runs `cargo fmt --all -- --check`, so a
 formatting diff fails the job instead of being rewritten in the runner. The
-documentation reconciliation and release-workflow gating remain open.
+README duplicate web entry, ROADMAP introduction, TESTING status preamble and
+desktop `Comment` have been reconciled. Release-workflow gating remains open.
 
 ---
 
@@ -1056,7 +1059,7 @@ the audit and verification results separate.
 | R-09: status sequence and optimistic timeout | UI/client compile and existing tests; no new UI-state harness yet |
 | R-10: numeric config ranges | New parse test |
 | R-11: UTF-8 BOM handling | New config test |
-| R-12: catalogue cache cleanup call | Startup call added; fake-root test still open |
+| R-12: catalogue cache cleanup | Startup call plus fake-root cleanup test |
 | R-13: second-launch retry | New util timeout tests; two-process smoke still open |
 | R-15: Linux formatting gate | `cargo fmt --all -- --check`; docs cleanup still open |
 
@@ -1068,7 +1071,7 @@ cargo test --workspace --locked                                 exit 0
 cargo build --workspace --release --locked                      exit 0
 ```
 
-Test totals after the change set: **462 passed, 0 failed** (16 binary + 357
+Test totals after the change set: **463 passed, 0 failed** (16 binary + 358
 core + 18 media + 57 platform + 8 UI library + 6 UI binary).
 
 ## Phase 0 exit

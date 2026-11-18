@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-**Stability pass after the 2.2.0 audit.** The Windows-hosted suite now has **466 tests**.
+**Stability pass after the 2.2.0 audit.** The Windows-hosted suite now has
+**469 tests** (17 binary + 361 core + 18 media + 59 platform + 8 UI library +
+6 UI binary).
 
 - **Windows playback with static wallpaper off** no longer enters a restart
   loop. Restoring the original image is now a no-op when Explorer already
@@ -26,14 +28,50 @@
   single session client for both end-session signals.
 - **Release tags** repeat formatting, clippy, tests and the release build.
 
+## 2.2.4 - 2026-11-18
+
+- **Settings copy reviewed.** Every Settings section now describes what the
+  switch or slider actually does. The garbled, duplicated Russian and Japanese
+  strings are gone; the profile, hardware-decoding, idle, rotation, occlusion,
+  static-wallpaper and background-tray descriptions were rewritten in all
+  three catalogs. Windows no longer offers the Linux-only `VA-API` decoder,
+  and the dead web-wallpaper networking switch was removed.
+- **Settings fit narrow windows.** The package actions wrap onto a second line
+  instead of clipping, and minute counts use the interface language.
+
+## 2.2.3 - 2026-11-18
+
+- **Start works after Stop.** `quit_player` destroys the players; the Home
+  Start button now clears the user pause and rebuilds the windows from the
+  config instead of applying a plan to an empty list. Previously only a full
+  app restart brought the wallpaper back.
+- **Video changes reuse the player and skip the static-frame refresh.** The
+  switch no longer tears down every window or applies a new system wallpaper
+  frame while the video is running. Explorer therefore does not replace its
+  wallpaper worker and kill mpv on every change; the log shows a reused player
+  in microseconds, and the static frame is refreshed when playback stops.
+- **Next/previous wallpaper wraps.** The Home step buttons now step through
+  the monitor's rotation collection, the library history and all videos in the
+  Ferramari folder (in that order). The last item steps to the first and the
+  first steps back to the last, instead of reloading the current file.
+
+## 2.2.2 - 2026-11-17
+
+- **No console window from a shortcut.** Windows shortcuts, the desktop
+  shortcut and autostart now go through `ferramari-launcher.exe`, a tiny
+  GUI-subsystem binary that starts the server with `CREATE_NO_WINDOW` and
+  forwards its arguments. The server keeps its console for `--doctor`,
+  `--version`, package commands and debug logs when it is run from a terminal;
+  the normal shortcut launch shows only the Iced UI.
+
 ## 2.2.0 - 2026-11-17
 
 **Ferramari runs on Windows 10/11.** The same two binaries, the same core
 policy and the same Iced control surface now have a Win32 backend: a wallpaper
 window behind Explorer's desktop icons, physical-pixel monitor discovery,
 foreground/occlusion tracking, lock and power events, a tray icon, autostart
-and static-wallpaper handling. **450 tests** pass (15 binary + 350 core + 17
-media + 54 platform + 8 UI library + 6 UI binary).
+and static-wallpaper handling. **452 tests** pass (16 binary + 350 core + 17
+media + 55 platform + 8 UI library + 6 UI binary).
 
 - **Wallpaper hosting.** A child window is parented to the `WorkerW` behind
   `SHELLDLL_DefView` (with `Progman` as fallback) and embedded into mpv through

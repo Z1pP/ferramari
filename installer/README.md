@@ -6,6 +6,7 @@ Ferramari ships two executables that must stay side by side:
 Ferramari\
   ferramari.exe
   ferramari-ui.exe
+  ferramari-launcher.exe
   locale\ru\LC_MESSAGES\ferramari.mo
   locale\ja\LC_MESSAGES\ferramari.mo
   README.md

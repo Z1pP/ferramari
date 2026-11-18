@@ -237,6 +237,16 @@ impl ServerInterface {
         send(&self.tx, Command::FeelingLucky);
     }
 
+    #[zbus(name = "next_wallpaper")]
+    fn next_wallpaper(&self) {
+        send(&self.tx, Command::NextWallpaper);
+    }
+
+    #[zbus(name = "previous_wallpaper")]
+    fn previous_wallpaper(&self) {
+        send(&self.tx, Command::PreviousWallpaper);
+    }
+
     #[zbus(name = "show_gui")]
     fn show_gui(&self) {
         send(&self.tx, Command::ShowGui);

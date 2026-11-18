@@ -105,6 +105,11 @@ pub struct App {
     idle_threshold: Arc<AtomicU64>,
     static_job: Option<(String, i64)>,
     static_generation: u64,
+    /// A video switch should not apply a new static frame while the player is
+    /// running: `SystemParametersInfoW` makes Explorer replace its wallpaper
+    /// worker, which destroys the surface and forces mpv to restart. The
+    /// existing frame stays behind the video; stopping refreshes it.
+    suppress_static_refresh: bool,
     /// Set when a wallpaper window is newly mapped: only then do the desktop
     /// icons need to be redrawn on top of it.
     pending_icon_refresh: bool,
@@ -200,6 +205,7 @@ impl App {
             idle_threshold,
             static_job: None,
             static_generation: 0,
+            suppress_static_refresh: false,
             pending_icon_refresh: false,
             config_dirty_at: None,
             policies: HashMap::new(),
@@ -374,7 +380,16 @@ impl App {
                 self.sync_snapshot();
             }
             Command::StartPlayback => {
-                self.apply_playback_states();
+                // Stop (`quit_player`) destroys the players. Start has to
+                // recreate them from the config instead of only applying a
+                // plan to a list that is now empty; otherwise the UI button
+                // does nothing until the next launch.
+                self.paused_by_user = false;
+                if self.windows.is_empty() {
+                    self.rebuild_windows();
+                } else {
+                    self.apply_playback_states();
+                }
                 self.sync_snapshot();
             }
             Command::Reload => {
@@ -386,6 +401,8 @@ impl App {
             Command::ReloadConfig => self.reload_config(),
             Command::QuitPlayer => self.quit_player(),
             Command::FeelingLucky => self.feeling_lucky(),
+            Command::NextWallpaper => self.step_wallpaper(true),
+            Command::PreviousWallpaper => self.step_wallpaper(false),
             Command::Quit => self.quit(),
             Command::ToggleMute => self.set_mute(!self.config.is_mute),
             Command::TogglePause => self.set_paused_by_user(!self.paused_by_user),
@@ -850,7 +867,13 @@ impl App {
                 log::warn!("[Library] {err}");
             }
         }
-        self.rebuild_windows();
+        // A video change should reuse the player on that monitor rather than
+        // tearing down every window and waiting for a new mpv process. Keep the
+        // existing static frame behind it so Explorer does not replace the
+        // wallpaper worker (and kill the player) on every switch.
+        self.suppress_static_refresh = true;
+        self.sync_windows();
+        self.finish_rebuild();
     }
 
     /// Highest monitor height, which decides the stream format to ask for.
@@ -944,6 +967,87 @@ impl App {
         self.rebuild_windows();
     }
 
+    /// Move the primary monitor to the next/previous item in its rotation
+    /// collection, falling back to the library history and then every video
+    /// in the Ferramari folder. Both ends wrap, so the step-forward control
+    /// still works when the current file is the last in the queue.
+    fn step_wallpaper(&mut self, forward: bool) {
+        let Some(target) = self
+            .monitors
+            .iter()
+            .find(|monitor| monitor.is_primary)
+            .or_else(|| self.monitors.first())
+            .cloned()
+        else {
+            return;
+        };
+
+        let mut items: Vec<String> = self
+            .config
+            .rotations
+            .get(&target.name)
+            .and_then(|id| self.library.borrow().collection(id).cloned())
+            .map(|collection| collection.items)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|path| Path::new(path).is_file())
+            .collect();
+        if items.is_empty() {
+            // No collection: use the recent history first, then every video in
+            // the Ferramari folder. A history with a single entry must not
+            // turn the step buttons into no-ops.
+            items = self
+                .library
+                .borrow()
+                .history()
+                .iter()
+                .map(|entry| entry.path.clone())
+                .filter(|path| Path::new(path).is_file())
+                .collect();
+            for path in util::video_paths() {
+                let path = path.to_string_lossy().to_string();
+                if !items.contains(&path) {
+                    items.push(path);
+                }
+            }
+        }
+
+        let current = self.config.source_for(&target.name).to_string();
+        let Some(next) = step_path(&items, &current, forward) else {
+            return;
+        };
+        if next == current {
+            return;
+        }
+
+        log::info!(
+            "[Wallpaper] {} -> {} ({})",
+            target.name,
+            next,
+            if forward { "next" } else { "previous" }
+        );
+        self.config.mode = Mode::Video;
+        self.config
+            .data_source
+            .insert(target.name.clone(), next.clone());
+        if self.config.default_source().is_empty()
+            || self.config.default_source() == current.as_str()
+            || !Path::new(self.config.default_source()).is_file()
+        {
+            self.config
+                .data_source
+                .insert("Default".to_string(), next.clone());
+        }
+        self.save_config();
+        self.library.borrow_mut().record_use(&next);
+        if let Err(err) = self.library.borrow().save() {
+            log::warn!("[Library] {err}");
+        }
+        self.suppress_static_refresh = true;
+        self.sync_windows();
+        self.finish_rebuild();
+    }
+
     fn feeling_lucky(&mut self) {
         let videos = util::video_paths();
         let Some(video) = util::random_other_video(&videos, self.config.default_source())
@@ -969,7 +1073,9 @@ impl App {
         }
         self.config.data_source.insert("Default".to_string(), video);
         self.save_config();
-        self.rebuild_windows();
+        self.suppress_static_refresh = true;
+        self.sync_windows();
+        self.finish_rebuild();
     }
 
     fn rebuild_windows(&mut self) {
@@ -1179,6 +1285,7 @@ impl App {
 
     fn finish_rebuild(&mut self) {
         self.update_static_wallpaper();
+        self.suppress_static_refresh = false;
         // The extension reload exists to uncover a *newly mapped* wallpaper
         // window. Running it on every source switch made the desktop icons
         // blink several times a minute; a reused player needs nothing.
@@ -1219,6 +1326,11 @@ impl App {
     fn quit_player(&mut self) {
         log::info!("[Player] Stopped by request");
         self.close_windows();
+        // With the video gone, the static wallpaper can now be refreshed for
+        // the current source; doing it while the player runs would make
+        // Explorer replace the wallpaper worker and kill mpv.
+        self.suppress_static_refresh = false;
+        self.update_static_wallpaper();
         self.sync_snapshot();
     }
 
@@ -1676,6 +1788,7 @@ impl App {
     fn set_static_wallpaper(&mut self, enabled: bool) {
         self.config.is_static_wallpaper = enabled;
         self.save_config();
+        self.suppress_static_refresh = false;
         self.update_static_wallpaper();
         self.sync_snapshot();
     }
@@ -1684,6 +1797,7 @@ impl App {
         self.config.blur_radius = radius.clamp(0, 20);
         self.mark_config_dirty();
         if self.config.is_static_wallpaper && self.config.mode == Mode::Video {
+            self.suppress_static_refresh = false;
             self.update_static_wallpaper();
         }
         self.sync_snapshot();
@@ -1769,6 +1883,13 @@ impl App {
     }
 
     fn update_static_wallpaper(&mut self) {
+        if self.suppress_static_refresh && self.static_job.is_some() {
+            // A video switch while the player is alive: keep the frame that is
+            // already behind the video instead of making Explorer rebuild the
+            // wallpaper worker and kill the player. `quit_player` refreshes it
+            // once the video is gone.
+            return;
+        }
         let source = util::primary_source(&self.config, &self.monitors).to_string();
         let blur = self.config.blur_radius.max(0);
         let wanted = self.config.mode == Mode::Video
@@ -2164,6 +2285,22 @@ fn assign_video(
     true
 }
 
+/// One manual step in a wallpaper queue. The ends wrap, because the forward
+/// control should not become a no-op on the last file.
+fn step_path(items: &[String], current: &str, forward: bool) -> Option<String> {
+    if items.is_empty() {
+        return None;
+    }
+    let index = items.iter().position(|item| item == current);
+    let next = match (index, forward) {
+        (Some(index), true) => (index + 1) % items.len(),
+        (Some(index), false) => (index + items.len() - 1) % items.len(),
+        (None, true) => 0,
+        (None, false) => items.len() - 1,
+    };
+    items.get(next).cloned()
+}
+
 /// Pick the next collection item. Order mode advances from the current file;
 /// random mode avoids repeating it when there is more than one candidate.
 fn next_rotation_path(mode: &str, items: &[String], current: &str) -> Option<String> {
@@ -2342,6 +2479,18 @@ mod tests {
             next_rotation_path("order", &items, "gone"),
             Some("a".to_string())
         );
+    }
+
+    #[test]
+    fn manual_step_wraps_at_both_ends() {
+        let items = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        assert_eq!(step_path(&items, "c", true), Some("a".to_string()));
+        assert_eq!(step_path(&items, "a", false), Some("c".to_string()));
+        assert_eq!(step_path(&items, "b", true), Some("c".to_string()));
+        assert_eq!(step_path(&items, "b", false), Some("a".to_string()));
+        assert_eq!(step_path(&items, "gone", true), Some("a".to_string()));
+        assert_eq!(step_path(&items, "gone", false), Some("c".to_string()));
+        assert_eq!(step_path(&[], "a", true), None);
     }
 
     #[test]

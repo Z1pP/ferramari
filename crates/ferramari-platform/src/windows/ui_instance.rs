@@ -11,8 +11,9 @@
 use windows::core::BOOL;
 use windows::Win32::Foundation::{HWND, LPARAM, TRUE};
 use windows::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, EnumWindows, GetWindowLongPtrW, GetWindowTextW, IsIconic, IsWindowVisible,
-    SetForegroundWindow, ShowWindow, GWL_EXSTYLE, SW_RESTORE, SW_SHOW, WS_EX_TOOLWINDOW,
+    BringWindowToTop, EnumWindows, GetClassNameW, GetWindowLongPtrW, GetWindowTextW, IsIconic,
+    IsWindowVisible, SetForegroundWindow, ShowWindow, GWL_EXSTYLE, SW_RESTORE, SW_SHOW,
+    WS_EX_TOOLWINDOW,
 };
 
 use crate::win32util::{claim_named_mutex, wide, MutexClaim, NamedMutex};
@@ -106,6 +107,9 @@ fn find_control_window(title: &str) -> Option<HWND> {
         if ex_style & WS_EX_TOOLWINDOW.0 != 0 {
             return TRUE;
         }
+        if is_terminal_window(hwnd) {
+            return TRUE;
+        }
         let mut buffer = [0u16; 64];
         let length = unsafe { GetWindowTextW(hwnd, &mut buffer) };
         let length = usize::try_from(length).unwrap_or(0);
@@ -124,6 +128,28 @@ fn find_control_window(title: &str) -> Option<HWND> {
         let _ = EnumWindows(Some(visit), LPARAM((&mut search as *mut Search) as isize));
     }
     search.found
+}
+
+/// Console hosts also call their window `Ferramari` when they run the server.
+/// They are not the Iced control surface and must not shadow it.
+fn is_terminal_window(hwnd: HWND) -> bool {
+    let mut buffer = [0u16; 128];
+    let length = unsafe { GetClassNameW(hwnd, &mut buffer) };
+    if length <= 0 {
+        return false;
+    }
+    let class = String::from_utf16_lossy(&buffer[..length as usize]);
+    is_terminal_class(&class)
+}
+
+fn is_terminal_class(class: &str) -> bool {
+    [
+        "ConsoleWindowClass",
+        "CASCADIA_HOSTING_WINDOW_CLASS",
+        "PseudoConsoleWindow",
+    ]
+    .iter()
+    .any(|terminal| class.eq_ignore_ascii_case(terminal))
 }
 
 #[cfg(test)]
@@ -205,5 +231,13 @@ mod tests {
         unsafe {
             let _ = DestroyWindow(control);
         }
+    }
+
+    #[test]
+    fn terminal_classes_are_not_control_windows() {
+        assert!(is_terminal_class("ConsoleWindowClass"));
+        assert!(is_terminal_class("CASCADIA_HOSTING_WINDOW_CLASS"));
+        assert!(is_terminal_class("PseudoConsoleWindow"));
+        assert!(!is_terminal_class("Window Class"));
     }
 }

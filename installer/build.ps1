@@ -70,6 +70,20 @@ function Find-Msgfmt {
             return $candidate
         }
     }
+    # Chocolatey installs the same gettext build under Program Files, and the
+    # shim is not always on PATH in the same step that installed it.
+    if ($env:ProgramFiles) {
+        $candidate = Join-Path $env:ProgramFiles "gettext-iconv\bin\msgfmt.exe"
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+    }
+    if (${env:ProgramFiles(x86)}) {
+        $candidate = Join-Path ${env:ProgramFiles(x86)} "gettext-iconv\bin\msgfmt.exe"
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+    }
     return $null
 }
 
@@ -97,7 +111,7 @@ try {
     }
 
     $release = Join-Path $root "target\release"
-    foreach ($name in @("ferramari.exe", "ferramari-ui.exe")) {
+    foreach ($name in @("ferramari.exe", "ferramari-ui.exe", "ferramari-launcher.exe")) {
         $path = Join-Path $release $name
         if (-not (Test-Path -LiteralPath $path)) {
             throw "Missing $path; run cargo build --workspace --release --locked"
@@ -111,6 +125,7 @@ try {
 
     Copy-Item -LiteralPath (Join-Path $release "ferramari.exe") -Destination $bin
     Copy-Item -LiteralPath (Join-Path $release "ferramari-ui.exe") -Destination $bin
+    Copy-Item -LiteralPath (Join-Path $release "ferramari-launcher.exe") -Destination $bin
     Copy-Item -LiteralPath (Join-Path $root "README.md") -Destination $bin
     Copy-Item -LiteralPath (Join-Path $root "LICENSE") -Destination $bin
 

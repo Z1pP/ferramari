@@ -169,7 +169,8 @@ enum Message {
     TogglePlay,
     ToggleMute,
     ReloadWallpaper,
-    FeelingLucky,
+    NextWallpaper,
+    PreviousWallpaper,
 
     SetVolume(i32),
     BlurChanged(i32),
@@ -186,7 +187,6 @@ enum Message {
     SetRotationInterval(i32),
     TogglePauseOnBattery(bool),
     SetIdleTimeout(i32),
-    ToggleWebNetwork(bool),
     ToggleAutostart(bool),
 
     RefreshLibrary,
@@ -460,6 +460,12 @@ fn state_label(state: &str, _sem: &Semantics) -> String {
         other if !other.is_empty() => other.to_string(),
         _ => tr("Unknown"),
     }
+}
+
+/// A minute count with the unit in the reader's language. The whole template
+/// is translated so Japanese can drop the space before 分.
+fn minutes_label(minutes: i32) -> String {
+    tr("{} min").replace("{}", &minutes.to_string())
 }
 
 /// One metric as a short string, naming why there is none. The tiles are too
@@ -1163,6 +1169,7 @@ impl App {
             // it and the tray would have nothing to talk to.
             Message::StartEngine => {
                 self.state.is_playing = true;
+                self.state.is_paused_by_user = false;
                 self.pending_play = Some(true);
                 self.pending_play_ticks = 0;
                 call(self.server.as_ref(), "start_playback")
@@ -1310,7 +1317,8 @@ impl App {
                 set_bool(self.server.as_ref(), "is_mute", muted)
             }
             Message::ReloadWallpaper => call(self.server.as_ref(), "reload"),
-            Message::FeelingLucky => call(self.server.as_ref(), "feeling_lucky"),
+            Message::NextWallpaper => call(self.server.as_ref(), "next_wallpaper"),
+            Message::PreviousWallpaper => call(self.server.as_ref(), "previous_wallpaper"),
 
             Message::SetVolume(volume) => {
                 self.state.volume = volume;
@@ -1383,10 +1391,6 @@ impl App {
                 let seconds = minutes.saturating_mul(60);
                 self.state.idle_timeout_sec = seconds;
                 set_i32(self.server.as_ref(), "idle_timeout_sec", seconds)
-            }
-            Message::ToggleWebNetwork(enabled) => {
-                self.state.web_allow_network = enabled;
-                set_bool(self.server.as_ref(), "web_allow_network", enabled)
             }
             Message::ToggleAutostart(enabled) => {
                 self.state.autostart_enabled = enabled;
@@ -2430,7 +2434,7 @@ impl App {
                     .align_y(Alignment::Center)
                     .push(s::icon_button(
                         "step-backward",
-                        Some(Message::FeelingLucky),
+                        Some(Message::PreviousWallpaper),
                         12.0,
                         s::Kind::IconOnArtwork,
                         sem,
@@ -2444,7 +2448,7 @@ impl App {
                     ))
                     .push(s::icon_button(
                         "step-forward",
-                        Some(Message::ReloadWallpaper),
+                        Some(Message::NextWallpaper),
                         12.0,
                         s::Kind::IconOnArtwork,
                         sem,
@@ -4226,14 +4230,14 @@ impl App {
     fn general_rows(&self) -> Vec<Element<'_, Message>> {
         let mut rows = vec![
             self.setting_toggle(
-                tr("Start with system"),
-                tr("Launch Ferramari automatically on login"),
+                tr("Start at login"),
+                tr("Launch Ferramari automatically when you sign in"),
                 self.state.autostart_enabled,
                 Message::ToggleAutostart,
             ),
             self.setting_toggle(
                 tr("Run in background"),
-                tr("Keep the daemon running when the window is closed"),
+                tr("Show a tray icon so the window can be reopened after it is closed"),
                 self.state.is_show_systray,
                 Message::ToggleSystray,
             ),
@@ -4305,7 +4309,7 @@ impl App {
                 format!("{} {date}", tr("Last checked"))
             }
             Some(date) => format!("{} {date}", tr("Last checked")),
-            None => tr("Ask GitHub for a new release when the window opens"),
+            None => tr("Check GitHub for a new release when the window opens"),
         }
     }
 
@@ -4362,7 +4366,7 @@ impl App {
                     .spacing(10)
                     .push(text(tr("Theme")).size(13.5).color(sem.text))
                     .push(
-                        text(tr("Window and control appearance"))
+                        text(tr("Colour scheme for the window and controls"))
                             .size(11.5)
                             .color(sem.text_muted),
                     )
@@ -4391,11 +4395,11 @@ impl App {
             ),
             s::inset(
                 s::line(
-                    tr("Desktop preference"),
+                    tr("System theme"),
                     Some(if self.system_dark {
-                        tr("The desktop asks for a dark theme")
+                        tr("The system currently uses a dark theme")
                     } else {
-                        tr("The desktop asks for a light theme")
+                        tr("The system currently uses a light theme")
                     }),
                     s::chip(
                         if self.system_dark {
@@ -4424,11 +4428,13 @@ impl App {
                     .push(
                         Column::new()
                             .spacing(2)
-                            .push(text(tr("Profile")).size(13.5).color(sem.text))
+                            .push(text(tr("Playback profile")).size(13.5).color(sem.text))
                             .push(
-                                text(tr("Quality prioritises smoothness; Eco reduces decoding"))
-                                    .size(11.5)
-                                    .color(sem.text_muted),
+                                text(tr(
+                                    "Quality keeps the full frame rate; Balanced caps idle at 30 fps; Eco pauses when idle",
+                                ))
+                                .size(11.5)
+                                .color(sem.text_muted),
                             ),
                     )
                     .push(s::segmented(
@@ -4462,31 +4468,38 @@ impl App {
                             .spacing(2)
                             .push(text(tr("Hardware decoding")).size(13.5).color(sem.text))
                             .push(
-                                text(tr(
-                                    "Auto lets mpv choose; VA-API forces it; Off uses software",
-                                ))
+                                text(if cfg!(windows) {
+                                    tr("Auto lets mpv choose a decoder; Off forces software decoding")
+                                } else {
+                                    tr("Auto lets mpv choose a decoder; VA-API requests hardware decoding; Off forces software decoding")
+                                })
                                 .size(11.5)
                                 .color(sem.text_muted),
                             ),
                     )
                     .push(s::segmented(
-                        vec![
-                            (
-                                "Auto".to_string(),
+                        {
+                            let mut options = vec![(
+                                tr("Auto"),
                                 self.state.hwdec == "auto",
                                 Message::SetHwdec("auto".into()),
-                            ),
-                            (
-                                "VA-API".to_string(),
-                                self.state.hwdec == "vaapi",
-                                Message::SetHwdec("vaapi".into()),
-                            ),
-                            (
+                            )];
+                            // VA-API is a Linux interface. Showing it on
+                            // Windows would offer a decoder mpv cannot use.
+                            if !cfg!(windows) {
+                                options.push((
+                                    "VA-API".to_string(),
+                                    self.state.hwdec == "vaapi",
+                                    Message::SetHwdec("vaapi".into()),
+                                ));
+                            }
+                            options.push((
                                 tr("Off"),
                                 self.state.hwdec == "none",
                                 Message::SetHwdec("none".into()),
-                            ),
-                        ],
+                            ));
+                            options
+                        },
                         sem,
                     )),
                 sem,
@@ -4494,7 +4507,7 @@ impl App {
             ),
             self.setting_toggle(
                 tr("Pause on battery"),
-                tr("Stop playback when running on battery"),
+                tr("Pause playback while running on battery"),
                 self.state.pause_on_battery,
                 Message::TogglePauseOnBattery,
             ),
@@ -4598,7 +4611,7 @@ impl App {
                     .spacing(10)
                     .push(text(tr("Idle delay")).size(13.5).color(sem.text))
                     .push(
-                        text(tr("Minutes of inactivity before the Eco Engine pauses"))
+                        text(tr("Minutes of inactivity before the idle policy applies"))
                             .size(11.5)
                             .color(sem.text_muted),
                     )
@@ -4613,7 +4626,7 @@ impl App {
                                 .width(Length::Fill),
                             )
                             .push(
-                                text(format!("{} min", self.state.idle_timeout_sec / 60))
+                                text(minutes_label(self.state.idle_timeout_sec / 60))
                                     .size(12)
                                     .color(sem.text_muted),
                             ),
@@ -4626,7 +4639,7 @@ impl App {
                     .spacing(10)
                     .push(text(tr("Rotation interval")).size(13.5).color(sem.text))
                     .push(
-                        text(tr("Minutes between wallpaper changes"))
+                        text(tr("Minutes between changes in a rotation collection"))
                             .size(11.5)
                             .color(sem.text_muted),
                     )
@@ -4643,9 +4656,8 @@ impl App {
                                 .width(Length::Fill),
                             )
                             .push(
-                                text(format!(
-                                    "{} min",
-                                    (self.state.rotation_interval_sec / 60).max(1)
+                                text(minutes_label(
+                                    (self.state.rotation_interval_sec / 60).max(1),
                                 ))
                                 .size(12)
                                 .color(sem.text_muted),
@@ -4658,6 +4670,11 @@ impl App {
                 Column::new()
                     .spacing(10)
                     .push(text(tr("Rotation mode")).size(13.5).color(sem.text))
+                    .push(
+                        text(tr("How the selected rotation collection advances"))
+                            .size(11.5)
+                            .color(sem.text_muted),
+                    )
                     .push(s::segmented(
                         vec![
                             (
@@ -4688,26 +4705,20 @@ impl App {
         let sem = self.sem();
         let mut rows = vec![
             self.setting_toggle(
-                tr("Pause on maximized window"),
-                tr("Auto-pause when maximized or fullscreen detected"),
+                tr("Pause when a window covers the wallpaper"),
+                tr("Pause when a window is maximized, fullscreen or fully covers the monitor"),
                 self.state.is_pause_when_maximized,
                 Message::TogglePauseMaximized,
             ),
             self.setting_toggle(
-                tr("Mute on maximized window"),
-                tr("Auto-mute when maximized or fullscreen detected"),
+                tr("Mute when a window covers the wallpaper"),
+                tr("Mute when a window is maximized, fullscreen or fully covers the monitor"),
                 self.state.is_mute_when_maximized,
                 Message::ToggleMuteMaximized,
             ),
             self.setting_toggle(
-                tr("Web wallpapers network access"),
-                tr("Remote pages and subresources; local always allowed"),
-                self.state.web_allow_network,
-                Message::ToggleWebNetwork,
-            ),
-            self.setting_toggle(
                 tr("Apply static wallpaper"),
-                tr("Video frame applied as system wallpaper"),
+                tr("Show a blurred frame from the current video as the desktop background"),
                 self.state.is_static_wallpaper,
                 Message::ToggleStatic,
             ),
@@ -4721,6 +4732,11 @@ impl App {
                 Column::new()
                     .spacing(10)
                     .push(text(tr("Blur radius")).size(13.5).color(sem.text))
+                    .push(
+                        text(tr("Blur applied to the static frame"))
+                            .size(11.5)
+                            .color(sem.text_muted),
+                    )
                     .push(
                         Row::new()
                             .spacing(12)
@@ -4875,7 +4891,9 @@ impl App {
                             tr("Trust key"),
                             Some(Message::TrustPackageKey),
                             sem,
-                        )),
+                        ))
+                        .wrap()
+                        .vertical_spacing(8.0),
                 )
                 .push(
                     // The paths are picked with native dialogs, so the form
@@ -4896,7 +4914,9 @@ impl App {
                             tr("Destination…"),
                             Some(Message::PickPackageParent),
                             sem,
-                        )),
+                        ))
+                        .wrap()
+                        .vertical_spacing(8.0),
                 )
                 .push(
                     Column::new()

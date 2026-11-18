@@ -69,7 +69,11 @@ pub fn set_enabled(enabled: bool) -> anyhow::Result<()> {
     let result = if enabled {
         let exe =
             std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("ferramari.exe"));
-        let command = wide(&command_line(&exe));
+        // The launcher is a GUI-subsystem binary: autostart must not flash a
+        // console window. It passes `-b` through to the server.
+        let launcher = exe.with_file_name("ferramari-launcher.exe");
+        let target = if launcher.exists() { launcher } else { exe };
+        let command = wide(&command_line(&target));
         // The registry stores bytes; `REG_SZ` is UTF-16 including the NUL.
         let bytes = unsafe {
             std::slice::from_raw_parts(
@@ -81,7 +85,7 @@ pub fn set_enabled(enabled: bool) -> anyhow::Result<()> {
         let status =
             unsafe { RegSetValueExW(key, PCWSTR(name.as_ptr()), None, REG_SZ, Some(bytes)) };
         if status == ERROR_SUCCESS {
-            log::info!("[Autostart] Enabled ({})", exe.display());
+            log::info!("[Autostart] Enabled ({})", target.display());
             Ok(())
         } else {
             Err(anyhow::anyhow!(

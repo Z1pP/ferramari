@@ -187,7 +187,13 @@ shortcuts, and keeps user data on uninstall. See
 2.2.0 is the first Windows release: a Win32 wallpaper host behind Explorer's
 icons, per-monitor Eco pause, lock/suspend/charger/idle events, live CPU/RAM/
 GPU metrics, close-to-tray behaviour, the crab icon in both executables and
-the installer, and the same Iced control surface as on Linux.
+the installer, and the same Iced control surface as on Linux. 2.2.2 starts
+the server through the GUI-subsystem `ferramari-launcher.exe` from shortcuts
+and autostart, so the normal launch shows only the UI; run `ferramari` in a
+terminal for logs and CLI output. 2.2.3 fixes Start after Stop, reuses the
+player on video changes and makes the next/previous wallpaper controls wrap.
+2.2.4 corrects the Settings text in all three languages and describes what
+each switch and slider actually does.
 
 ### Flatpak
 
@@ -425,8 +431,10 @@ matrix yet. Treat it as unsupported until the checklist in
 
 **Does it work on Windows?**
 Yes, on Windows 10/11 with the Win32 backend. The installer and portable ZIP
-contain both `ferramari.exe` and `ferramari-ui.exe`; mpv, ffmpeg/ffprobe and
-yt-dlp must be installed separately (on `PATH` or next to the binaries).
+contain both `ferramari.exe`, `ferramari-ui.exe` and `ferramari-launcher.exe`;
+mpv, ffmpeg/ffprobe and yt-dlp must be installed separately (on `PATH` or next
+to the binaries). Start the portable build with `ferramari-launcher.exe` to
+avoid a console window; `ferramari.exe` remains the CLI/server entry point.
 Wallpaper playback is hosted behind Explorer's icons, so it follows Explorer
 restarts. The live multi-monitor, mixed-DPI and Explorer-restart matrix is
 still recorded as pending in `docs/TESTING.md`; the backend is built and tested

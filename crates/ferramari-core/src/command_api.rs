@@ -60,6 +60,8 @@ pub fn command_from_json(method: &str, params: &Value) -> Result<Command, String
         "reload" => Command::Reload,
         "reload_config" => Command::ReloadConfig,
         "feeling_lucky" => Command::FeelingLucky,
+        "next_wallpaper" => Command::NextWallpaper,
+        "previous_wallpaper" => Command::PreviousWallpaper,
         "show_gui" => Command::ShowGui,
         "quit" => Command::Quit,
         "toggle_mute" => Command::ToggleMute,
@@ -144,6 +146,18 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn wallpaper_steps_are_part_of_the_control_vocabulary() {
+        assert!(matches!(
+            command_from_json("next_wallpaper", &json!({})).unwrap(),
+            Command::NextWallpaper
+        ));
+        assert!(matches!(
+            command_from_json("previous_wallpaper", &json!({})).unwrap(),
+            Command::PreviousWallpaper
+        ));
     }
 
     #[test]

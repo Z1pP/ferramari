@@ -125,7 +125,7 @@ Statuses used below:
 | R-12 | P2 | fixed-unit | Cache management | `catalogue::cleanup_cache()` has a caller and a fake-root test |
 | R-13 | P2 | fixed-unit | Single instance | Second launch retries endpoint/interface publication |
 | R-14 | P2 | documented-gap | Shutdown | Linux D-Bus watchers and the Windows accept loop live until process exit |
-| R-15 | P3 | partially-fixed | Docs / CI | Linux formatting gate fixed; stale docs/release gating remain |
+| R-15 | P3 | fixed-code | Docs / CI | Docs reconciled, formatting gate fixed, release tags repeat the quality gates |
 
 ---
 
@@ -926,7 +926,7 @@ backend restart is introduced.
 ## R-15 — Documentation and CI drift
 
 **Priority:** P3  
-**Status:** `confirmed-code`
+**Status:** `fixed-code` (CI changes not executed locally)
 
 **Documentation**
 
@@ -968,12 +968,14 @@ Decide whether release tags must repeat the quality gates; if not, state that
 the tag commit must have a green CI run. Keep live results in TESTING, not in
 the historical audit.
 
-**Resolution (2026-11-18, partial)**
+**Resolution (2026-11-18)**
 
 The Linux CI formatting step now runs `cargo fmt --all -- --check`, so a
 formatting diff fails the job instead of being rewritten in the runner. The
 README duplicate web entry, ROADMAP introduction, TESTING status preamble and
-desktop `Comment` have been reconciled. Release-workflow gating remains open.
+desktop `Comment` have been reconciled. The tagged release workflow now repeats
+formatting, clippy, the full test suite and the release build on Windows and
+Linux before packaging. Live coverage remains a separate manual matrix.
 
 ---
 
@@ -1064,7 +1066,7 @@ the audit and verification results separate.
 | R-11: UTF-8 BOM handling | New config test |
 | R-12: catalogue cache cleanup | Startup call plus fake-root cleanup test |
 | R-13: second-launch retry | New util timeout tests; two-process smoke still open |
-| R-15: Linux formatting gate | `cargo fmt --all -- --check`; docs cleanup still open |
+| R-15: docs and release gates | Docs reconciled; release workflow repeats fmt/clippy/test/build |
 
 Post-change gates on the branch:
 

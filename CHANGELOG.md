@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.2.5 - 2026-11-19
 
 **Stability pass after the 2.2.0 audit.** The Windows-hosted suite now has
 **474 tests** (18 binary + 363 core + 18 media + 61 platform + 8 UI library +

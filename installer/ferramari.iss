@@ -6,7 +6,7 @@
 ; the release build already exists in ..\target\release.
 
 #ifndef AppVersion
-  #define AppVersion "2.2.4"
+  #define AppVersion "2.2.5"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\target\release"

@@ -193,7 +193,10 @@ and autostart, so the normal launch shows only the UI; run `ferramari` in a
 terminal for logs and CLI output. 2.2.3 fixes Start after Stop, reuses the
 player on video changes and makes the next/previous wallpaper controls wrap.
 2.2.4 corrects the Settings text in all three languages and describes what
-each switch and slider actually does.
+each switch and slider actually does. 2.2.5 is the post-audit stability pass:
+tracked command errors, a Starting state before the first decoded frame,
+bounded watcher shutdown on Linux and Windows, and the app-level config-reload
+regression test.
 
 ### Flatpak
 

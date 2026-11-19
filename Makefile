@@ -42,19 +42,21 @@ lint:
 run:
 	$(CARGO) run -p ferramari -- -d
 
-# Usage: make bench VIDEO=/path/to/video.mp4 [PROFILE=balanced] [SECONDS=10]
+# Usage: make bench VIDEO=/path/to/video.mp4 [SCENARIO=steady] [PROFILE=balanced] [SECONDS=10] [JSON=out.json]
+# The harness is cross-platform; Windows users run scripts/benchmark.py
+# directly with --platform windows (see docs/BENCHMARKS.md).
 VIDEO ?=
-WEB ?=
-MODE ?= video
+SCENARIO ?= steady
 LABEL ?=
 PROFILE ?= balanced
 SECONDS ?= 10
+JSON ?=
 bench: release
-	@test -n "$(VIDEO)$(WEB)" || (echo "usage: make bench VIDEO=/path/to/video.mp4"; exit 2)
-	python3 scripts/benchmark.py --binary "$(TARGET_DIR)/release/ferramari" \
-		--mode "$(MODE)" --profile "$(PROFILE)" --seconds "$(SECONDS)" \
-		$(if $(VIDEO),--video "$(VIDEO)") $(if $(WEB),--web "$(WEB)") \
-		$(if $(LABEL),--label "$(LABEL)")
+	@test -n "$(VIDEO)" || (echo "usage: make bench VIDEO=/path/to/video.mp4 [SCENARIO=steady]"; exit 2)
+	python3 scripts/benchmark.py --platform linux --binary "$(TARGET_DIR)/release/ferramari" \
+		--mode video --video "$(VIDEO)" --scenario "$(SCENARIO)" \
+		--profile "$(PROFILE)" --seconds "$(SECONDS)" \
+		$(if $(LABEL),--label "$(LABEL)") $(if $(JSON),--json-out "$(JSON)")
 
 translations:
 	@for po in po/*.po; do \

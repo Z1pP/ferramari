@@ -210,13 +210,14 @@ The shipped threshold is five minutes; the test only shortened the timer.
 - [ ] A catalogue item with a `file://` download is rejected.
 
 ### Performance and hardening
-- [ ] Open Performance: CPU, RSS, threads, processes update every ~2 s; GPU shows a value on AMDGPU and "Unavailable" otherwise.
-- [ ] Close the control window: no resource sampling runs (check CPU in `top`).
+- [ ] Open Performance: CPU, RSS, threads, processes update every ~1 s; GPU shows a value on AMDGPU or the Windows `GPU Engine` counter and `N/A` otherwise.
+- [ ] Close the control window on Windows: it hides to the tray; the one-second metrics sample stops and only a 30 s server-health poll remains (CPU should fall; compare with `Get-Process`/`top`).
 - [ ] Select Off for hardware decoding; mpv starts with `--hwdec=no` (visible in `-d`).
-- [ ] Disable network for web wallpapers and apply a remote URL: a clear error appears instead of a blank page.
-- [ ] Apply a local HTML file with network disabled: it loads, and no pop-up window opens.
-- [ ] `make bench VIDEO=... SECONDS=5` prints startup/CPU/RAM/process/GPU rows.
-- [ ] `make bench MODE=web WEB=... SECONDS=5` measures a web wallpaper with no mpv process.
+- [ ] Apply a web source: the server reports that the GTK-free web engine is unavailable instead of showing a blank page. Web wallpapers are not a 2.x benchmark scenario.
+- [ ] `make bench VIDEO=... SECONDS=5` prints per-process CPU/RSS/threads/processes/GPU/VRAM and playback rows.
+- [ ] `python scripts/benchmark.py --scenario parked --video ...` parks after five minutes, keeps the mpv PID, drops RSS/VRAM, and resumes at the captured position.
+- [ ] `python scripts/benchmark.py --scenario ui --page home --video ...` measures the control surface visible and hidden; the hidden phase should be below the visible one.
+- [ ] `python scripts/benchmark.py --scenario churn --video ... --minimize-window PID` reports zero Eco transitions for one-second covers after the hysteresis change.
 - [ ] `make bench VIDEO=/path/to/4k.mp4 LABEL=4k SECONDS=5` records the 4K row.
 
 ### Cross-desktop diagnostics

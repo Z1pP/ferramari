@@ -1,5 +1,13 @@
 # Performance baseline and optimisation paths
 
+> **Current data (2026-11-20):** the 2.2.5 baseline and the 2.3 before/after
+> results are in [`BENCHMARKS.md`](BENCHMARKS.md),
+> [`PERFORMANCE_AUDIT_2_3.md`](PERFORMANCE_AUDIT_2_3.md) and
+> [`PERFORMANCE_RESULTS.md`](PERFORMANCE_RESULTS.md). The sections below are
+> historical notes from the 1.x/GTK era. In particular, **WebKit and the web
+> wallpaper engine no longer exist in 2.x**; old web rows are not a current
+> scenario.
+
 Measured 2026-10-31 on Ubuntu 26.04, GNOME Shell 50.1, Wayland session
 (Ferramari runs through XWayland), release build (`ferramari 1.0.0` for the
 baseline, `1.0.1` for the optimisation results),
@@ -9,7 +17,8 @@ cache. RAM/PSS/CPU/threads are for the whole process tree (Ferramari + mpv or
 WebKit), sampled over 10 seconds.
 
 Two- and three-monitor scenarios could not be measured on this single-display
-machine; they remain part of the release checklist.
+machine; they remain part of the release checklist. The 2.3 audit repeats that
+limitation explicitly: its Windows host also has one display.
 
 ## Baseline
 

@@ -141,7 +141,8 @@ does not look like Ferramari's own allocation.
 FPS 30.0, dropped frames 0, display 120 Hz. Machine CPU is 0.51% of twelve
 logical processors. The global GPU counter showed 12.3% median during these
 runs; it includes other desktop applications and is not used as the app's GPU
-number.
+number. Table medians are per group; the **total** row is its own median and
+can differ by a thread from the sum of the group medians.
 
 ### 4K30 baseline
 

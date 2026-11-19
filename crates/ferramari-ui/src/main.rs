@@ -2262,12 +2262,16 @@ impl App {
             ),
             Page::Performance => Some(s::status_pill(
                 tr("MPV Engine"),
-                Some(if self.state.is_playing {
+                Some(if self.state.is_decoding {
+                    tr("Starting")
+                } else if self.state.is_playing {
                     tr("Running")
                 } else {
                     tr("Idle")
                 }),
-                if self.state.is_playing {
+                if self.state.is_decoding {
+                    sem.warning_tone
+                } else if self.state.is_playing {
                     sem.success_tone
                 } else {
                     sem.text_muted

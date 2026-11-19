@@ -109,6 +109,7 @@ TRANSLATIONS = {
     "No wallpapers found": "Обои не найдены",
     "Loading wallpapers…": "Загружаем обои…",
     # --- Performance -----------------------------------------------------
+    "Starting": "Запуск",
     "MPV Engine": "Движок MPV",
     "Running": "Работает",
     "MPV Statistics": "Статистика MPV",

@@ -274,7 +274,9 @@ impl Config {
         Self::load_from(&paths::config_path(), monitors)
     }
 
-    fn load_from(path: &Path, monitors: &[String]) -> Self {
+    /// Load the config from an explicit path. `load` uses the user's config
+    /// directory; the explicit form is the seam for tests and alternate stores.
+    pub fn load_from(path: &Path, monitors: &[String]) -> Self {
         let primary = fs::read_to_string(path).ok();
         let (text, mut used_backup) = match primary {
             Some(text) => (text, false),
@@ -437,7 +439,9 @@ impl Config {
         self.save_to(&paths::config_path())
     }
 
-    fn save_to(&self, path: &Path) -> Result<(), String> {
+    /// Save to an explicit path. The atomic write and backup rules are the
+    /// same as `save`, which writes the user's config path.
+    pub fn save_to(&self, path: &Path) -> Result<(), String> {
         let text = serde_json::to_string_pretty(self)
             .map_err(|err| format!("could not serialize the configuration: {err}"))?;
         write_atomic(path, format!("{text}\n").as_bytes())

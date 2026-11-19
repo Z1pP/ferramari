@@ -65,6 +65,9 @@ Build the complete 2.0 workspace with `cargo build --workspace --release --locke
 - [ ] Reconnect/disconnect a monitor; its source is restored on reconnect.
 - [ ] Change the resolution or scale factor; the window follows the monitor.
 - [ ] Kill `mpv` with `SIGKILL`; playback is recreated after the backoff.
+- [ ] Kill `mpv` during playback and watch the MPV Engine chip: it shows
+      `Starting` until the first frame, then `Running`; after the restart
+      policy gives up it shows `Idle`, never `Running` without a player.
 - [ ] Repeat the kill until the give-up limit; no endless restart loop and a
       visible error is shown.
 
@@ -269,6 +272,9 @@ profile.
       in the folder and through a rotation collection.
 - [x] Quit from the tray; no `mpv`, `ffmpeg` or `ffprobe` child remains and the
       original wallpaper is restored.
+- [ ] Quit from the tray with debug logging: the server exits within three
+      seconds and the log contains no `did not stop before the shutdown
+      deadline` warning from the control accept loop.
 - [ ] Quit from Settings; no `mpv`, `ffmpeg` or `ffprobe` child remains.
 - [ ] Ctrl-C, Ctrl-Break, console close, logoff and shutdown each end the
       server cleanly; the original wallpaper is restored.

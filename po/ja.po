@@ -19,31 +19,31 @@ msgstr ""
 msgid "Active"
 msgstr "稼働中"
 
-#: crates\ferramari-ui\src\main.rs:2914
+#: crates\ferramari-ui\src\main.rs:2946
 msgid "Add"
 msgstr "追加"
 
-#: crates\ferramari-ui\src\main.rs:3011
+#: crates\ferramari-ui\src\main.rs:3043
 msgid "Add a video, or download one from Online."
 msgstr "動画を追加するか、オンラインからダウンロードしてください。"
 
-#: crates\ferramari-ui\src\main.rs:3250
+#: crates\ferramari-ui\src\main.rs:3282
 msgid "Add to"
 msgstr "追加先"
 
-#: crates\ferramari-ui\src\main.rs:3220
+#: crates\ferramari-ui\src\main.rs:3252
 msgid "Add to favorites"
 msgstr "お気に入りに追加"
 
-#: crates\ferramari-ui\src\main.rs:4754
+#: crates\ferramari-ui\src\main.rs:4786
 msgid "Add video"
 msgstr "動画を追加"
 
-#: crates\ferramari-ui\src\main.rs:2832
+#: crates\ferramari-ui\src\main.rs:2864
 msgid "Add Wallpaper"
 msgstr "壁紙を追加"
 
-#: crates\ferramari-ui\src\main.rs:1459
+#: crates\ferramari-ui\src\main.rs:1493
 msgid "Added to library"
 msgstr "ライブラリに追加しました"
 
@@ -51,11 +51,11 @@ msgstr "ライブラリに追加しました"
 msgid "Advanced"
 msgstr "詳細"
 
-#: crates\ferramari-ui\src\main.rs:4990
+#: crates\ferramari-ui\src\main.rs:5022
 msgid "All"
 msgstr "すべて"
 
-#: crates\ferramari-ui\src\main.rs:1574
+#: crates\ferramari-ui\src\main.rs:1605
 msgid "All wallpapers"
 msgstr "すべての壁紙"
 
@@ -63,31 +63,31 @@ msgstr "すべての壁紙"
 msgid "Appearance"
 msgstr "外観"
 
-#: crates\ferramari-ui\src\main.rs:4725
+#: crates\ferramari-ui\src\main.rs:4757
 msgid "Apply"
 msgstr "適用"
 
-#: crates\ferramari-ui\src\main.rs:3007
+#: crates\ferramari-ui\src\main.rs:3039
 msgid "Apply a wallpaper and it will show here."
 msgstr "壁紙を適用すると、ここに表示されます。"
 
-#: crates\ferramari-ui\src\main.rs:3209
+#: crates\ferramari-ui\src\main.rs:3241
 msgid "Apply as wallpaper"
 msgstr "壁紙として適用"
 
-#: crates\ferramari-ui\src\main.rs:4692
+#: crates\ferramari-ui\src\main.rs:4724
 msgid "Apply static wallpaper"
 msgstr "静止画壁紙を適用"
 
-#: crates\ferramari-ui\src\main.rs:4455
+#: crates\ferramari-ui\src\main.rs:4487
 msgid "Auto"
 msgstr "自動"
 
-#: crates\ferramari-ui\src\main.rs:4444
+#: crates\ferramari-ui\src\main.rs:4476
 msgid "Auto lets mpv choose a decoder; Off forces software decoding"
 msgstr "「自動」は mpv に任せ、「オフ」はソフトウェアデコードを強制します"
 
-#: crates\ferramari-ui\src\main.rs:4446
+#: crates\ferramari-ui\src\main.rs:4478
 msgid ""
 "Auto lets mpv choose a decoder; VA-API requests hardware decoding; Off "
 "forces software decoding"
@@ -95,23 +95,23 @@ msgstr ""
 "「自動」は mpv に任せ、VA-API はハードウェアデコードを要求し、「オフ」はソフ"
 "トウェアデコードを強制します"
 
-#: crates\ferramari-ui\src\main.rs:4106
+#: crates\ferramari-ui\src\main.rs:4138
 msgid "avg"
 msgstr "平均"
 
-#: crates\ferramari-ui\src\main.rs:4420
+#: crates\ferramari-ui\src\main.rs:4452
 msgid "Balanced"
 msgstr "バランス"
 
-#: crates\ferramari-ui\src\main.rs:4708
+#: crates\ferramari-ui\src\main.rs:4740
 msgid "Blur applied to the static frame"
 msgstr "静止画フレームに適用するぼかし"
 
-#: crates\ferramari-ui\src\main.rs:4706
+#: crates\ferramari-ui\src\main.rs:4738
 msgid "Blur radius"
 msgstr "ぼかしの強さ"
 
-#: crates\ferramari-ui\src\main.rs:3581
+#: crates\ferramari-ui\src\main.rs:3613
 msgid "Browse"
 msgstr "見る"
 
@@ -119,43 +119,43 @@ msgstr "見る"
 msgid "Browse and download wallpapers"
 msgstr "壁紙を検索してダウンロード"
 
-#: crates\ferramari-ui\src\main.rs:2835
+#: crates\ferramari-ui\src\main.rs:2867
 msgid "Browse Online"
 msgstr "オンラインで探す"
 
-#: crates\ferramari-ui\src\main.rs:3749
+#: crates\ferramari-ui\src\main.rs:3781
 msgid "Categories"
 msgstr "カテゴリ"
 
-#: crates\ferramari-ui\src\main.rs:4217
+#: crates\ferramari-ui\src\main.rs:4249
 msgid "Check for updates"
 msgstr "更新を確認"
 
-#: crates\ferramari-ui\src\main.rs:4284
+#: crates\ferramari-ui\src\main.rs:4316
 msgid "Check GitHub for a new release when the window opens"
 msgstr "ウィンドウを開いたときに GitHub で新しいリリースを確認します"
 
-#: crates\ferramari-ui\src\main.rs:4324
+#: crates\ferramari-ui\src\main.rs:4356
 msgid "Check now"
 msgstr "今すぐ確認"
 
-#: crates\ferramari-ui\src\main.rs:1505
+#: crates\ferramari-ui\src\main.rs:1536
 msgid "Choose export destination"
 msgstr "書き出し先を選んでください"
 
-#: crates\ferramari-ui\src\main.rs:1474
+#: crates\ferramari-ui\src\main.rs:1505
 msgid "Choose package directory"
 msgstr "パッケージのフォルダを選んでください"
 
-#: crates\ferramari-ui\src\main.rs:1490
+#: crates\ferramari-ui\src\main.rs:1521
 msgid "Choose video to export"
 msgstr "書き出す動画を選んでください"
 
-#: crates\ferramari-ui\src\main.rs:2828
+#: crates\ferramari-ui\src\main.rs:2860
 msgid "Choose Wallpaper"
 msgstr "壁紙を選ぶ"
 
-#: crates\ferramari-ui\src\main.rs:4811
+#: crates\ferramari-ui\src\main.rs:4843
 msgid "Collection name"
 msgstr "コレクション名"
 
@@ -163,7 +163,7 @@ msgstr "コレクション名"
 msgid "Collections"
 msgstr "コレクション"
 
-#: crates\ferramari-ui\src\main.rs:4341
+#: crates\ferramari-ui\src\main.rs:4373
 msgid "Colour scheme for the window and controls"
 msgstr "ウィンドウとコントロールの配色"
 
@@ -180,73 +180,73 @@ msgstr "GitHub に接続できませんでした"
 msgid "Could not read the release listing"
 msgstr "リリース一覧を読めませんでした"
 
-#: crates\ferramari-ui\src\main.rs:1085
+#: crates\ferramari-ui\src\main.rs:1110
 msgid "Could not save the update setting"
 msgstr "更新の設定を保存できませんでした"
 
-#: crates\ferramari-ui\src\main.rs:2755
+#: crates\ferramari-ui\src\main.rs:2787
 msgid "CPU"
 msgstr "CPU"
 
-#: crates\ferramari-ui\src\main.rs:4790
+#: crates\ferramari-ui\src\main.rs:4822
 msgid "Create"
 msgstr "作成"
 
-#: crates\ferramari-ui\src\main.rs:2034
+#: crates\ferramari-ui\src\main.rs:2062
 msgid "Daemon"
 msgstr "デーモン"
 
 #: crates\ferramari-ui\src\client_control.rs:31
-#: crates\ferramari-ui\src\main.rs:2036
+#: crates\ferramari-ui\src\main.rs:2064
 msgid "Daemon offline"
 msgstr "デーモン未接続"
 
-#: crates\ferramari-ui\src\main.rs:4358 crates\ferramari-ui\src\main.rs:4378
+#: crates\ferramari-ui\src\main.rs:4390 crates\ferramari-ui\src\main.rs:4410
 msgid "Dark"
 msgstr "ダーク"
 
-#: crates\ferramari-ui\src\main.rs:3990
+#: crates\ferramari-ui\src\main.rs:4022
 msgid "Decoder"
 msgstr "デコーダ"
 
-#: crates\ferramari-ui\src\main.rs:4886
+#: crates\ferramari-ui\src\main.rs:4918
 msgid "Destination…"
 msgstr "保存先…"
 
-#: crates\ferramari-ui\src\main.rs:2684
+#: crates\ferramari-ui\src\main.rs:2716
 msgid "display"
 msgid_plural "displays"
 msgstr[0] "台"
 
-#: crates\ferramari-ui\src\main.rs:1680 crates\ferramari-ui\src\main.rs:298
+#: crates\ferramari-ui\src\main.rs:1710 crates\ferramari-ui\src\main.rs:298
 msgid "Downloaded"
 msgstr "ダウンロード済み"
 
-#: crates\ferramari-ui\src\main.rs:3852
+#: crates\ferramari-ui\src\main.rs:3884
 msgid "Downloading…"
 msgstr "ダウンロード中…"
 
-#: crates\ferramari-ui\src\main.rs:4015
+#: crates\ferramari-ui\src\main.rs:4047
 msgid "Dropped Frames"
 msgstr "破棄したフレーム"
 
-#: crates\ferramari-ui\src\main.rs:4425
+#: crates\ferramari-ui\src\main.rs:4457
 msgid "Eco"
 msgstr "エコ"
 
-#: crates\ferramari-ui\src\main.rs:939
+#: crates\ferramari-ui\src\main.rs:960
 msgid "Enter the required package paths"
 msgstr "必要なパッケージパスを入力してください"
 
-#: crates\ferramari-ui\src\main.rs:4852
+#: crates\ferramari-ui\src\main.rs:4884
 msgid "Export"
 msgstr "書き出し"
 
-#: crates\ferramari-ui\src\main.rs:4906
+#: crates\ferramari-ui\src\main.rs:4938
 msgid "Export destination folder"
 msgstr "書き出し先のフォルダ"
 
-#: crates\ferramari-ui\src\main.rs:4994
+#: crates\ferramari-ui\src\main.rs:5026
 msgid "Favorites"
 msgstr "お気に入り"
 
@@ -254,11 +254,11 @@ msgstr "お気に入り"
 msgid "Featured"
 msgstr "おすすめ"
 
-#: crates\ferramari-ui\src\main.rs:2791 crates\ferramari-ui\src\main.rs:4008
+#: crates\ferramari-ui\src\main.rs:2823 crates\ferramari-ui\src\main.rs:4040
 msgid "FPS"
 msgstr "FPS"
 
-#: crates\ferramari-ui\src\main.rs:4103
+#: crates\ferramari-ui\src\main.rs:4135
 msgid "Frame Time"
 msgstr "フレーム時間"
 
@@ -270,15 +270,15 @@ msgstr "一般"
 msgid "GitHub rate limit reached; try again later"
 msgstr "GitHub の要求回数上限に達しました。あとでお試しください"
 
-#: crates\ferramari-ui\src\main.rs:2779
+#: crates\ferramari-ui\src\main.rs:2811
 msgid "GPU"
 msgstr "GPU"
 
-#: crates\ferramari-ui\src\main.rs:4775
+#: crates\ferramari-ui\src\main.rs:4807
 msgid "Groups of wallpapers a display can cycle through"
 msgstr "モニターが順繰りに表示できる壁紙の組"
 
-#: crates\ferramari-ui\src\main.rs:4441
+#: crates\ferramari-ui\src\main.rs:4473
 msgid "Hardware decoding"
 msgstr "ハードウェアデコード"
 
@@ -286,7 +286,7 @@ msgstr "ハードウェアデコード"
 msgid "Home"
 msgstr "ホーム"
 
-#: crates\ferramari-ui\src\main.rs:4646
+#: crates\ferramari-ui\src\main.rs:4678
 msgid "How the selected rotation collection advances"
 msgstr "選択したローテーションコレクションの進み方"
 
@@ -294,53 +294,53 @@ msgstr "選択したローテーションコレクションの進み方"
 msgid "I'm Feeling Lucky"
 msgstr "おまかせ再生"
 
-#: crates\ferramari-ui\src\main.rs:2240 crates\ferramari-ui\src\main.rs:2794
+#: crates\ferramari-ui\src\main.rs:2270 crates\ferramari-ui\src\main.rs:2826
 #: crates\ferramari-ui\src\main.rs:457
 msgid "Idle"
 msgstr "アイドル"
 
-#: crates\ferramari-ui\src\main.rs:4584
+#: crates\ferramari-ui\src\main.rs:4616
 msgid "Idle delay"
 msgstr "アイドル遅延"
 
-#: crates\ferramari-ui\src\main.rs:4992
+#: crates\ferramari-ui\src\main.rs:5024
 msgid "Image"
 msgstr "画像"
 
-#: crates\ferramari-ui\src\main.rs:4847
+#: crates\ferramari-ui\src\main.rs:4879
 msgid "Import"
 msgstr "取り込み"
 
-#: crates\ferramari-ui\src\main.rs:4838
+#: crates\ferramari-ui\src\main.rs:4870
 msgid "Import, export, sign and verify .ferramari packages"
 msgstr ".ferramari パッケージの取り込み・書き出し・署名・検証"
 
-#: crates\ferramari-ui\src\main.rs:4658
+#: crates\ferramari-ui\src\main.rs:4690
 msgid "In order"
 msgstr "順番"
 
-#: crates\ferramari-ui\src\main.rs:3867
+#: crates\ferramari-ui\src\main.rs:3899
 msgid "Install"
 msgstr "インストール"
 
-#: crates\ferramari-ui\src\main.rs:4240
+#: crates\ferramari-ui\src\main.rs:4272
 msgid "Interface language"
 msgstr "表示言語"
 
-#: crates\ferramari-ui\src\main.rs:2901
+#: crates\ferramari-ui\src\main.rs:2933
 msgid "item"
 msgid_plural "items"
 msgstr[0] "件"
 
-#: crates\ferramari-ui\src\main.rs:4238
+#: crates\ferramari-ui\src\main.rs:4270
 msgid "Language"
 msgstr "言語"
 
-#: crates\ferramari-ui\src\main.rs:4281 crates\ferramari-ui\src\main.rs:4283
+#: crates\ferramari-ui\src\main.rs:4313 crates\ferramari-ui\src\main.rs:4315
 msgid "Last checked"
 msgstr "最終確認"
 
-#: crates\ferramari-ui\src\main.rs:4206
+#: crates\ferramari-ui\src\main.rs:4238
 msgid "Launch Ferramari automatically when you sign in"
 msgstr "サインイン時に Ferramari を自動的に起動する"
 
@@ -348,55 +348,55 @@ msgstr "サインイン時に Ferramari を自動的に起動する"
 msgid "Library"
 msgstr "ライブラリ"
 
-#: crates\ferramari-ui\src\main.rs:4738
+#: crates\ferramari-ui\src\main.rs:4770
 msgid "Library folder"
 msgstr "ライブラリのフォルダ"
 
-#: crates\ferramari-ui\src\main.rs:4353 crates\ferramari-ui\src\main.rs:4380
+#: crates\ferramari-ui\src\main.rs:4385 crates\ferramari-ui\src\main.rs:4412
 msgid "Light"
 msgstr "ライト"
 
-#: crates\ferramari-ui\src\main.rs:3379 crates\ferramari-ui\src\main.rs:4993
+#: crates\ferramari-ui\src\main.rs:3411 crates\ferramari-ui\src\main.rs:5025
 msgid "Live"
 msgstr "再生中"
 
-#: crates\ferramari-ui\src\main.rs:3558
+#: crates\ferramari-ui\src\main.rs:3590
 msgid "Live wallpapers"
 msgstr "アニメーション壁紙"
 
-#: crates\ferramari-ui\src\main.rs:3462
+#: crates\ferramari-ui\src\main.rs:3494
 msgid "Load more"
 msgstr "もっと見る"
 
-#: crates\ferramari-ui\src\main.rs:3451
+#: crates\ferramari-ui\src\main.rs:3483
 msgid "Loading wallpapers…"
 msgstr "壁紙を読み込み中…"
 
-#: crates\ferramari-ui\src\main.rs:4614
+#: crates\ferramari-ui\src\main.rs:4646
 msgid "Minutes between changes in a rotation collection"
 msgstr "ローテーションコレクションの壁紙を切り替える間隔"
 
-#: crates\ferramari-ui\src\main.rs:4586
+#: crates\ferramari-ui\src\main.rs:4618
 msgid "Minutes of inactivity before the idle policy applies"
 msgstr "アイドル状態に切り替わるまでの無操作時間（分）"
 
-#: crates\ferramari-ui\src\main.rs:2679 crates\ferramari-ui\src\main.rs:694
+#: crates\ferramari-ui\src\main.rs:2711 crates\ferramari-ui\src\main.rs:694
 msgid "Monitors"
 msgstr "モニター"
 
-#: crates\ferramari-ui\src\main.rs:2236
+#: crates\ferramari-ui\src\main.rs:2264
 msgid "MPV Engine"
 msgstr "MPV エンジン"
 
-#: crates\ferramari-ui\src\main.rs:4026
+#: crates\ferramari-ui\src\main.rs:4058
 msgid "MPV Statistics"
 msgstr "MPV の統計"
 
-#: crates\ferramari-ui\src\main.rs:4686
+#: crates\ferramari-ui\src\main.rs:4718
 msgid "Mute when a window covers the wallpaper"
 msgstr "ウィンドウが壁紙を覆ったときに消音"
 
-#: crates\ferramari-ui\src\main.rs:4687
+#: crates\ferramari-ui\src\main.rs:4719
 msgid "Mute when a window is maximized, fullscreen or fully covers the monitor"
 msgstr "ウィンドウが最大化・全画面・モニター全体を覆う場合に消音します"
 
@@ -408,52 +408,52 @@ msgstr "計測不可"
 msgid "Never checked"
 msgstr "まだ確認していません"
 
-#: crates\ferramari-ui\src\main.rs:1222 crates\ferramari-ui\src\main.rs:1332
-#: crates\ferramari-ui\src\main.rs:887
+#: crates\ferramari-ui\src\main.rs:1252 crates\ferramari-ui\src\main.rs:1366
+#: crates\ferramari-ui\src\main.rs:898
 msgid "New collection"
 msgstr "新しいコレクション"
 
-#: crates\ferramari-ui\src\main.rs:4798
+#: crates\ferramari-ui\src\main.rs:4830
 msgid "No collections yet"
 msgstr "コレクションはまだありません"
 
-#: crates\ferramari-ui\src\main.rs:2569 crates\ferramari-ui\src\main.rs:4568
+#: crates\ferramari-ui\src\main.rs:2601 crates\ferramari-ui\src\main.rs:4600
 msgid "No displays detected"
 msgstr "モニターが見つかりません"
 
-#: crates\ferramari-ui\src\main.rs:3002
+#: crates\ferramari-ui\src\main.rs:3034
 msgid "No favorites yet"
 msgstr "お気に入りはまだありません"
 
-#: crates\ferramari-ui\src\main.rs:3016
+#: crates\ferramari-ui\src\main.rs:3048
 msgid "No matches"
 msgstr "一致するものはありません"
 
-#: crates\ferramari-ui\src\main.rs:2615 crates\ferramari-ui\src\main.rs:4501
+#: crates\ferramari-ui\src\main.rs:2647 crates\ferramari-ui\src\main.rs:4533
 msgid "No rotation"
 msgstr "ローテーションなし"
 
-#: crates\ferramari-ui\src\main.rs:2357 crates\ferramari-ui\src\main.rs:2598
+#: crates\ferramari-ui\src\main.rs:2389 crates\ferramari-ui\src\main.rs:2630
 msgid "No wallpaper"
 msgstr "壁紙未設定"
 
-#: crates\ferramari-ui\src\main.rs:3454
+#: crates\ferramari-ui\src\main.rs:3486
 msgid "No wallpapers found"
 msgstr "壁紙が見つかりません"
 
-#: crates\ferramari-ui\src\main.rs:3561
+#: crates\ferramari-ui\src\main.rs:3593
 msgid "Nothing featured yet"
 msgstr "おすすめはまだありません"
 
-#: crates\ferramari-ui\src\main.rs:3017
+#: crates\ferramari-ui\src\main.rs:3049
 msgid "Nothing in the library matches that search."
 msgstr "検索に合う壁紙はライブラリにありません。"
 
-#: crates\ferramari-ui\src\main.rs:2397 crates\ferramari-ui\src\main.rs:3006
+#: crates\ferramari-ui\src\main.rs:2429 crates\ferramari-ui\src\main.rs:3038
 msgid "Nothing is playing"
 msgstr "再生中のものはありません"
 
-#: crates\ferramari-ui\src\main.rs:2522
+#: crates\ferramari-ui\src\main.rs:2554
 msgid "Now Playing"
 msgstr "再生中"
 
@@ -461,7 +461,7 @@ msgstr "再生中"
 msgid "Occluded"
 msgstr "窓で覆われています"
 
-#: crates\ferramari-ui\src\main.rs:4469 crates\ferramari-ui\src\main.rs:4653
+#: crates\ferramari-ui\src\main.rs:4501 crates\ferramari-ui\src\main.rs:4685
 msgid "Off"
 msgstr "オフ"
 
@@ -469,39 +469,39 @@ msgstr "オフ"
 msgid "Online"
 msgstr "オンライン"
 
-#: crates\ferramari-ui\src\main.rs:2908 crates\ferramari-ui\src\main.rs:4750
+#: crates\ferramari-ui\src\main.rs:2940 crates\ferramari-ui\src\main.rs:4782
 msgid "Open folder"
 msgstr "フォルダを開く"
 
-#: crates\ferramari-ui\src\main.rs:2841
+#: crates\ferramari-ui\src\main.rs:2873
 msgid "Open Settings"
 msgstr "設定を開く"
 
-#: crates\ferramari-ui\src\main.rs:4898
+#: crates\ferramari-ui\src\main.rs:4930
 msgid "Package directory or video to export"
 msgstr "パッケージのフォルダ、または書き出す動画"
 
-#: crates\ferramari-ui\src\main.rs:1252
+#: crates\ferramari-ui\src\main.rs:1288
 msgid "Package request queued; processing continues in the server"
 msgstr "パッケージ処理をサーバーに送信しました"
 
-#: crates\ferramari-ui\src\main.rs:4836
+#: crates\ferramari-ui\src\main.rs:4868
 msgid "Packages"
 msgstr "パッケージ"
 
-#: crates\ferramari-ui\src\main.rs:4481
+#: crates\ferramari-ui\src\main.rs:4513
 msgid "Pause on battery"
 msgstr "バッテリー駆動時に一時停止"
 
-#: crates\ferramari-ui\src\main.rs:4482
+#: crates\ferramari-ui\src\main.rs:4514
 msgid "Pause playback while running on battery"
 msgstr "バッテリー駆動中は再生を一時停止します"
 
-#: crates\ferramari-ui\src\main.rs:4680
+#: crates\ferramari-ui\src\main.rs:4712
 msgid "Pause when a window covers the wallpaper"
 msgstr "ウィンドウが壁紙を覆ったときに一時停止"
 
-#: crates\ferramari-ui\src\main.rs:4681
+#: crates\ferramari-ui\src\main.rs:4713
 msgid ""
 "Pause when a window is maximized, fullscreen or fully covers the monitor"
 msgstr ""
@@ -511,7 +511,7 @@ msgstr ""
 msgid "Performance"
 msgstr "パフォーマンス"
 
-#: crates\ferramari-ui\src\main.rs:3231
+#: crates\ferramari-ui\src\main.rs:3263
 msgid "Play on"
 msgstr "再生するモニター"
 
@@ -519,27 +519,27 @@ msgstr "再生するモニター"
 msgid "Playback"
 msgstr "再生"
 
-#: crates\ferramari-ui\src\main.rs:4403
+#: crates\ferramari-ui\src\main.rs:4435
 msgid "Playback profile"
 msgstr "再生プロファイル"
 
-#: crates\ferramari-ui\src\main.rs:2651
+#: crates\ferramari-ui\src\main.rs:2683
 msgid "Primary"
 msgstr "メイン"
 
-#: crates\ferramari-ui\src\main.rs:3968
+#: crates\ferramari-ui\src\main.rs:4000
 msgid "Process"
 msgstr "プロセス"
 
-#: crates\ferramari-ui\src\main.rs:3975
+#: crates\ferramari-ui\src\main.rs:4007
 msgid "Processes"
 msgstr "プロセス"
 
-#: crates\ferramari-ui\src\main.rs:4415
+#: crates\ferramari-ui\src\main.rs:4447
 msgid "Quality"
 msgstr "品質"
 
-#: crates\ferramari-ui\src\main.rs:4405
+#: crates\ferramari-ui\src\main.rs:4437
 msgid ""
 "Quality keeps the full frame rate; Balanced caps idle at 30 fps; Eco pauses "
 "when idle"
@@ -551,19 +551,19 @@ msgstr ""
 msgid "Quit Ferramari"
 msgstr "Ferramari を終了"
 
-#: crates\ferramari-ui\src\main.rs:2767
+#: crates\ferramari-ui\src\main.rs:2799
 msgid "RAM"
 msgstr "メモリ"
 
-#: crates\ferramari-ui\src\main.rs:4663
+#: crates\ferramari-ui\src\main.rs:4695
 msgid "Random"
 msgstr "ランダム"
 
-#: crates\ferramari-ui\src\main.rs:2395
+#: crates\ferramari-ui\src\main.rs:2427
 msgid "Reading playback data…"
 msgstr "再生データを読み込み中…"
 
-#: crates\ferramari-ui\src\main.rs:3132
+#: crates\ferramari-ui\src\main.rs:3164
 msgid "Reading…"
 msgstr "読み込み中…"
 
@@ -571,65 +571,65 @@ msgstr "読み込み中…"
 msgid "Recent"
 msgstr "最近"
 
-#: crates\ferramari-ui\src\main.rs:4756
+#: crates\ferramari-ui\src\main.rs:4788
 msgid "Refresh"
 msgstr "更新"
 
 #: crates\ferramari-platform\src\windows\tray.rs:304
-#: crates\ferramari-ui\src\main.rs:3265
+#: crates\ferramari-ui\src\main.rs:3297
 msgid "Reload"
 msgstr "再読み込み"
 
-#: crates\ferramari-ui\src\main.rs:3248
+#: crates\ferramari-ui\src\main.rs:3280
 msgid "Remove from"
 msgstr "外す先"
 
-#: crates\ferramari-ui\src\main.rs:3218
+#: crates\ferramari-ui\src\main.rs:3250
 msgid "Remove from favorites"
 msgstr "お気に入りから削除"
 
-#: crates\ferramari-ui\src\main.rs:3272
+#: crates\ferramari-ui\src\main.rs:3304
 msgid "Remove from library"
 msgstr "ライブラリから外す"
 
-#: crates\ferramari-ui\src\main.rs:3999
+#: crates\ferramari-ui\src\main.rs:4031
 msgid "Resolution"
 msgstr "解像度"
 
-#: crates\ferramari-ui\src\main.rs:2201
+#: crates\ferramari-ui\src\main.rs:2229
 msgid "Restart"
 msgstr "再起動"
 
-#: crates\ferramari-ui\src\main.rs:4773
+#: crates\ferramari-ui\src\main.rs:4805
 msgid "Rotation collections"
 msgstr "ローテーション用コレクション"
 
-#: crates\ferramari-ui\src\main.rs:4612
+#: crates\ferramari-ui\src\main.rs:4644
 msgid "Rotation interval"
 msgstr "ローテーション間隔"
 
-#: crates\ferramari-ui\src\main.rs:4644
+#: crates\ferramari-ui\src\main.rs:4676
 msgid "Rotation mode"
 msgstr "ローテーション方式"
 
-#: crates\ferramari-ui\src\main.rs:4211
+#: crates\ferramari-ui\src\main.rs:4243
 msgid "Run in background"
 msgstr "背景で実行"
 
-#: crates\ferramari-ui\src\main.rs:2238
+#: crates\ferramari-ui\src\main.rs:2268
 msgid "Running"
 msgstr "稼働中"
 
-#: crates\ferramari-ui\src\main.rs:3561
+#: crates\ferramari-ui\src\main.rs:3593
 msgid "Search or pick a category"
 msgstr "検索するか、カテゴリを選んでください"
 
-#: crates\ferramari-ui\src\main.rs:1221 crates\ferramari-ui\src\main.rs:1331
-#: crates\ferramari-ui\src\main.rs:2264 crates\ferramari-ui\src\main.rs:893
+#: crates\ferramari-ui\src\main.rs:1251 crates\ferramari-ui\src\main.rs:1365
+#: crates\ferramari-ui\src\main.rs:2296 crates\ferramari-ui\src\main.rs:904
 msgid "Search wallpapers…"
 msgstr "壁紙を検索…"
 
-#: crates\ferramari-ui\src\main.rs:930
+#: crates\ferramari-ui\src\main.rs:954
 msgid "Server is unavailable"
 msgstr "サーバーに接続できません"
 
@@ -637,11 +637,11 @@ msgstr "サーバーに接続できません"
 msgid "Settings"
 msgstr "設定"
 
-#: crates\ferramari-ui\src\main.rs:4693
+#: crates\ferramari-ui\src\main.rs:4725
 msgid "Show a blurred frame from the current video as the desktop background"
 msgstr "現在の動画からぼかしたフレームを作成し、デスクトップの背景にします"
 
-#: crates\ferramari-ui\src\main.rs:4212
+#: crates\ferramari-ui\src\main.rs:4244
 msgid "Show a tray icon so the window can be reopened after it is closed"
 msgstr ""
 "ウィンドウを閉じた後もトレイから再び開けるように、トレイアイコンを表示します"
@@ -650,27 +650,31 @@ msgstr ""
 msgid "Show Ferramari"
 msgstr "Ferramari を表示"
 
-#: crates\ferramari-ui\src\main.rs:4856
+#: crates\ferramari-ui\src\main.rs:4888
 msgid "Sign"
 msgstr "署名"
 
-#: crates\ferramari-ui\src\main.rs:4876
+#: crates\ferramari-ui\src\main.rs:4908
 msgid "Source…"
 msgstr "ソース…"
 
-#: crates\ferramari-ui\src\main.rs:3003
+#: crates\ferramari-ui\src\main.rs:3035
 msgid "Star a wallpaper to keep it here."
 msgstr "壁紙に星を付けると、ここに表示されます。"
 
-#: crates\ferramari-ui\src\main.rs:2189
+#: crates\ferramari-ui\src\main.rs:2217
 msgid "Start"
 msgstr "開始"
 
-#: crates\ferramari-ui\src\main.rs:4205
+#: crates\ferramari-ui\src\main.rs:4237
 msgid "Start at login"
 msgstr "ログイン時に開始"
 
-#: crates\ferramari-ui\src\main.rs:2195
+#: crates\ferramari-ui\src\main.rs:2266
+msgid "Starting"
+msgstr "起動中"
+
+#: crates\ferramari-ui\src\main.rs:2223
 msgid "Stop"
 msgstr "停止"
 
@@ -678,7 +682,7 @@ msgstr "停止"
 msgid "Suspended"
 msgstr "一時停止"
 
-#: crates\ferramari-ui\src\main.rs:4248 crates\ferramari-ui\src\main.rs:4348
+#: crates\ferramari-ui\src\main.rs:4280 crates\ferramari-ui\src\main.rs:4380
 msgid "System"
 msgstr "システム"
 
@@ -686,11 +690,11 @@ msgstr "システム"
 msgid "System monitoring and engine statistics"
 msgstr "システムとエンジンの統計"
 
-#: crates\ferramari-ui\src\main.rs:4370
+#: crates\ferramari-ui\src\main.rs:4402
 msgid "System theme"
 msgstr "システムテーマ"
 
-#: crates\ferramari-ui\src\main.rs:3010
+#: crates\ferramari-ui\src\main.rs:3042
 msgid "The library is empty"
 msgstr "ライブラリは空です"
 
@@ -701,7 +705,7 @@ msgstr "リリース一覧にバージョンがありませんでした"
 #: crates\ferramari-core\src\update.rs:334
 msgid ""
 "The release listing was not found (is the project still at the same address?)"
-msgstr ""
+msgstr "リリース一覧が見つかりません(プロジェクトの場所が変わった可能性があります)"
 "リリース一覧が見つかりません(プロジェクトの場所が変わった可能性があります)リ"
 "リース一覧が見つかりません(プロジェクトの場所が変わった可能性があります)"
 
@@ -713,23 +717,23 @@ msgstr "リリース一覧は有効な JSON ではありませんでした"
 msgid "The release listing was unexpectedly large"
 msgstr "リリース一覧が想定外に大きいサイズでした"
 
-#: crates\ferramari-ui\src\main.rs:4372
+#: crates\ferramari-ui\src\main.rs:4404
 msgid "The system currently uses a dark theme"
 msgstr "システムは現在ダークテーマを使用しています"
 
-#: crates\ferramari-ui\src\main.rs:4374
+#: crates\ferramari-ui\src\main.rs:4406
 msgid "The system currently uses a light theme"
 msgstr "システムは現在ライトテーマを使用しています"
 
-#: crates\ferramari-ui\src\main.rs:4339
+#: crates\ferramari-ui\src\main.rs:4371
 msgid "Theme"
 msgstr "テーマ"
 
-#: crates\ferramari-ui\src\main.rs:4315
+#: crates\ferramari-ui\src\main.rs:4347
 msgid "This version"
 msgstr "現在のバージョン"
 
-#: crates\ferramari-ui\src\main.rs:3970
+#: crates\ferramari-ui\src\main.rs:4002
 msgid "Threads"
 msgstr "スレッド"
 
@@ -741,7 +745,7 @@ msgstr "音声ミュートの切り替え"
 msgid "Toggle Play/Pause"
 msgstr "再生 / 一時停止の切り替え"
 
-#: crates\ferramari-ui\src\main.rs:4863
+#: crates\ferramari-ui\src\main.rs:4895
 msgid "Trust key"
 msgstr "鍵を信頼"
 
@@ -749,8 +753,8 @@ msgstr "鍵を信頼"
 msgid "Unknown"
 msgstr "不明"
 
-#: crates\ferramari-ui\src\main.rs:3994 crates\ferramari-ui\src\main.rs:4002
-#: crates\ferramari-ui\src\main.rs:4011 crates\ferramari-ui\src\main.rs:4019
+#: crates\ferramari-ui\src\main.rs:4026 crates\ferramari-ui\src\main.rs:4034
+#: crates\ferramari-ui\src\main.rs:4043 crates\ferramari-ui\src\main.rs:4051
 msgid "unknown"
 msgstr "不明"
 
@@ -758,23 +762,23 @@ msgstr "不明"
 msgid "Update available:"
 msgstr "更新があります:"
 
-#: crates\ferramari-ui\src\main.rs:4858
+#: crates\ferramari-ui\src\main.rs:4890
 msgid "Verify"
 msgstr "検証"
 
-#: crates\ferramari-ui\src\main.rs:3991 crates\ferramari-ui\src\main.rs:4991
+#: crates\ferramari-ui\src\main.rs:4023 crates\ferramari-ui\src\main.rs:5023
 msgid "Video"
 msgstr "動画"
 
-#: crates\ferramari-ui\src\main.rs:4881
+#: crates\ferramari-ui\src\main.rs:4913
 msgid "Video…"
 msgstr "動画…"
 
-#: crates\ferramari-ui\src\main.rs:4107
+#: crates\ferramari-ui\src\main.rs:4139
 msgid "Waiting for the first frame"
 msgstr "最初のフレームを待っています"
 
-#: crates\ferramari-ui\src\main.rs:3924
+#: crates\ferramari-ui\src\main.rs:3956
 msgid "Waiting for the first sample…"
 msgstr "最初のサンプルを待っています…"
 

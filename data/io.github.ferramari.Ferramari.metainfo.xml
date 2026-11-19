@@ -21,6 +21,17 @@
     <category>Graphics</category>
   </categories>
   <releases>
+    <release version="2.2.5" date="2026-11-19" type="stable">
+      <description>
+        <p>The post-2.2.0 audit pass: tracked command errors, honest playback state and bounded watcher shutdown.</p>
+        <ul>
+          <li>Windows static-wallpaper-off no longer restarts playback, and config/display-id recovery keeps a valid backup.</li>
+          <li>Tracked commands return application errors to the control surface; playback reports Starting until the first frame arrives.</li>
+          <li>Linux D-Bus, Windows control, inotify and X11 watcher threads stop within a two-second deadline.</li>
+          <li>Windows mixed-DPI geometry is no longer scaled twice, control requests are bounded, and catalogue cleanup runs at startup.</li>
+        </ul>
+      </description>
+    </release>
     <release version="2.2.4" date="2026-11-18" type="stable">
       <description>
         <p>Reviewed and corrected the text in every Settings section.</p>

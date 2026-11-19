@@ -180,6 +180,16 @@ pub struct GnomeBackground {
 }
 
 impl GnomeBackground {
+    /// A background that cannot be read or written. Headless tests use it so
+    /// constructing an `App` never touches the user's desktop.
+    pub fn unsupported() -> Self {
+        Self {
+            schema: false,
+            background: Background::Missing,
+            active_file: None,
+        }
+    }
+
     pub fn capture() -> Self {
         if !paths::is_gnome() {
             return Self {

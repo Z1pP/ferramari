@@ -17,31 +17,31 @@ msgstr ""
 msgid "Active"
 msgstr "Активен"
 
-#: crates\ferramari-ui\src\main.rs:2914
+#: crates\ferramari-ui\src\main.rs:2946
 msgid "Add"
 msgstr "Добавить"
 
-#: crates\ferramari-ui\src\main.rs:3011
+#: crates\ferramari-ui\src\main.rs:3043
 msgid "Add a video, or download one from Online."
 msgstr "Добавьте видео или загрузите его в разделе «Онлайн»."
 
-#: crates\ferramari-ui\src\main.rs:3250
+#: crates\ferramari-ui\src\main.rs:3282
 msgid "Add to"
 msgstr "Добавить в"
 
-#: crates\ferramari-ui\src\main.rs:3220
+#: crates\ferramari-ui\src\main.rs:3252
 msgid "Add to favorites"
 msgstr "Добавить в избранное"
 
-#: crates\ferramari-ui\src\main.rs:4754
+#: crates\ferramari-ui\src\main.rs:4786
 msgid "Add video"
 msgstr "Добавить видео"
 
-#: crates\ferramari-ui\src\main.rs:2832
+#: crates\ferramari-ui\src\main.rs:2864
 msgid "Add Wallpaper"
 msgstr "Добавить обои"
 
-#: crates\ferramari-ui\src\main.rs:1459
+#: crates\ferramari-ui\src\main.rs:1493
 msgid "Added to library"
 msgstr "Добавлено в библиотеку"
 
@@ -49,11 +49,11 @@ msgstr "Добавлено в библиотеку"
 msgid "Advanced"
 msgstr "Дополнительно"
 
-#: crates\ferramari-ui\src\main.rs:4990
+#: crates\ferramari-ui\src\main.rs:5022
 msgid "All"
 msgstr "Все"
 
-#: crates\ferramari-ui\src\main.rs:1574
+#: crates\ferramari-ui\src\main.rs:1605
 msgid "All wallpapers"
 msgstr "Все обои"
 
@@ -61,31 +61,31 @@ msgstr "Все обои"
 msgid "Appearance"
 msgstr "Оформление"
 
-#: crates\ferramari-ui\src\main.rs:4725
+#: crates\ferramari-ui\src\main.rs:4757
 msgid "Apply"
 msgstr "Применить"
 
-#: crates\ferramari-ui\src\main.rs:3007
+#: crates\ferramari-ui\src\main.rs:3039
 msgid "Apply a wallpaper and it will show here."
 msgstr "Примените обои — и они появятся здесь."
 
-#: crates\ferramari-ui\src\main.rs:3209
+#: crates\ferramari-ui\src\main.rs:3241
 msgid "Apply as wallpaper"
 msgstr "Применить как обои"
 
-#: crates\ferramari-ui\src\main.rs:4692
+#: crates\ferramari-ui\src\main.rs:4724
 msgid "Apply static wallpaper"
 msgstr "Применять статичные обои"
 
-#: crates\ferramari-ui\src\main.rs:4455
+#: crates\ferramari-ui\src\main.rs:4487
 msgid "Auto"
 msgstr "Авто"
 
-#: crates\ferramari-ui\src\main.rs:4444
+#: crates\ferramari-ui\src\main.rs:4476
 msgid "Auto lets mpv choose a decoder; Off forces software decoding"
 msgstr "«Авто» — выбор mpv; «Выкл.» — принудительное программное декодирование"
 
-#: crates\ferramari-ui\src\main.rs:4446
+#: crates\ferramari-ui\src\main.rs:4478
 msgid ""
 "Auto lets mpv choose a decoder; VA-API requests hardware decoding; Off "
 "forces software decoding"
@@ -93,23 +93,23 @@ msgstr ""
 "«Авто» — выбор mpv; VA-API — аппаратное декодирование; «Выкл.» — "
 "принудительное программное декодирование"
 
-#: crates\ferramari-ui\src\main.rs:4106
+#: crates\ferramari-ui\src\main.rs:4138
 msgid "avg"
 msgstr "в среднем"
 
-#: crates\ferramari-ui\src\main.rs:4420
+#: crates\ferramari-ui\src\main.rs:4452
 msgid "Balanced"
 msgstr "Сбалансированный"
 
-#: crates\ferramari-ui\src\main.rs:4708
+#: crates\ferramari-ui\src\main.rs:4740
 msgid "Blur applied to the static frame"
 msgstr "Размытие, применяемое к статичному кадру"
 
-#: crates\ferramari-ui\src\main.rs:4706
+#: crates\ferramari-ui\src\main.rs:4738
 msgid "Blur radius"
 msgstr "Радиус размытия"
 
-#: crates\ferramari-ui\src\main.rs:3581
+#: crates\ferramari-ui\src\main.rs:3613
 msgid "Browse"
 msgstr "Обзор"
 
@@ -117,43 +117,43 @@ msgstr "Обзор"
 msgid "Browse and download wallpapers"
 msgstr "Поиск и загрузка обоев"
 
-#: crates\ferramari-ui\src\main.rs:2835
+#: crates\ferramari-ui\src\main.rs:2867
 msgid "Browse Online"
 msgstr "Найти в онлайне"
 
-#: crates\ferramari-ui\src\main.rs:3749
+#: crates\ferramari-ui\src\main.rs:3781
 msgid "Categories"
 msgstr "Категории"
 
-#: crates\ferramari-ui\src\main.rs:4217
+#: crates\ferramari-ui\src\main.rs:4249
 msgid "Check for updates"
 msgstr "Проверять обновления"
 
-#: crates\ferramari-ui\src\main.rs:4284
+#: crates\ferramari-ui\src\main.rs:4316
 msgid "Check GitHub for a new release when the window opens"
 msgstr "Проверять новый релиз на GitHub при открытии окна"
 
-#: crates\ferramari-ui\src\main.rs:4324
+#: crates\ferramari-ui\src\main.rs:4356
 msgid "Check now"
 msgstr "Проверить сейчас"
 
-#: crates\ferramari-ui\src\main.rs:1505
+#: crates\ferramari-ui\src\main.rs:1536
 msgid "Choose export destination"
 msgstr "Выберите папку для экспорта"
 
-#: crates\ferramari-ui\src\main.rs:1474
+#: crates\ferramari-ui\src\main.rs:1505
 msgid "Choose package directory"
 msgstr "Выберите каталог пакета"
 
-#: crates\ferramari-ui\src\main.rs:1490
+#: crates\ferramari-ui\src\main.rs:1521
 msgid "Choose video to export"
 msgstr "Выберите видео для экспорта"
 
-#: crates\ferramari-ui\src\main.rs:2828
+#: crates\ferramari-ui\src\main.rs:2860
 msgid "Choose Wallpaper"
 msgstr "Выбрать обои"
 
-#: crates\ferramari-ui\src\main.rs:4811
+#: crates\ferramari-ui\src\main.rs:4843
 msgid "Collection name"
 msgstr "Название коллекции"
 
@@ -161,7 +161,7 @@ msgstr "Название коллекции"
 msgid "Collections"
 msgstr "Коллекции"
 
-#: crates\ferramari-ui\src\main.rs:4341
+#: crates\ferramari-ui\src\main.rs:4373
 msgid "Colour scheme for the window and controls"
 msgstr "Цветовая схема окна и элементов управления"
 
@@ -178,75 +178,75 @@ msgstr "Не удалось связаться с GitHub"
 msgid "Could not read the release listing"
 msgstr "Не удалось прочитать список релизов"
 
-#: crates\ferramari-ui\src\main.rs:1085
+#: crates\ferramari-ui\src\main.rs:1110
 msgid "Could not save the update setting"
 msgstr "Не удалось сохранить настройку обновлений"
 
-#: crates\ferramari-ui\src\main.rs:2755
+#: crates\ferramari-ui\src\main.rs:2787
 msgid "CPU"
 msgstr "ЦП"
 
-#: crates\ferramari-ui\src\main.rs:4790
+#: crates\ferramari-ui\src\main.rs:4822
 msgid "Create"
 msgstr "Создать"
 
-#: crates\ferramari-ui\src\main.rs:2034
+#: crates\ferramari-ui\src\main.rs:2062
 msgid "Daemon"
 msgstr "Демон"
 
 #: crates\ferramari-ui\src\client_control.rs:31
-#: crates\ferramari-ui\src\main.rs:2036
+#: crates\ferramari-ui\src\main.rs:2064
 msgid "Daemon offline"
 msgstr "Демон недоступен"
 
-#: crates\ferramari-ui\src\main.rs:4358 crates\ferramari-ui\src\main.rs:4378
+#: crates\ferramari-ui\src\main.rs:4390 crates\ferramari-ui\src\main.rs:4410
 msgid "Dark"
 msgstr "Тёмная"
 
-#: crates\ferramari-ui\src\main.rs:3990
+#: crates\ferramari-ui\src\main.rs:4022
 msgid "Decoder"
 msgstr "Декодер"
 
-#: crates\ferramari-ui\src\main.rs:4886
+#: crates\ferramari-ui\src\main.rs:4918
 msgid "Destination…"
 msgstr "Назначение…"
 
-#: crates\ferramari-ui\src\main.rs:2684
+#: crates\ferramari-ui\src\main.rs:2716
 msgid "display"
 msgid_plural "displays"
 msgstr[0] "монитор"
 msgstr[1] "монитора"
 msgstr[2] "мониторов"
 
-#: crates\ferramari-ui\src\main.rs:1680 crates\ferramari-ui\src\main.rs:298
+#: crates\ferramari-ui\src\main.rs:1710 crates\ferramari-ui\src\main.rs:298
 msgid "Downloaded"
 msgstr "Скачано"
 
-#: crates\ferramari-ui\src\main.rs:3852
+#: crates\ferramari-ui\src\main.rs:3884
 msgid "Downloading…"
 msgstr "Загрузка…"
 
-#: crates\ferramari-ui\src\main.rs:4015
+#: crates\ferramari-ui\src\main.rs:4047
 msgid "Dropped Frames"
 msgstr "Пропущенные кадры"
 
-#: crates\ferramari-ui\src\main.rs:4425
+#: crates\ferramari-ui\src\main.rs:4457
 msgid "Eco"
 msgstr "Эко"
 
-#: crates\ferramari-ui\src\main.rs:939
+#: crates\ferramari-ui\src\main.rs:960
 msgid "Enter the required package paths"
 msgstr "Укажите необходимые пути к пакету"
 
-#: crates\ferramari-ui\src\main.rs:4852
+#: crates\ferramari-ui\src\main.rs:4884
 msgid "Export"
 msgstr "Экспортировать"
 
-#: crates\ferramari-ui\src\main.rs:4906
+#: crates\ferramari-ui\src\main.rs:4938
 msgid "Export destination folder"
 msgstr "Папка для экспорта"
 
-#: crates\ferramari-ui\src\main.rs:4994
+#: crates\ferramari-ui\src\main.rs:5026
 msgid "Favorites"
 msgstr "Избранное"
 
@@ -254,11 +254,11 @@ msgstr "Избранное"
 msgid "Featured"
 msgstr "Рекомендуемое"
 
-#: crates\ferramari-ui\src\main.rs:2791 crates\ferramari-ui\src\main.rs:4008
+#: crates\ferramari-ui\src\main.rs:2823 crates\ferramari-ui\src\main.rs:4040
 msgid "FPS"
 msgstr "К/с"
 
-#: crates\ferramari-ui\src\main.rs:4103
+#: crates\ferramari-ui\src\main.rs:4135
 msgid "Frame Time"
 msgstr "Время кадра"
 
@@ -270,15 +270,15 @@ msgstr "Основные"
 msgid "GitHub rate limit reached; try again later"
 msgstr "Превышен лимит запросов GitHub; попробуйте позже"
 
-#: crates\ferramari-ui\src\main.rs:2779
+#: crates\ferramari-ui\src\main.rs:2811
 msgid "GPU"
 msgstr "ГП"
 
-#: crates\ferramari-ui\src\main.rs:4775
+#: crates\ferramari-ui\src\main.rs:4807
 msgid "Groups of wallpapers a display can cycle through"
 msgstr "Наборы обоев, которые монитор может перебирать"
 
-#: crates\ferramari-ui\src\main.rs:4441
+#: crates\ferramari-ui\src\main.rs:4473
 msgid "Hardware decoding"
 msgstr "Аппаратное декодирование"
 
@@ -286,7 +286,7 @@ msgstr "Аппаратное декодирование"
 msgid "Home"
 msgstr "Главная"
 
-#: crates\ferramari-ui\src\main.rs:4646
+#: crates\ferramari-ui\src\main.rs:4678
 msgid "How the selected rotation collection advances"
 msgstr "Как переключаются обои в выбранной коллекции"
 
@@ -294,55 +294,55 @@ msgstr "Как переключаются обои в выбранной кол�
 msgid "I'm Feeling Lucky"
 msgstr "Мне повезёт"
 
-#: crates\ferramari-ui\src\main.rs:2240 crates\ferramari-ui\src\main.rs:2794
+#: crates\ferramari-ui\src\main.rs:2270 crates\ferramari-ui\src\main.rs:2826
 #: crates\ferramari-ui\src\main.rs:457
 msgid "Idle"
 msgstr "Простой"
 
-#: crates\ferramari-ui\src\main.rs:4584
+#: crates\ferramari-ui\src\main.rs:4616
 msgid "Idle delay"
 msgstr "Задержка бездействия"
 
-#: crates\ferramari-ui\src\main.rs:4992
+#: crates\ferramari-ui\src\main.rs:5024
 msgid "Image"
 msgstr "Изображения"
 
-#: crates\ferramari-ui\src\main.rs:4847
+#: crates\ferramari-ui\src\main.rs:4879
 msgid "Import"
 msgstr "Импортировать"
 
-#: crates\ferramari-ui\src\main.rs:4838
+#: crates\ferramari-ui\src\main.rs:4870
 msgid "Import, export, sign and verify .ferramari packages"
 msgstr "Импорт, экспорт, подпись и проверка пакетов .ferramari"
 
-#: crates\ferramari-ui\src\main.rs:4658
+#: crates\ferramari-ui\src\main.rs:4690
 msgid "In order"
 msgstr "По порядку"
 
-#: crates\ferramari-ui\src\main.rs:3867
+#: crates\ferramari-ui\src\main.rs:3899
 msgid "Install"
 msgstr "Установить"
 
-#: crates\ferramari-ui\src\main.rs:4240
+#: crates\ferramari-ui\src\main.rs:4272
 msgid "Interface language"
 msgstr "Язык интерфейса"
 
-#: crates\ferramari-ui\src\main.rs:2901
+#: crates\ferramari-ui\src\main.rs:2933
 msgid "item"
 msgid_plural "items"
 msgstr[0] "предмет"
 msgstr[1] "предмета"
 msgstr[2] "предметов"
 
-#: crates\ferramari-ui\src\main.rs:4238
+#: crates\ferramari-ui\src\main.rs:4270
 msgid "Language"
 msgstr "Язык"
 
-#: crates\ferramari-ui\src\main.rs:4281 crates\ferramari-ui\src\main.rs:4283
+#: crates\ferramari-ui\src\main.rs:4313 crates\ferramari-ui\src\main.rs:4315
 msgid "Last checked"
 msgstr "Последняя проверка"
 
-#: crates\ferramari-ui\src\main.rs:4206
+#: crates\ferramari-ui\src\main.rs:4238
 msgid "Launch Ferramari automatically when you sign in"
 msgstr "Запускать Ferramari автоматически при входе в систему"
 
@@ -350,55 +350,55 @@ msgstr "Запускать Ferramari автоматически при вход�
 msgid "Library"
 msgstr "Библиотека"
 
-#: crates\ferramari-ui\src\main.rs:4738
+#: crates\ferramari-ui\src\main.rs:4770
 msgid "Library folder"
 msgstr "Папка библиотеки"
 
-#: crates\ferramari-ui\src\main.rs:4353 crates\ferramari-ui\src\main.rs:4380
+#: crates\ferramari-ui\src\main.rs:4385 crates\ferramari-ui\src\main.rs:4412
 msgid "Light"
 msgstr "Светлая"
 
-#: crates\ferramari-ui\src\main.rs:3379 crates\ferramari-ui\src\main.rs:4993
+#: crates\ferramari-ui\src\main.rs:3411 crates\ferramari-ui\src\main.rs:5025
 msgid "Live"
 msgstr "Активные"
 
-#: crates\ferramari-ui\src\main.rs:3558
+#: crates\ferramari-ui\src\main.rs:3590
 msgid "Live wallpapers"
 msgstr "Живые обои"
 
-#: crates\ferramari-ui\src\main.rs:3462
+#: crates\ferramari-ui\src\main.rs:3494
 msgid "Load more"
 msgstr "Показать ещё"
 
-#: crates\ferramari-ui\src\main.rs:3451
+#: crates\ferramari-ui\src\main.rs:3483
 msgid "Loading wallpapers…"
 msgstr "Загрузка обоев…"
 
-#: crates\ferramari-ui\src\main.rs:4614
+#: crates\ferramari-ui\src\main.rs:4646
 msgid "Minutes between changes in a rotation collection"
 msgstr "Интервал между сменами обоев в коллекции"
 
-#: crates\ferramari-ui\src\main.rs:4586
+#: crates\ferramari-ui\src\main.rs:4618
 msgid "Minutes of inactivity before the idle policy applies"
 msgstr "Минуты бездействия до перехода в режим простоя"
 
-#: crates\ferramari-ui\src\main.rs:2679 crates\ferramari-ui\src\main.rs:694
+#: crates\ferramari-ui\src\main.rs:2711 crates\ferramari-ui\src\main.rs:694
 msgid "Monitors"
 msgstr "Мониторы"
 
-#: crates\ferramari-ui\src\main.rs:2236
+#: crates\ferramari-ui\src\main.rs:2264
 msgid "MPV Engine"
 msgstr "Движок MPV"
 
-#: crates\ferramari-ui\src\main.rs:4026
+#: crates\ferramari-ui\src\main.rs:4058
 msgid "MPV Statistics"
 msgstr "Статистика MPV"
 
-#: crates\ferramari-ui\src\main.rs:4686
+#: crates\ferramari-ui\src\main.rs:4718
 msgid "Mute when a window covers the wallpaper"
 msgstr "Выключать звук, когда окно перекрывает обои"
 
-#: crates\ferramari-ui\src\main.rs:4687
+#: crates\ferramari-ui\src\main.rs:4719
 msgid "Mute when a window is maximized, fullscreen or fully covers the monitor"
 msgstr ""
 "Выключать звук, когда окно развёрнуто, открыто во весь экран или полностью "
@@ -412,52 +412,52 @@ msgstr "нет данных"
 msgid "Never checked"
 msgstr "Ещё не проверялось"
 
-#: crates\ferramari-ui\src\main.rs:1222 crates\ferramari-ui\src\main.rs:1332
-#: crates\ferramari-ui\src\main.rs:887
+#: crates\ferramari-ui\src\main.rs:1252 crates\ferramari-ui\src\main.rs:1366
+#: crates\ferramari-ui\src\main.rs:898
 msgid "New collection"
 msgstr "Новая коллекция"
 
-#: crates\ferramari-ui\src\main.rs:4798
+#: crates\ferramari-ui\src\main.rs:4830
 msgid "No collections yet"
 msgstr "Коллекций пока нет"
 
-#: crates\ferramari-ui\src\main.rs:2569 crates\ferramari-ui\src\main.rs:4568
+#: crates\ferramari-ui\src\main.rs:2601 crates\ferramari-ui\src\main.rs:4600
 msgid "No displays detected"
 msgstr "Дисплеи не обнаружены"
 
-#: crates\ferramari-ui\src\main.rs:3002
+#: crates\ferramari-ui\src\main.rs:3034
 msgid "No favorites yet"
 msgstr "Избранного пока нет"
 
-#: crates\ferramari-ui\src\main.rs:3016
+#: crates\ferramari-ui\src\main.rs:3048
 msgid "No matches"
 msgstr "Совпадений нет"
 
-#: crates\ferramari-ui\src\main.rs:2615 crates\ferramari-ui\src\main.rs:4501
+#: crates\ferramari-ui\src\main.rs:2647 crates\ferramari-ui\src\main.rs:4533
 msgid "No rotation"
 msgstr "Без ротации"
 
-#: crates\ferramari-ui\src\main.rs:2357 crates\ferramari-ui\src\main.rs:2598
+#: crates\ferramari-ui\src\main.rs:2389 crates\ferramari-ui\src\main.rs:2630
 msgid "No wallpaper"
 msgstr "Обои не выбраны"
 
-#: crates\ferramari-ui\src\main.rs:3454
+#: crates\ferramari-ui\src\main.rs:3486
 msgid "No wallpapers found"
 msgstr "Обои не найдены"
 
-#: crates\ferramari-ui\src\main.rs:3561
+#: crates\ferramari-ui\src\main.rs:3593
 msgid "Nothing featured yet"
 msgstr "Рекомендуемого пока нет"
 
-#: crates\ferramari-ui\src\main.rs:3017
+#: crates\ferramari-ui\src\main.rs:3049
 msgid "Nothing in the library matches that search."
 msgstr "Поиск не нашёл ничего в библиотеке."
 
-#: crates\ferramari-ui\src\main.rs:2397 crates\ferramari-ui\src\main.rs:3006
+#: crates\ferramari-ui\src\main.rs:2429 crates\ferramari-ui\src\main.rs:3038
 msgid "Nothing is playing"
 msgstr "Ничего не воспроизводится"
 
-#: crates\ferramari-ui\src\main.rs:2522
+#: crates\ferramari-ui\src\main.rs:2554
 msgid "Now Playing"
 msgstr "Сейчас воспроизводится"
 
@@ -465,7 +465,7 @@ msgstr "Сейчас воспроизводится"
 msgid "Occluded"
 msgstr "Перекрыт окном"
 
-#: crates\ferramari-ui\src\main.rs:4469 crates\ferramari-ui\src\main.rs:4653
+#: crates\ferramari-ui\src\main.rs:4501 crates\ferramari-ui\src\main.rs:4685
 msgid "Off"
 msgstr "Выкл."
 
@@ -473,39 +473,39 @@ msgstr "Выкл."
 msgid "Online"
 msgstr "Онлайн"
 
-#: crates\ferramari-ui\src\main.rs:2908 crates\ferramari-ui\src\main.rs:4750
+#: crates\ferramari-ui\src\main.rs:2940 crates\ferramari-ui\src\main.rs:4782
 msgid "Open folder"
 msgstr "Открыть папку"
 
-#: crates\ferramari-ui\src\main.rs:2841
+#: crates\ferramari-ui\src\main.rs:2873
 msgid "Open Settings"
 msgstr "Открыть настройки"
 
-#: crates\ferramari-ui\src\main.rs:4898
+#: crates\ferramari-ui\src\main.rs:4930
 msgid "Package directory or video to export"
 msgstr "Каталог пакета или видео для экспорта"
 
-#: crates\ferramari-ui\src\main.rs:1252
+#: crates\ferramari-ui\src\main.rs:1288
 msgid "Package request queued; processing continues in the server"
 msgstr "Запрос на обработку пакета отправлен серверу"
 
-#: crates\ferramari-ui\src\main.rs:4836
+#: crates\ferramari-ui\src\main.rs:4868
 msgid "Packages"
 msgstr "Пакеты"
 
-#: crates\ferramari-ui\src\main.rs:4481
+#: crates\ferramari-ui\src\main.rs:4513
 msgid "Pause on battery"
 msgstr "Пауза при работе от батареи"
 
-#: crates\ferramari-ui\src\main.rs:4482
+#: crates\ferramari-ui\src\main.rs:4514
 msgid "Pause playback while running on battery"
 msgstr "Приостанавливать воспроизведение при работе от батареи"
 
-#: crates\ferramari-ui\src\main.rs:4680
+#: crates\ferramari-ui\src\main.rs:4712
 msgid "Pause when a window covers the wallpaper"
 msgstr "Пауза, когда окно перекрывает обои"
 
-#: crates\ferramari-ui\src\main.rs:4681
+#: crates\ferramari-ui\src\main.rs:4713
 msgid ""
 "Pause when a window is maximized, fullscreen or fully covers the monitor"
 msgstr ""
@@ -516,7 +516,7 @@ msgstr ""
 msgid "Performance"
 msgstr "Производительность"
 
-#: crates\ferramari-ui\src\main.rs:3231
+#: crates\ferramari-ui\src\main.rs:3263
 msgid "Play on"
 msgstr "Воспроизвести на"
 
@@ -524,27 +524,27 @@ msgstr "Воспроизвести на"
 msgid "Playback"
 msgstr "Воспроизведение"
 
-#: crates\ferramari-ui\src\main.rs:4403
+#: crates\ferramari-ui\src\main.rs:4435
 msgid "Playback profile"
 msgstr "Профиль воспроизведения"
 
-#: crates\ferramari-ui\src\main.rs:2651
+#: crates\ferramari-ui\src\main.rs:2683
 msgid "Primary"
 msgstr "Основной"
 
-#: crates\ferramari-ui\src\main.rs:3968
+#: crates\ferramari-ui\src\main.rs:4000
 msgid "Process"
 msgstr "Процессы"
 
-#: crates\ferramari-ui\src\main.rs:3975
+#: crates\ferramari-ui\src\main.rs:4007
 msgid "Processes"
 msgstr "Процессы"
 
-#: crates\ferramari-ui\src\main.rs:4415
+#: crates\ferramari-ui\src\main.rs:4447
 msgid "Quality"
 msgstr "Качество"
 
-#: crates\ferramari-ui\src\main.rs:4405
+#: crates\ferramari-ui\src\main.rs:4437
 msgid ""
 "Quality keeps the full frame rate; Balanced caps idle at 30 fps; Eco pauses "
 "when idle"
@@ -556,19 +556,19 @@ msgstr ""
 msgid "Quit Ferramari"
 msgstr "Выйти из Ferramari"
 
-#: crates\ferramari-ui\src\main.rs:2767
+#: crates\ferramari-ui\src\main.rs:2799
 msgid "RAM"
 msgstr "ОЗУ"
 
-#: crates\ferramari-ui\src\main.rs:4663
+#: crates\ferramari-ui\src\main.rs:4695
 msgid "Random"
 msgstr "Случайно"
 
-#: crates\ferramari-ui\src\main.rs:2395
+#: crates\ferramari-ui\src\main.rs:2427
 msgid "Reading playback data…"
 msgstr "Читаем данные плеера…"
 
-#: crates\ferramari-ui\src\main.rs:3132
+#: crates\ferramari-ui\src\main.rs:3164
 msgid "Reading…"
 msgstr "Читаем…"
 
@@ -576,65 +576,65 @@ msgstr "Читаем…"
 msgid "Recent"
 msgstr "Недавние"
 
-#: crates\ferramari-ui\src\main.rs:4756
+#: crates\ferramari-ui\src\main.rs:4788
 msgid "Refresh"
 msgstr "Обновить"
 
 #: crates\ferramari-platform\src\windows\tray.rs:304
-#: crates\ferramari-ui\src\main.rs:3265
+#: crates\ferramari-ui\src\main.rs:3297
 msgid "Reload"
 msgstr "Обновить"
 
-#: crates\ferramari-ui\src\main.rs:3248
+#: crates\ferramari-ui\src\main.rs:3280
 msgid "Remove from"
 msgstr "Убрать из"
 
-#: crates\ferramari-ui\src\main.rs:3218
+#: crates\ferramari-ui\src\main.rs:3250
 msgid "Remove from favorites"
 msgstr "Убрать из избранного"
 
-#: crates\ferramari-ui\src\main.rs:3272
+#: crates\ferramari-ui\src\main.rs:3304
 msgid "Remove from library"
 msgstr "Убрать из библиотеки"
 
-#: crates\ferramari-ui\src\main.rs:3999
+#: crates\ferramari-ui\src\main.rs:4031
 msgid "Resolution"
 msgstr "Разрешение"
 
-#: crates\ferramari-ui\src\main.rs:2201
+#: crates\ferramari-ui\src\main.rs:2229
 msgid "Restart"
 msgstr "Перезапуск"
 
-#: crates\ferramari-ui\src\main.rs:4773
+#: crates\ferramari-ui\src\main.rs:4805
 msgid "Rotation collections"
 msgstr "Коллекции для ротации"
 
-#: crates\ferramari-ui\src\main.rs:4612
+#: crates\ferramari-ui\src\main.rs:4644
 msgid "Rotation interval"
 msgstr "Интервал ротации"
 
-#: crates\ferramari-ui\src\main.rs:4644
+#: crates\ferramari-ui\src\main.rs:4676
 msgid "Rotation mode"
 msgstr "Режим ротации"
 
-#: crates\ferramari-ui\src\main.rs:4211
+#: crates\ferramari-ui\src\main.rs:4243
 msgid "Run in background"
 msgstr "Работать в фоне"
 
-#: crates\ferramari-ui\src\main.rs:2238
+#: crates\ferramari-ui\src\main.rs:2268
 msgid "Running"
 msgstr "Работает"
 
-#: crates\ferramari-ui\src\main.rs:3561
+#: crates\ferramari-ui\src\main.rs:3593
 msgid "Search or pick a category"
 msgstr "Найдите обои или выберите категорию"
 
-#: crates\ferramari-ui\src\main.rs:1221 crates\ferramari-ui\src\main.rs:1331
-#: crates\ferramari-ui\src\main.rs:2264 crates\ferramari-ui\src\main.rs:893
+#: crates\ferramari-ui\src\main.rs:1251 crates\ferramari-ui\src\main.rs:1365
+#: crates\ferramari-ui\src\main.rs:2296 crates\ferramari-ui\src\main.rs:904
 msgid "Search wallpapers…"
 msgstr "Поиск обоев…"
 
-#: crates\ferramari-ui\src\main.rs:930
+#: crates\ferramari-ui\src\main.rs:954
 msgid "Server is unavailable"
 msgstr "Сервер недоступен"
 
@@ -642,11 +642,11 @@ msgstr "Сервер недоступен"
 msgid "Settings"
 msgstr "Настройки"
 
-#: crates\ferramari-ui\src\main.rs:4693
+#: crates\ferramari-ui\src\main.rs:4725
 msgid "Show a blurred frame from the current video as the desktop background"
 msgstr "Показывать размытый кадр из текущего видео как фон рабочего стола"
 
-#: crates\ferramari-ui\src\main.rs:4212
+#: crates\ferramari-ui\src\main.rs:4244
 msgid "Show a tray icon so the window can be reopened after it is closed"
 msgstr "Показывать значок в трее, чтобы снова открыть окно после закрытия"
 
@@ -654,27 +654,31 @@ msgstr "Показывать значок в трее, чтобы снова о�
 msgid "Show Ferramari"
 msgstr "Показать Ferramari"
 
-#: crates\ferramari-ui\src\main.rs:4856
+#: crates\ferramari-ui\src\main.rs:4888
 msgid "Sign"
 msgstr "Подписать"
 
-#: crates\ferramari-ui\src\main.rs:4876
+#: crates\ferramari-ui\src\main.rs:4908
 msgid "Source…"
 msgstr "Источник…"
 
-#: crates\ferramari-ui\src\main.rs:3003
+#: crates\ferramari-ui\src\main.rs:3035
 msgid "Star a wallpaper to keep it here."
 msgstr "Отметьте обои звёздочкой, чтобы они появились здесь."
 
-#: crates\ferramari-ui\src\main.rs:2189
+#: crates\ferramari-ui\src\main.rs:2217
 msgid "Start"
 msgstr "Запуск"
 
-#: crates\ferramari-ui\src\main.rs:4205
+#: crates\ferramari-ui\src\main.rs:4237
 msgid "Start at login"
 msgstr "Запускать при входе"
 
-#: crates\ferramari-ui\src\main.rs:2195
+#: crates\ferramari-ui\src\main.rs:2266
+msgid "Starting"
+msgstr "Запуск"
+
+#: crates\ferramari-ui\src\main.rs:2223
 msgid "Stop"
 msgstr "Останов"
 
@@ -682,7 +686,7 @@ msgstr "Останов"
 msgid "Suspended"
 msgstr "Приостановлен"
 
-#: crates\ferramari-ui\src\main.rs:4248 crates\ferramari-ui\src\main.rs:4348
+#: crates\ferramari-ui\src\main.rs:4280 crates\ferramari-ui\src\main.rs:4380
 msgid "System"
 msgstr "Система"
 
@@ -690,11 +694,11 @@ msgstr "Система"
 msgid "System monitoring and engine statistics"
 msgstr "Мониторинг системы и статистика движка"
 
-#: crates\ferramari-ui\src\main.rs:4370
+#: crates\ferramari-ui\src\main.rs:4402
 msgid "System theme"
 msgstr "Системная тема"
 
-#: crates\ferramari-ui\src\main.rs:3010
+#: crates\ferramari-ui\src\main.rs:3042
 msgid "The library is empty"
 msgstr "Библиотека пуста"
 
@@ -715,23 +719,23 @@ msgstr "Список релизов не является корректным J
 msgid "The release listing was unexpectedly large"
 msgstr "Список релизов оказался неожиданно большим"
 
-#: crates\ferramari-ui\src\main.rs:4372
+#: crates\ferramari-ui\src\main.rs:4404
 msgid "The system currently uses a dark theme"
 msgstr "Система сейчас использует тёмное оформление"
 
-#: crates\ferramari-ui\src\main.rs:4374
+#: crates\ferramari-ui\src\main.rs:4406
 msgid "The system currently uses a light theme"
 msgstr "Система сейчас использует светлое оформление"
 
-#: crates\ferramari-ui\src\main.rs:4339
+#: crates\ferramari-ui\src\main.rs:4371
 msgid "Theme"
 msgstr "Тема"
 
-#: crates\ferramari-ui\src\main.rs:4315
+#: crates\ferramari-ui\src\main.rs:4347
 msgid "This version"
 msgstr "Эта версия"
 
-#: crates\ferramari-ui\src\main.rs:3970
+#: crates\ferramari-ui\src\main.rs:4002
 msgid "Threads"
 msgstr "Потоки"
 
@@ -743,7 +747,7 @@ msgstr "Выключить/включить звук"
 msgid "Toggle Play/Pause"
 msgstr "Пауза/воспроизведение"
 
-#: crates\ferramari-ui\src\main.rs:4863
+#: crates\ferramari-ui\src\main.rs:4895
 msgid "Trust key"
 msgstr "Доверить ключ"
 
@@ -751,8 +755,8 @@ msgstr "Доверить ключ"
 msgid "Unknown"
 msgstr "Неизвестно"
 
-#: crates\ferramari-ui\src\main.rs:3994 crates\ferramari-ui\src\main.rs:4002
-#: crates\ferramari-ui\src\main.rs:4011 crates\ferramari-ui\src\main.rs:4019
+#: crates\ferramari-ui\src\main.rs:4026 crates\ferramari-ui\src\main.rs:4034
+#: crates\ferramari-ui\src\main.rs:4043 crates\ferramari-ui\src\main.rs:4051
 msgid "unknown"
 msgstr "неизвестно"
 
@@ -760,23 +764,23 @@ msgstr "неизвестно"
 msgid "Update available:"
 msgstr "Доступно обновление:"
 
-#: crates\ferramari-ui\src\main.rs:4858
+#: crates\ferramari-ui\src\main.rs:4890
 msgid "Verify"
 msgstr "Проверить"
 
-#: crates\ferramari-ui\src\main.rs:3991 crates\ferramari-ui\src\main.rs:4991
+#: crates\ferramari-ui\src\main.rs:4023 crates\ferramari-ui\src\main.rs:5023
 msgid "Video"
 msgstr "Видео"
 
-#: crates\ferramari-ui\src\main.rs:4881
+#: crates\ferramari-ui\src\main.rs:4913
 msgid "Video…"
 msgstr "Видео…"
 
-#: crates\ferramari-ui\src\main.rs:4107
+#: crates\ferramari-ui\src\main.rs:4139
 msgid "Waiting for the first frame"
 msgstr "Ждём первый кадр"
 
-#: crates\ferramari-ui\src\main.rs:3924
+#: crates\ferramari-ui\src\main.rs:3956
 msgid "Waiting for the first sample…"
 msgstr "Ожидание первого замера…"
 

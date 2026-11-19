@@ -287,6 +287,16 @@ pub struct StaticBackground {
 }
 
 impl StaticBackground {
+    /// A background that cannot be read or written. Headless tests use it so
+    /// constructing an `App` never touches the user's desktop.
+    pub fn unsupported() -> Self {
+        Self {
+            supported: false,
+            background: Background::Missing,
+            active_file: None,
+        }
+    }
+
     pub fn capture() -> Self {
         let supported = current_wallpaper().is_some();
         let current = current_wallpaper();

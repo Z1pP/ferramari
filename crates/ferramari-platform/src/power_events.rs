@@ -12,8 +12,9 @@
 //! trusting event payloads — sysfs coalesces and re-exports attributes.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use ferramari_core::bus::{Command, CommandSender};
@@ -30,15 +31,17 @@ const DRAIN_SLICE: Duration = Duration::from_millis(100);
 /// The production sysfs root. Tests pass their own directory instead.
 const POWER_SUPPLY_ROOT: &str = "/sys/class/power_supply";
 
-/// Owns the charger watcher thread. Dropping it does not stop the thread —
-/// like the other session watchers, the thread exits when the command
-/// channel closes, i.e. when the server shuts down.
+/// Owns the charger watcher thread. Dropping it sets the stop flag and joins
+/// the thread under a bounded deadline, so an in-process backend restart does
+/// not accumulate chargers watchers.
 pub struct InotifyPowerWatcher {
     /// Last observed `online` value plus the file it came from, shared with
     /// the watcher thread so `--doctor` and tests can see the live state.
     state: Arc<Mutex<Option<WatcherData>>>,
     /// Whether a watcher thread was actually spawned (AC adapter found).
     running: bool,
+    stop: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
 }
 
 /// Plain data for the shared last-known state.
@@ -66,26 +69,34 @@ impl InotifyPowerWatcher {
         });
         let state = Arc::new(Mutex::new(data));
         let running = target_path.is_some();
+        let stop = Arc::new(AtomicBool::new(false));
 
-        match target_path {
+        let thread = match target_path {
             Some(path) => {
                 log::debug!("[Power] Watching charger events on {}", path.display());
                 // Clone Arc before moving into the thread closure.
                 let thread_state = Arc::clone(&state);
-                let _handle = thread::Builder::new()
+                let thread_stop = Arc::clone(&stop);
+                thread::Builder::new()
                     .name("ferramari-power-events".to_string())
-                    .spawn(move || run_watcher(path, thread_state, tx))
-                    .ok();
+                    .spawn(move || run_watcher(path, thread_state, tx, thread_stop))
+                    .ok()
             }
             None => {
                 log::debug!(
                     "[Power] No Mains supply under {}; charger events disabled",
                     POWER_SUPPLY_ROOT
                 );
+                None
             }
-        }
+        };
 
-        Self { state, running }
+        Self {
+            state,
+            running,
+            stop,
+            thread,
+        }
     }
 
     /// Whether a watcher thread was started for this session.
@@ -97,6 +108,24 @@ impl InotifyPowerWatcher {
     pub fn last_online(&self) -> Option<bool> {
         let guard = self.state.lock().ok()?;
         guard.as_ref().map(|d| d.online)
+    }
+}
+
+impl Drop for InotifyPowerWatcher {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        let Some(handle) = self.thread.take() else {
+            return;
+        };
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !handle.is_finished() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        if handle.is_finished() {
+            let _ = handle.join();
+        } else {
+            log::warn!("[Power] charger watcher did not stop before the shutdown deadline");
+        }
     }
 }
 
@@ -147,7 +176,12 @@ fn transition(previous: Option<bool>, current: bool) -> Option<PowerEventType> {
 /// The worker loop: drain inotify without blocking, act on any signal by
 /// re-reading the attribute, and re-read periodically as a safety net.
 /// The loop ends when the command channel is closed, i.e. at server exit.
-fn run_watcher(target_path: PathBuf, state: Arc<Mutex<Option<WatcherData>>>, tx: CommandSender) {
+fn run_watcher(
+    target_path: PathBuf,
+    state: Arc<Mutex<Option<WatcherData>>>,
+    tx: CommandSender,
+    stop: Arc<AtomicBool>,
+) {
     let dir = match target_path.parent() {
         Some(dir) => dir.to_path_buf(),
         None => return,
@@ -183,7 +217,7 @@ fn run_watcher(target_path: PathBuf, state: Arc<Mutex<Option<WatcherData>>>, tx:
     let mut next_recheck = Instant::now() + RECHECK_EVERY;
     let mut buffer = [0u8; 1024];
 
-    loop {
+    while !stop.load(Ordering::SeqCst) {
         // Drain every pending event without blocking; sysfs attributes are
         // noisy (udev rewrites them), so the file's value decides, not the
         // event count.
@@ -346,6 +380,18 @@ mod tests {
         assert!(watcher.is_running());
         assert_eq!(watcher.last_online(), Some(false));
         let _ = fs::remove_file(&online);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn dropping_the_watcher_stops_the_charger_thread() {
+        let (root, _online) = fake_supply_root("drop");
+        let (command_tx, _rx) = std::sync::mpsc::channel::<Command>();
+        let watcher = InotifyPowerWatcher::start_from(&root, CommandSender::new(command_tx));
+        assert!(watcher.is_running());
+        let started = Instant::now();
+        drop(watcher);
+        assert!(started.elapsed() < Duration::from_secs(3));
         let _ = fs::remove_dir_all(root);
     }
 

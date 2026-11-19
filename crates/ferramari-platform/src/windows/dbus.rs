@@ -6,16 +6,17 @@
 //! The mutex closes the startup race (two processes launched at once), and the
 //! endpoint tells a later launch where to send `show_gui`.
 //!
-//! Shutdown: the accept loop lives until the process exits, matching the
-//! documented D-Bus watcher gap in `docs/BACKEND_CONTRACT.md`. The token does
-//! not stop it early; there is no in-process restart of the server today.
+//! Shutdown: dropping the `ControlServer` stops the accept loop with a wake-up
+//! connection and joins it under a deadline. The app has no in-process server
+//! restart today, but the token no longer leaves the thread behind.
 
 use std::collections::HashMap;
 use std::io::{BufRead, Read};
-use std::net::TcpListener;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
@@ -34,10 +35,16 @@ pub enum Acquired {
 }
 
 /// The listening server. Kept in `main` for the process lifetime; dropping it
-/// removes the endpoint file so a later launch does not probe a dead port.
+/// stops the accept loop and removes the endpoint file so a later launch does
+/// not probe a dead port.
 pub struct ControlServer {
     endpoint: Endpoint,
     listener: TcpListener,
+    /// Set before the listener is closed: the accept loop checks it after a
+    /// wake-up connection and exits instead of spawning another handler.
+    stop: Arc<AtomicBool>,
+    /// The accept thread, stored so `Drop` can join it under a deadline.
+    accept: Mutex<Option<JoinHandle<()>>>,
     /// Named mutex owned for the process lifetime. `None` when the kernel
     /// object could not be created; the close-on-drop then only removes the
     /// endpoint.
@@ -46,7 +53,23 @@ pub struct ControlServer {
 
 impl Drop for ControlServer {
     fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        // Remove the endpoint first: a second launch must not discover a
+        // server that is already tearing down.
         control::remove_endpoint(&self.endpoint);
+        let handle = self.accept.lock().ok().and_then(|mut slot| slot.take());
+        if let Some(handle) = handle {
+            // `listener.accept()` is a blocking call. A loopback connection
+            // wakes it; the flag then makes the loop exit before it handles
+            // the wake-up as a client.
+            let address = SocketAddr::from(([127, 0, 0, 1], self.endpoint.port));
+            let _ = TcpStream::connect_timeout(&address, Duration::from_millis(200));
+            join_bounded(
+                "control accept",
+                handle,
+                Instant::now() + Duration::from_secs(2),
+            );
+        }
     }
 }
 
@@ -87,6 +110,8 @@ pub fn acquire() -> anyhow::Result<Acquired> {
     Ok(Acquired::Primary(ControlServer {
         endpoint,
         listener,
+        stop: Arc::new(AtomicBool::new(false)),
+        accept: Mutex::new(None),
         _instance: instance,
     }))
 }
@@ -125,7 +150,8 @@ pub fn hwdec_running() -> Option<String> {
 }
 
 /// Start answering requests. `server` stays owned by the caller; only a cloned
-/// listener moves into the accept thread.
+/// listener and the stop flag move into the accept thread, whose handle is
+/// kept in `server` for a bounded join on drop.
 pub fn register(
     server: &ControlServer,
     tx: CommandSender,
@@ -133,11 +159,22 @@ pub fn register(
 ) -> anyhow::Result<()> {
     let listener = server.listener.try_clone()?;
     let token = server.endpoint.token.clone();
-    std::thread::Builder::new()
+    let stop = Arc::clone(&server.stop);
+    let mut accept = server
+        .accept
+        .lock()
+        .map_err(|_| anyhow::anyhow!("the control accept handle lock is poisoned"))?;
+    if accept.is_some() {
+        return Err(anyhow::anyhow!("the control server is already registered"));
+    }
+    let thread = std::thread::Builder::new()
         .name("ferramari-control".to_string())
         .spawn(move || {
             let active = Arc::new(AtomicUsize::new(0));
             for stream in listener.incoming() {
+                if stop.load(Ordering::SeqCst) {
+                    break;
+                }
                 match stream {
                     Ok(stream) => {
                         let Some(slot) = try_acquire_client(&active) else {
@@ -155,11 +192,29 @@ pub fn register(
                                 handle_client(stream, &token, &tx, &snapshot);
                             });
                     }
-                    Err(err) => log::warn!("[Control] Accept failed: {err}"),
+                    Err(err) => {
+                        if stop.load(Ordering::SeqCst) {
+                            break;
+                        }
+                        log::warn!("[Control] Accept failed: {err}");
+                    }
                 }
             }
         })?;
+    *accept = Some(thread);
     Ok(())
+}
+
+/// Join a watcher without letting a wedged accept loop hold shutdown forever.
+fn join_bounded(name: &str, handle: JoinHandle<()>, deadline: Instant) {
+    while !handle.is_finished() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    if handle.is_finished() {
+        let _ = handle.join();
+    } else {
+        log::warn!("[Control] {name} did not stop before the shutdown deadline");
+    }
 }
 
 /// Releases one connection slot even if the handler unwinds.
@@ -341,6 +396,7 @@ fn snapshot_json(snapshot: &Arc<Mutex<Snapshot>>) -> Value {
         "blur_radius": state.blur_radius,
         "is_mute": state.is_mute,
         "is_playing": state.is_playing,
+        "is_decoding": state.is_decoding,
         "is_paused_by_user": state.is_paused_by_user,
         "is_static_wallpaper": state.is_static_wallpaper,
         "is_pause_when_maximized": state.is_pause_when_maximized,
@@ -431,6 +487,8 @@ mod tests {
             "data_source",
             "monitor_refresh",
             "primary_monitor",
+            "is_playing",
+            "is_decoding",
             "hwdec_running",
             "player_stats",
             "operation_status",
@@ -455,6 +513,42 @@ mod tests {
         worker.join().unwrap();
         assert!(!response.ok);
         assert_eq!(response.error.as_deref(), Some("playback failed"));
+    }
+
+    #[test]
+    fn dropping_the_control_server_stops_the_accept_loop() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("loopback listener");
+        let port = listener.local_addr().expect("bound address").port();
+        let server = ControlServer {
+            endpoint: Endpoint {
+                protocol: PROTOCOL_VERSION,
+                pid: std::process::id(),
+                port,
+                token: "test".to_string(),
+            },
+            listener,
+            stop: Arc::new(AtomicBool::new(false)),
+            accept: Mutex::new(None),
+            _instance: None,
+        };
+        let (sender, _receiver) = std::sync::mpsc::channel::<Command>();
+        let snapshot = Arc::new(Mutex::new(Snapshot::default()));
+        register(&server, CommandSender::new(sender), snapshot).expect("accept thread");
+        let started = Instant::now();
+        drop(server);
+        assert!(started.elapsed() < Duration::from_secs(3));
+    }
+
+    #[test]
+    fn join_bounded_hands_a_slow_accept_thread_a_deadline() {
+        let (release, wait) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let _ = wait.recv();
+        });
+        let started = Instant::now();
+        join_bounded("test", handle, Instant::now());
+        assert!(started.elapsed() < Duration::from_secs(1));
+        let _ = release.send(());
     }
 
     #[test]

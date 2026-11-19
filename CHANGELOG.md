@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased
+## 2.2.5 - 2026-11-19
 
 **Stability pass after the 2.2.0 audit.** The Windows-hosted suite now has
-**469 tests** (17 binary + 361 core + 18 media + 59 platform + 8 UI library +
+**474 tests** (18 binary + 363 core + 18 media + 61 platform + 8 UI library +
 6 UI binary).
 
 - **Windows playback with static wallpaper off** no longer enters a restart
@@ -12,11 +12,16 @@
 - **Configuration and display-id recovery** no longer overwrite a valid
   `.bak` with a corrupt primary; UTF-8 BOMs are accepted, and out-of-range
   numeric settings are clamped.
+- **Config reload** has an app-level regression test: a pending debounced
+  volume edit is written to a temporary config before the reload reads it
+  back.
 - **Tracked commands** return application errors to the Iced control surface
   over D-Bus and the Windows loopback transport while the legacy
   fire-and-forget methods remain available.
 - **Live playback state** requires a live surface and IPC worker, and the
-  status/pending-play UI state expires instead of sticking.
+  status/pending-play UI state expires instead of sticking. A separate
+  `is_decoding` fact covers the first-frame wait, so the control surface shows
+  `Starting` instead of a false `Idle`.
 - **Windows mixed-DPI geometry** is marked physical and is no longer scaled
   twice for occlusion checks.
 - **Control transport** limits requests to 64 KiB and 16 concurrent clients.
@@ -26,6 +31,11 @@
   connection that is closed to wake its blocking signal iterator, and every
   watcher thread is joined under one two-second deadline. GNOME registers a
   single session client for both end-session signals.
+- **All other watcher threads are bounded too.** The Windows control accept
+  loop wakes on a loopback connection, the inotify charger checks its stop flag
+  each drain slice, and the X11 window/monitor watchers shut down the X socket
+  to release `wait_for_event`. Each stopped thread is joined under the same
+  deadline instead of running until process exit.
 - **Release tags** repeat formatting, clippy, tests and the release build.
 
 ## 2.2.4 - 2026-11-18

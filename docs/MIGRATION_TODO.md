@@ -79,11 +79,11 @@ validation are complete. A successful compile alone is not a runtime pass.
       — `docs/BACKEND_CONTRACT.md` §3-§5: one command-loop owner, watchers only send
       commands, periodic jobs are deadlines, hotplug is debounced, config is flushed
       before it is re-read, session signals aggregate, `Drop` of the watcher token is
-      the teardown signal. The Linux D-Bus watchers are stopped by closing their
-      connections and joining the threads under a deadline; the Windows control
-      listener, inotify charger watcher and X11 watchers keep their
-      process-lifetime/detach semantics, and §5 records that instead of claiming
-      the token covers them.
+      the teardown signal. Every watcher now has a wake-up mechanism and a bounded
+      join: D-Bus closes the connection, inotify checks a flag each drain slice,
+      X11 shuts down the socket, and the Windows control listener accepts a
+      loopback wake-up. §5 records the two-second deadline and the remaining
+      detach-on-timeout rule.
 - [x] Add contract tests with fake display/window/session providers (see `crates/ferramari-core/src/platform.rs` tests).
 - [x] Document the backend contract before accepting a second OS implementation —
       `docs/BACKEND_CONTRACT.md`, including the §8 checklist a second backend must pass.

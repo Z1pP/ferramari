@@ -322,6 +322,11 @@ impl ServerInterface {
         self.snapshot().is_playing
     }
 
+    #[zbus(property, name = "is_decoding")]
+    fn is_decoding(&self) -> bool {
+        self.snapshot().is_decoding
+    }
+
     #[zbus(property, name = "is_paused_by_user")]
     fn is_paused_by_user(&self) -> bool {
         self.snapshot().is_paused_by_user
@@ -591,6 +596,11 @@ impl PlayerInterface {
     #[zbus(property, name = "is_playing")]
     fn is_playing(&self) -> bool {
         self.snapshot().is_playing
+    }
+
+    #[zbus(property, name = "is_decoding")]
+    fn is_decoding(&self) -> bool {
+        self.snapshot().is_decoding
     }
 
     #[zbus(property, name = "monitor_states")]

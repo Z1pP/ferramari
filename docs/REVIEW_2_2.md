@@ -114,9 +114,9 @@ Statuses used below:
 | R-01 | P0 | fixed-live | Windows static wallpaper | Disabling static wallpaper makes playback restart in a loop |
 | R-02 | P1 | fixed-unit | Config durability | Recovery overwrites the valid `.bak` with the corrupt primary |
 | R-03 | P1 | fixed-unit | Display identity | A corrupt `display-ids.json` ignores a valid `.bak` and loses assignments |
-| R-04 | P1 | fixed-code | Config reload | `reload_config` discards a pending debounced setting |
+| R-04 | P1 | fixed-unit | Config reload | `reload_config` flushes pending settings; app-level temporary-config test |
 | R-05 | P1 | fixed-unit | Error reporting | Synchronous commands now return an application result; async commands still report through the snapshot |
-| R-06 | P1 | partially-fixed | Playback state | `is_playing` now requires a live player; cold-start decode is still not a separate fact |
+| R-06 | P1 | fixed-unit | Playback state | `is_playing` is live; `is_decoding` separates the first-frame wait |
 | R-07 | P1 | fixed-unit | Mixed DPI | Windows physical geometry is multiplied by `scale_factor` a second time |
 | R-08 | P1 | fixed-unit | Windows control transport | Request line and concurrent client threads are bounded |
 | R-09 | P2 | fixed-unit | UI status | Tracked commands drive the status line; stale status and optimistic play expire |
@@ -124,7 +124,7 @@ Statuses used below:
 | R-11 | P2 | fixed-unit | Config robustness | A UTF-8 BOM makes the whole config fall back to defaults |
 | R-12 | P2 | fixed-unit | Cache management | `catalogue::cleanup_cache()` has a caller and a fake-root test |
 | R-13 | P2 | fixed-unit | Single instance | Second launch retries endpoint/interface publication |
-| R-14 | P2 | partially-fixed | Shutdown | Linux D-Bus watchers are bounded now; the Windows accept loop and X11 watchers keep process lifetime |
+| R-14 | P2 | fixed-code | Shutdown | All watcher threads are bounded; live shutdown smoke still pending |
 | R-15 | P3 | fixed-code | Docs / CI | Docs reconciled, formatting gate fixed, release tags repeat the quality gates |
 
 ---
@@ -355,10 +355,10 @@ so `Config::language_override()` benefits from the same rule.
 
 ---
 
-## R-04 — `reload_config` discards a pending debounced setting
+## R-04 - `reload_config` discards a pending debounced setting
 
 **Priority:** P1  
-**Status:** `confirmed-live`
+**Status:** `fixed-unit` (app-level temporary-config test)
 
 **Where**
 
@@ -404,13 +404,17 @@ the hotplug path). Add a test that sets a dirty value and reloads.
 - A live control-endpoint check on Windows, where the ordering is easy to
   reproduce.
 
-**Resolution (2026-11-18)**
+**Resolution (2026-11-18, test added 2026-11-19)**
 
 `reload_config()` now calls `flush_config()` before `Config::load()`, matching
-the established hotplug path. The pre-fix live reproduction is recorded above
-(`AFTER_RELOAD=42`). A post-fix live rerun was not possible while another
-Ferramari server owned the per-session mutex; the unit/integration regression
-test remains to be added with the next app-level test harness.
+the established hotplug path. `App` carries its config path explicitly, and
+`Config::load_from`/`save_to` expose the atomic path seam. The new
+`reloading_the_config_flushes_a_pending_edit_first` test builds a minimal App
+with `StaticBackground::unsupported()`, writes a temporary config, marks a
+volume edit dirty, reloads, and asserts the value is 42 in memory and on disk.
+The pre-fix live reproduction is recorded above (`AFTER_RELOAD=42`); a post-fix
+live rerun remains blocked while another Ferramari server owns the per-session
+mutex.
 
 ---
 
@@ -491,7 +495,7 @@ continue to report later failures through `operation_status`/`operation_seq`.
 ## R-06 — `is_playing` reports policy intent, not a live player
 
 **Priority:** P1  
-**Status:** `partially-fixed`
+**Status:** `fixed-unit` (live kill/restart smoke pending)
 
 **Where**
 
@@ -532,14 +536,20 @@ fact). Refresh the snapshot after any automatic restart or give-up.
 - Live smoke: kill mpv, assert state transitions and no false "playing" after
   give-up.
 
-**Resolution (2026-11-18, partial)**
+**Resolution (2026-11-18)**
 
-`Engine::player_ready()` now requires a live surface and a live IPC worker, and
-`any_playing()` requires that before the Eco policy can report playback.
-`watch_players()` republishes the snapshot after a player set change. The new
-`a_dead_ipc_or_stopped_worker_is_not_alive` test covers the non-blocking worker
-flags. `is_playing` still does not distinguish "player ready but no frame has
-decoded yet"; that remains a separate `is_decoding` fact if the UI needs it.
+`Engine::player_ready()` requires a live surface and a live IPC worker, and
+`watch_players()` republishes the snapshot after a player set change.
+`ferramari_core::bus::PlaybackFacts` now separates a live player the Eco plan
+says should play (`playing`) from that same player before its first frame
+(`decoding`). `Snapshot.is_decoding` travels over both D-Bus interfaces and the
+Windows control JSON; the Iced MPV Engine chip shows `Starting` while it is
+set, instead of choosing between `Running` and `Idle`. `Engine` gained
+`cached_playback_stats()`, which reads the last probe without queueing another
+one, so `sync_snapshot()` stays non-blocking. The `PlaybackFacts` truth table
+and both UI client parsers have tests. The live kill/restart smoke remains in
+`docs/TESTING.md`; the dead-engine and post-restart snapshot cases are covered
+by the pure fact calculation.
 
 ---
 
@@ -884,66 +894,73 @@ startup race still needs the smoke item in `docs/TESTING.md`.
 
 ---
 
-## R-14 — Shutdown contract for watchers remains weaker than documented
+## R-14 — Shutdown contract for watchers
 
 **Priority:** P2  
-**Status:** `partially-fixed` (Linux D-Bus watchers bounded; Windows accept loop and X11 watchers unchanged)
+**Status:** `fixed-code` (all watcher threads bounded; live smoke pending)
 
 **Where**
 
-- `docs/BACKEND_CONTRACT.md` §5 recorded that the Linux D-Bus
+- `docs/BACKEND_CONTRACT.md` §5 used to record that the Linux D-Bus
   session/lock/sleep/idle watchers block in `receive_signal` and are released
-  only at process exit; the resolution below replaces that text.
-- `crates/ferramari-platform/src/windows/dbus.rs:9-11` states the accept loop
-  also lives until process exit.
-- `crates/ferramari-platform/src/handlers.rs:84-380` had no stop token or join
-  for the Linux watchers (fixed by the resolution below).
-- The X11/monitor watcher `Drop` implementations deliberately detach threads
-  blocked in `wait_for_event` (`crates/ferramari-platform/src/monitors.rs:335-352`,
-  `crates/ferramari-platform/src/x11.rs:20-29`).
+  only at process exit.
+- `crates/ferramari-platform/src/windows/dbus.rs` used to keep the control
+  accept loop until process exit.
+- `crates/ferramari-platform/src/handlers.rs` had no stop token or join for the
+  Linux watchers.
+- The X11/monitor watcher `Drop` implementations deliberately detached threads
+  blocked in `wait_for_event` (`crates/ferramari-platform/src/monitors.rs`,
+  `crates/ferramari-platform/src/x11.rs`).
 
 **User impact**
 
-There is no current in-process restart of these sources, so the user does not
-see a leak today. The gap becomes a correctness problem for any future server
-restart or backend reinitialization, and it means `PlatformWatchers` promises
-less than its name.
+There is no current in-process restart of these sources, so the user did not
+see a leak. The gap became a correctness problem for any future server restart
+or backend reinitialization, and it meant `PlatformWatchers` promised less than
+its name.
 
 **Fix direction**
 
 Give each watcher an owned connection plus a wake/stop mechanism with a
 bounded join, or explicitly keep process-lifetime semantics and amend the
-contract. The audit recommends fixing the D-Bus watchers before any in-process
-backend restart is introduced.
+contract. The audit recommended fixing the D-Bus watchers before any in-process
+backend restart was introduced.
 
 **Regression test**
 
-- Start a watcher, drop the token, assert the thread joins within a deadline.
-- Shutdown smoke: start the server, quit, assert no process/thread remains.
+- Drop the idle watcher: the thread must stop without waiting for its poll.
+- Drop a charger watcher: the thread must stop within the deadline.
+- Drop a `ControlServer`: the accept loop must stop within the deadline.
+- Drop the X11 watcher: `shutdown(2)` on a socket pair must wake a blocked
+  reader and clear the fd slot.
+- Live shutdown smoke: start the server, quit, assert no process/thread
+  remains and no watcher logs a missed deadline.
 
-**Resolution (2026-11-18, Linux code only)**
+**Resolution (2026-11-19)**
 
 `handlers.rs` now exposes `SessionWatchers`, which owns every D-Bus watcher and
 the idle poller. Each D-Bus watcher keeps a clone of its async
 `zbus::Connection` in a shared slot and runs one thread. Dropping the token
 sets the stop flag, closes every stored connection — which releases the
-blocked signal iterator — and then joins all threads under one
-two-second deadline. A thread that misses the deadline is detached and logged.
-Signal groups use separate connections so one wedged service cannot delay
-another's stop. The idle watcher checks its stop flag every 250 ms instead of
-sleeping through the full 15 s poll interval. The GNOME end-session watcher
-keeps a single registered client and reads `QueryEndSession` and `EndSession`
-through one match-rule iterator, so it is not registered twice. The Linux
-target passes cross-target clippy with `-D warnings` and an all-target build.
-The new `join_bounded_*` tests cover the deadline path, and the idle watcher has
-a start/drop test. A real D-Bus start/drop assertion needs a bus, so it and the
-live quit smoke are recorded in `docs/TESTING.md`; neither can run on this
-Windows host.
+blocked signal iterator — and then joins all threads under one two-second
+deadline. A thread that misses the deadline is detached and logged. Signal
+groups use separate connections so one wedged service cannot delay another's
+stop. The idle watcher checks its stop flag every 250 ms instead of sleeping
+through the full 15 s poll interval. The GNOME end-session watcher keeps a
+single registered client and reads `QueryEndSession` and `EndSession` through
+one match-rule iterator, so it is not registered twice.
 
-The Windows control accept loop, the inotify charger watcher and the X11
-window/monitor watchers keep their process-lifetime/detach semantics;
-`docs/BACKEND_CONTRACT.md` §5 now states this explicitly instead of describing
-the D-Bus watchers as an unaddressed gap.
+`power_events.rs` now stores the charger thread and its stop flag. The worker
+checks the flag on every drain slice, and `Drop` joins it under the same
+two-second deadline. `windows/dbus.rs` stores the accept handle on
+`ControlServer`; `Drop` removes the endpoint, wakes `accept()` with a loopback
+connection, and joins the thread under the deadline. The X11 window and monitor
+watchers store the raw X socket; `Drop` calls `shutdown(2)` to release
+`wait_for_event`, clears the fd slot before the connection closes it, and joins
+under the deadline. All three mechanisms have shutdown tests; the X11 fd test
+runs only on Linux. The Linux target passes cross-target clippy with
+`-D warnings` and an all-target build. The live quit smoke remains in
+`docs/TESTING.md`; it could not run on this Windows host.
 
 ---
 
@@ -1080,9 +1097,9 @@ the audit and verification results separate.
 | R-01: idempotent Windows static-background restore | New platform unit test; live rerun with static wallpaper off: stable mpv PID, `STATS_ACTIVE=true`, zero restarts/restore calls |
 | R-02: validated, atomic backup promotion | New config tests; full `ferramari-core` suite |
 | R-03: primary-then-backup display registry load | New display-id test; full `ferramari-core` suite |
-| R-04: flush before `reload_config` | Pre-fix live reproduction recorded; post-fix app-level regression test still pending |
+| R-04: flush before `reload_config` | App-level temporary-config test; live control-endpoint rerun still blocked by the session mutex |
 | R-05: tracked command results | New core mapping tests and Windows request-result test; D-Bus method compiled only by CI |
-| R-06: live-player check for `is_playing` | New media liveness test; decode-before-frame state still separate |
+| R-06: live-player check and decode state | `PlaybackFacts` truth table; UI/control parser tests; live kill/restart smoke pending |
 | R-07: physical/logical monitor geometry | New dashboard unit test; live mixed-DPI matrix still open |
 | R-08: bounded control transport | New platform tests for line size and client slots |
 | R-09: tracked UI commands and status expiry | UI/client compile and existing tests; live UI click-through still pending |
@@ -1090,6 +1107,7 @@ the audit and verification results separate.
 | R-11: UTF-8 BOM handling | New config test |
 | R-12: catalogue cache cleanup | Startup call plus fake-root cleanup test |
 | R-13: second-launch retry | New util timeout tests; two-process smoke still open |
+| R-14: bounded watcher shutdown | Drop tests for idle, charger, control accept and X11 fd wake-up; Linux cross-build; live smoke pending |
 | R-15: docs and release gates | Docs reconciled; release workflow repeats fmt/clippy/test/build |
 
 Post-change gates on the branch:

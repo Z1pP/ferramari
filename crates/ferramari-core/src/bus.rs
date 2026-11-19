@@ -135,6 +135,38 @@ pub struct PackageReport {
     pub signature: signing::SignatureStatus,
 }
 
+/// What the live players contribute to the global playback snapshot.
+///
+/// `playing` is true only for a live surface and IPC worker that the Eco plan
+/// says should play. `decoding` separates "alive, waiting for the first frame"
+/// from "nothing is running"; the two facts let a client show `Starting`
+/// instead of guessing between `Running` and `Idle`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PlaybackFacts {
+    pub playing: bool,
+    pub decoding: bool,
+}
+
+impl PlaybackFacts {
+    /// Combine one player's liveness, the Eco decision and the last probe.
+    pub fn observe(player_ready: bool, plan_play: bool, decoded: bool) -> Self {
+        let playing = player_ready && plan_play;
+        Self {
+            playing,
+            decoding: playing && !decoded,
+        }
+    }
+
+    /// Any live output counts as playing, and any output still waiting for
+    /// its first frame keeps the global `decoding` flag set.
+    pub fn merge(self, other: Self) -> Self {
+        Self {
+            playing: self.playing || other.playing,
+            decoding: self.decoding || other.decoding,
+        }
+    }
+}
+
 /// Read-only view of the current state for the D-Bus interfaces.
 #[derive(Debug, Clone)]
 pub struct Snapshot {
@@ -142,7 +174,13 @@ pub struct Snapshot {
     pub volume: i64,
     pub blur_radius: i64,
     pub is_mute: bool,
+    /// A live surface and IPC worker are running, and the Eco plan says the
+    /// player should play. This is a fact about a live player, not a
+    /// prediction of what the policy would like to do.
     pub is_playing: bool,
+    /// `is_playing` is true, but the decoder has not produced a frame yet.
+    /// This is the cold-start window that used to read as "not playing".
+    pub is_decoding: bool,
     pub is_paused_by_user: bool,
     pub is_static_wallpaper: bool,
     pub is_pause_when_maximized: bool,
@@ -205,6 +243,7 @@ impl Default for Snapshot {
             blur_radius: 5,
             is_mute: false,
             is_playing: false,
+            is_decoding: false,
             is_paused_by_user: false,
             is_static_wallpaper: true,
             is_pause_when_maximized: true,
@@ -254,3 +293,51 @@ impl CommandSender {
 
 /// Convenience alias for the drain side of the channel.
 pub type CommandReceiver = Receiver<Command>;
+
+#[cfg(test)]
+mod tests {
+    use super::PlaybackFacts;
+
+    #[test]
+    fn decoding_needs_a_live_player_that_has_not_decoded_yet() {
+        assert_eq!(
+            PlaybackFacts::observe(false, true, false),
+            PlaybackFacts::default(),
+            "a dead player is not playing or decoding"
+        );
+        assert_eq!(
+            PlaybackFacts::observe(true, false, false),
+            PlaybackFacts::default(),
+            "the Eco plan can stop playback without touching the process"
+        );
+        assert_eq!(
+            PlaybackFacts::observe(true, true, false),
+            PlaybackFacts {
+                playing: true,
+                decoding: true
+            }
+        );
+        assert_eq!(
+            PlaybackFacts::observe(true, true, true),
+            PlaybackFacts {
+                playing: true,
+                decoding: false
+            }
+        );
+    }
+
+    #[test]
+    fn merging_keeps_any_playing_and_any_starting() {
+        let running = PlaybackFacts::observe(true, true, true);
+        let starting = PlaybackFacts::observe(true, true, false);
+        assert_eq!(
+            running.merge(starting),
+            PlaybackFacts {
+                playing: true,
+                decoding: true
+            },
+            "one output still starting is visible in the global fact"
+        );
+        assert_eq!(PlaybackFacts::default().merge(running), running);
+    }
+}

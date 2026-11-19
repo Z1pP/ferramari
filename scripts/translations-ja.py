@@ -94,6 +94,7 @@ TRANSLATIONS = {
     "No wallpapers found": "壁紙が見つかりません",
     "Loading wallpapers…": "壁紙を読み込み中…",
     # --- Performance -----------------------------------------------------
+    "Starting": "起動中",
     "MPV Engine": "MPV エンジン",
     "Running": "稼働中",
     "MPV Statistics": "MPV の統計",

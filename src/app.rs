@@ -1417,6 +1417,10 @@ impl App {
             self.windows
                 .retain(|window| !lost_hosts.iter().any(|key| key == window.key()));
             for key in lost_hosts {
+                // A replacement player is spawned with the config mute, not
+                // with the covered-monitor target. Forget the old target so
+                // the first `apply_mute_states` after the rebuild sends it.
+                self.last_mute.remove(&key);
                 let delay = self
                     .policies
                     .entry(key.clone())
@@ -1432,6 +1436,7 @@ impl App {
             self.windows
                 .retain(|window| !crashed.iter().any(|key| key == window.key()));
             for key in crashed {
+                self.last_mute.remove(&key);
                 let outcome = {
                     let policy = self
                         .policies

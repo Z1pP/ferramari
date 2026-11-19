@@ -64,6 +64,13 @@ pub use crate::bus::{Command, CommandSender, PackageReport, PlaybackFacts, Snaps
 
 pub struct App {
     pub config: Config,
+    /// The file `save_config` and `reload_config` read and write. Production
+    /// always uses the user's config path; the app-level reload test points it
+    /// at a temporary file.
+    config_path: PathBuf,
+    /// Test seam: a headless reload test must not rebuild desktop windows.
+    /// Production keeps this true.
+    rebuild_on_reload: bool,
     pub monitors: Vec<MonitorInfo>,
     /// Which physical screen owns which config key. Kept separate from the
     /// config so a `--reset-config` cannot orphan a wallpaper assignment.
@@ -177,6 +184,8 @@ impl App {
 
         let mut app = Self {
             config,
+            config_path: paths::config_path(),
+            rebuild_on_reload: true,
             monitors,
             display_ids,
             windows: Vec::new(),
@@ -833,7 +842,7 @@ impl App {
                 self.flush_config();
                 self.monitors = self.display_provider.displays();
                 let names = bind_display_ids(&mut self.monitors, &mut self.display_ids);
-                self.config = Config::load(&names);
+                self.config = Config::load_from(&self.config_path, &names);
                 self.idle_threshold.store(
                     self.config.idle_timeout_sec.clamp(30, 86_400) as u64,
                     Ordering::Relaxed,
@@ -1306,7 +1315,7 @@ impl App {
             .iter()
             .map(|monitor| monitor.name.clone())
             .collect();
-        self.config = Config::load(&names);
+        self.config = Config::load_from(&self.config_path, &names);
         self.idle_threshold.store(
             self.config.idle_timeout_sec.clamp(30, 86_400) as u64,
             Ordering::Relaxed,
@@ -1317,8 +1326,10 @@ impl App {
         if self.config.mode == Mode::Stream {
             self.stream = None;
         }
-        self.close_windows();
-        self.rebuild_windows();
+        if self.rebuild_on_reload {
+            self.close_windows();
+            self.rebuild_windows();
+        }
     }
 
     /// D-Bus `quit_player`: stop playback but keep the server (D-Bus, tray,
@@ -2003,8 +2014,8 @@ impl App {
     }
 
     fn save_config(&mut self) {
-        log::debug!("[Config] Saving {}", paths::config_path().display());
-        if let Err(err) = self.config.save() {
+        log::debug!("[Config] Saving {}", self.config_path.display());
+        if let Err(err) = self.config.save_to(&self.config_path) {
             self.notify_user_error(UserError::with_detail(
                 ErrorKind::Config,
                 "Could not save the configuration",
@@ -2347,8 +2358,140 @@ fn kind_label(kind: ContentKind) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ferramari_core::platform::{
+        DisplayProvider, PlatformEventSource, PlatformWatchers, PowerProvider, WallpaperSurface,
+        WallpaperSurfaceProvider,
+    };
     use ferramari_core::session::LockSource;
     use ferramari_core::DisplayIdentity;
+
+    struct NoSurfaceProvider;
+
+    impl WallpaperSurfaceProvider for NoSurfaceProvider {
+        fn create(&self, _monitor: &MonitorInfo) -> anyhow::Result<Box<dyn WallpaperSurface>> {
+            anyhow::bail!("the config reload test does not create surfaces")
+        }
+    }
+
+    struct NoDisplayProvider;
+
+    impl DisplayProvider for NoDisplayProvider {
+        fn displays(&self) -> Vec<MonitorInfo> {
+            Vec::new()
+        }
+    }
+
+    struct NoPowerProvider;
+
+    impl PowerProvider for NoPowerProvider {
+        fn status(&self) -> ferramari_core::power::PowerStatus {
+            ferramari_core::power::PowerStatus::default()
+        }
+    }
+
+    struct NoEventSource;
+    struct NoWatchers;
+
+    impl PlatformWatchers for NoWatchers {}
+
+    impl PlatformEventSource for NoEventSource {
+        fn start(
+            &self,
+            _tx: CommandSender,
+            _idle_threshold: Arc<AtomicU64>,
+        ) -> Box<dyn PlatformWatchers> {
+            Box::new(NoWatchers)
+        }
+    }
+
+    /// Minimal `App` for filesystem/config tests that must not touch a desktop.
+    fn test_app(config: Config, config_path: PathBuf) -> App {
+        let (tx, _rx) = std::sync::mpsc::channel();
+        App {
+            config,
+            config_path,
+            rebuild_on_reload: false,
+            monitors: Vec::new(),
+            display_ids: DisplayIdRegistry::default(),
+            windows: Vec::new(),
+            snapshot: Arc::new(Mutex::new(Snapshot::default())),
+            tx: CommandSender::new(tx),
+            surface_provider: Box::new(NoSurfaceProvider),
+            display_provider: Box::new(NoDisplayProvider),
+            power_provider: Box::new(NoPowerProvider),
+            platform_event_source: Box::new(NoEventSource),
+            platform_watchers: None,
+            weak_self: Weak::new(),
+            background: false,
+            paused_by_user: false,
+            lock: LockState::default(),
+            suspended: false,
+            idle: IdleState::default(),
+            window_state: WindowState::default(),
+            last_plans: HashMap::new(),
+            stream: None,
+            stream_resolving: false,
+            background_wallpaper: StaticBackground::unsupported(),
+            library: Rc::new(RefCell::new(Library::default())),
+            last_rotation: HashMap::new(),
+            on_battery: false,
+            battery_percent: None,
+            idle_threshold: Arc::new(AtomicU64::new(300)),
+            static_job: None,
+            static_generation: 0,
+            suppress_static_refresh: false,
+            pending_icon_refresh: false,
+            config_dirty_at: None,
+            policies: HashMap::new(),
+            monitor_due: None,
+            quit_requested: false,
+            gui_shown: false,
+            operation_status: String::new(),
+            operation_error: false,
+            operation_seq: 0,
+            request_reply: None,
+            request_error: None,
+            hwdec_running: String::new(),
+            player_stats: ferramari_core::stats::PlaybackStats::default(),
+            tray: None,
+        }
+    }
+
+    fn temp_config_path() -> (PathBuf, PathBuf) {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!("ferramari-config-reload-{unique}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        (dir, path)
+    }
+
+    #[test]
+    fn reloading_the_config_flushes_a_pending_edit_first() {
+        let (dir, path) = temp_config_path();
+        let mut stored = Config::template(&[]);
+        stored.volume = 10;
+        stored.is_static_wallpaper = false;
+        stored.save_to(&path).unwrap();
+
+        let mut app = test_app(stored, path.clone());
+        // A slider edit is still inside the debounce window when reload runs.
+        app.config.volume = 42;
+        app.mark_config_dirty();
+
+        app.reload_config();
+
+        assert_eq!(app.config.volume, 42, "the pending edit survives reload");
+        assert!(app.config_dirty_at.is_none(), "the flush consumed the edit");
+        assert_eq!(
+            Config::load_from(&path, &[]).volume,
+            42,
+            "the file was written before it was read back"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     fn monitor(name: &str, x: i32) -> MonitorInfo {
         MonitorInfo {

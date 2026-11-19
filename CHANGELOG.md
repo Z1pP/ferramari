@@ -3,7 +3,7 @@
 ## Unreleased
 
 **Stability pass after the 2.2.0 audit.** The Windows-hosted suite now has
-**473 tests** (17 binary + 363 core + 18 media + 61 platform + 8 UI library +
+**474 tests** (18 binary + 363 core + 18 media + 61 platform + 8 UI library +
 6 UI binary).
 
 - **Windows playback with static wallpaper off** no longer enters a restart
@@ -12,6 +12,9 @@
 - **Configuration and display-id recovery** no longer overwrite a valid
   `.bak` with a corrupt primary; UTF-8 BOMs are accepted, and out-of-range
   numeric settings are clamped.
+- **Config reload** has an app-level regression test: a pending debounced
+  volume edit is written to a temporary config before the reload reads it
+  back.
 - **Tracked commands** return application errors to the Iced control surface
   over D-Bus and the Windows loopback transport while the legacy
   fire-and-forget methods remain available.

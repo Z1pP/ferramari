@@ -114,7 +114,7 @@ Statuses used below:
 | R-01 | P0 | fixed-live | Windows static wallpaper | Disabling static wallpaper makes playback restart in a loop |
 | R-02 | P1 | fixed-unit | Config durability | Recovery overwrites the valid `.bak` with the corrupt primary |
 | R-03 | P1 | fixed-unit | Display identity | A corrupt `display-ids.json` ignores a valid `.bak` and loses assignments |
-| R-04 | P1 | fixed-code | Config reload | `reload_config` discards a pending debounced setting |
+| R-04 | P1 | fixed-unit | Config reload | `reload_config` flushes pending settings; app-level temporary-config test |
 | R-05 | P1 | fixed-unit | Error reporting | Synchronous commands now return an application result; async commands still report through the snapshot |
 | R-06 | P1 | fixed-unit | Playback state | `is_playing` is live; `is_decoding` separates the first-frame wait |
 | R-07 | P1 | fixed-unit | Mixed DPI | Windows physical geometry is multiplied by `scale_factor` a second time |
@@ -355,10 +355,10 @@ so `Config::language_override()` benefits from the same rule.
 
 ---
 
-## R-04 — `reload_config` discards a pending debounced setting
+## R-04 - `reload_config` discards a pending debounced setting
 
 **Priority:** P1  
-**Status:** `confirmed-live`
+**Status:** `fixed-unit` (app-level temporary-config test)
 
 **Where**
 
@@ -404,13 +404,17 @@ the hotplug path). Add a test that sets a dirty value and reloads.
 - A live control-endpoint check on Windows, where the ordering is easy to
   reproduce.
 
-**Resolution (2026-11-18)**
+**Resolution (2026-11-18, test added 2026-11-19)**
 
 `reload_config()` now calls `flush_config()` before `Config::load()`, matching
-the established hotplug path. The pre-fix live reproduction is recorded above
-(`AFTER_RELOAD=42`). A post-fix live rerun was not possible while another
-Ferramari server owned the per-session mutex; the unit/integration regression
-test remains to be added with the next app-level test harness.
+the established hotplug path. `App` carries its config path explicitly, and
+`Config::load_from`/`save_to` expose the atomic path seam. The new
+`reloading_the_config_flushes_a_pending_edit_first` test builds a minimal App
+with `StaticBackground::unsupported()`, writes a temporary config, marks a
+volume edit dirty, reloads, and asserts the value is 42 in memory and on disk.
+The pre-fix live reproduction is recorded above (`AFTER_RELOAD=42`); a post-fix
+live rerun remains blocked while another Ferramari server owns the per-session
+mutex.
 
 ---
 
@@ -1093,7 +1097,7 @@ the audit and verification results separate.
 | R-01: idempotent Windows static-background restore | New platform unit test; live rerun with static wallpaper off: stable mpv PID, `STATS_ACTIVE=true`, zero restarts/restore calls |
 | R-02: validated, atomic backup promotion | New config tests; full `ferramari-core` suite |
 | R-03: primary-then-backup display registry load | New display-id test; full `ferramari-core` suite |
-| R-04: flush before `reload_config` | Pre-fix live reproduction recorded; post-fix app-level regression test still pending |
+| R-04: flush before `reload_config` | App-level temporary-config test; live control-endpoint rerun still blocked by the session mutex |
 | R-05: tracked command results | New core mapping tests and Windows request-result test; D-Bus method compiled only by CI |
 | R-06: live-player check and decode state | `PlaybackFacts` truth table; UI/control parser tests; live kill/restart smoke pending |
 | R-07: physical/logical monitor geometry | New dashboard unit test; live mixed-DPI matrix still open |

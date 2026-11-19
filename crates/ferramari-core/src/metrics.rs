@@ -658,6 +658,86 @@ mod tests {
         assert_eq!(sample.gpu, Metric::Unsupported);
     }
 
+    /// `cargo test --release -p ferramari-core metrics_sample_cost -- --ignored --nocapture`
+    ///
+    /// The UI takes this sample once a second on Home and Performance. The
+    /// distribution matters more than one stopwatch reading, so this benchmark
+    /// is kept next to the sampler for both Windows and Linux. It does not run
+    /// in the normal suite.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[test]
+    #[ignore]
+    fn metrics_sample_cost() {
+        use std::time::Instant;
+
+        let mut monitor = Monitor::default();
+        let _ = monitor.sample_of(std::process::id());
+        let iterations = 200;
+        let mut times = Vec::with_capacity(iterations);
+        for _ in 0..iterations {
+            let started = Instant::now();
+            let _ = monitor.sample_of(std::process::id());
+            times.push(started.elapsed().as_secs_f64() * 1000.0);
+        }
+        times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let mean = times.iter().sum::<f64>() / times.len() as f64;
+        let p50 = times[times.len() / 2];
+        let p95 = times[(times.len() * 95) / 100];
+        println!(
+            "metrics::Monitor::sample_of: n={iterations} mean={mean:.3} ms p50={p50:.3} ms p95={p95:.3} ms max={:.3} ms",
+            times.last().copied().unwrap_or(0.0)
+        );
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[test]
+    #[ignore]
+    fn metrics_sample_breakdown() {
+        use std::time::Instant;
+
+        let pid = std::process::id();
+        let iterations = 200;
+        let measure = |mut action: Box<dyn FnMut()>| {
+            let mut times = Vec::with_capacity(iterations);
+            for _ in 0..iterations {
+                let started = Instant::now();
+                action();
+                times.push(started.elapsed().as_secs_f64() * 1000.0);
+            }
+            times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let mean = times.iter().sum::<f64>() / times.len() as f64;
+            (
+                mean,
+                times[times.len() / 2],
+                times[(times.len() * 95) / 100],
+            )
+        };
+        let (tree_mean, tree_p50, tree_p95) = measure(Box::new(|| {
+            let _ = read_tree(pid);
+        }));
+        println!("read_tree: mean={tree_mean:.3} ms p50={tree_p50:.3} ms p95={tree_p95:.3} ms");
+        let (memory_mean, _, _) = measure(Box::new(|| {
+            let _ = total_memory();
+        }));
+        println!("total_memory: mean={memory_mean:.3} ms");
+        #[cfg(target_os = "windows")]
+        {
+            let mut sampler = windows_gpu::Sampler::default();
+            let _ = sampler.sample();
+            let (gpu_mean, gpu_p50, gpu_p95) = measure(Box::new(move || {
+                let _ = sampler.sample();
+            }));
+            println!("gpu sample: mean={gpu_mean:.3} ms p50={gpu_p50:.3} ms p95={gpu_p95:.3} ms");
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let (gpu_mean, gpu_p50, gpu_p95) = measure(Box::new(|| {
+                let _ = gpu_percent(Path::new("/sys/class/drm"));
+            }));
+            println!("gpu sample: mean={gpu_mean:.3} ms p50={gpu_p50:.3} ms p95={gpu_p95:.3} ms");
+        }
+    }
+
     #[test]
     fn metrics_expose_their_value_only_when_measured() {
         assert_eq!(Metric::Value(12).value(), Some(12));

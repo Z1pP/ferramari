@@ -143,7 +143,15 @@ mod transport {
                         "mpv IPC read timed out",
                     ));
                 }
-                std::thread::sleep(Duration::from_millis(2));
+                // A named pipe has no blocking read with a deadline on the
+                // synchronous handle this transport uses. Polling every 2 ms
+                // kept the reader awake ~50 times per 100 ms timeout, which is
+                // measurable while a wallpaper is paused. Commands are tiny
+                // and the app's fades tick at 50-100 ms, so a 20 ms poll keeps
+                // replies well inside that budget while cutting idle wake-ups
+                // by ten. Measured on Windows: paused 1080p30 server CPU
+                // 1.82% -> 0.65% of one core (60 s, same binary otherwise).
+                std::thread::sleep(Duration::from_millis(20));
             }
         }
     }

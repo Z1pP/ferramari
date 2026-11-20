@@ -654,12 +654,31 @@ def run_scenario(
             target = args.video2.expanduser().resolve()
             if not target.is_file():
                 raise SystemExit(f"video not found: {target}")
+            tail = common.LogTail(runner.log_path)
+            tail.read()  # discard the initial load
             command_at = time.monotonic()
             runner.control.command("video", str(target), args.monitor)
-            first_frame(runner.control)
-            runner.run_result["switch_command_ms"] = (
+            # The player reuses the mpv process and the loadfile reply is
+            # asynchronous. Waiting for `first_frame` immediately would read
+            # the old file's still-active stats. Confirm the reuse in the log,
+            # then wait for the fresh decoder probe and a first frame.
+            reuse_line = tail.wait_marker("[Mode]", 6)
+            runner.run_result["switch_reused_ms"] = (
                 time.monotonic() - command_at
             ) * 1000
+            if reuse_line is None:
+                raise RuntimeError("the server did not confirm the video switch")
+            decoder_line = tail.wait_marker("[HwDec] requested", 20)
+            if decoder_line is None:
+                raise RuntimeError("the switched file did not report a decoder")
+            first_frame(runner.control)
+            runner.run_result["switch_first_frame_ms"] = (
+                time.monotonic() - command_at
+            ) * 1000
+            runner.run_result["switch_log"] = {
+                "reuse": reuse_line,
+                "decoder": decoder_line,
+            }
             after = runner._sample_processes(None)
             after_pids = sorted(
                 pid

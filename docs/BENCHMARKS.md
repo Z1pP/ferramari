@@ -242,6 +242,75 @@ Parking frees about 70.8 MiB (53%) of mpv RSS, 16 threads and all of the
 measured VRAM for this clip, and the resumed position continues from the
 captured 8.53 s. The five-minute threshold was not changed.
 
+## Recovery, switch and idle
+
+These are single live runs of the final worktree, not part of the three-run
+steady table. They close the scenarios the old harness could not express.
+
+### mpv recovery
+
+`--scenario recover`: one SIGKILL/`taskkill` of the 1080p30 player.
+
+| Metric | Value |
+| --- | ---: |
+| Time to a new mpv PID | 2016 ms |
+| Time to the first frame after the kill | 4063 ms |
+| FPS after recovery | 30.0 |
+| Dropped frames after recovery | 0 |
+| mpv working set before → after | 134.3 → 133.2 MiB |
+| mpv threads before → after | 42 → 41 |
+
+The restart policy's one-second backoff accounts for half the PID latency; the
+new IPC connection and first decode account for the rest. No orphan process
+remained after quit.
+
+### Video switch reuses the player
+
+`--scenario switch`: 1080p30 `testsrc2` → the local `Power-Dancing-1080p.mp4`.
+
+| Metric | Value |
+| --- | ---: |
+| mpv PID reused | **yes** |
+| Reuse confirmation in the server log | 109 ms |
+| First frame of the new file | 2031 ms |
+| mpv working set after switch | 154.0 MiB |
+| FPS / dropped | 30 / 0 |
+
+The server logged `reused player in 2.4 µs`; the measured 109 ms is dominated by
+the harness's 100 ms log poll, not by the app. An earlier version of this run
+reported 15 ms by reading the previous file's still-active stats; the
+log-confirmed number above is the honest one.
+
+### Idle — Balanced
+
+`--scenario idle --idle-timeout 30`, 20 s after the server reported
+`[Eco] DISPLAY1: Idle (play=true, fps=Some(30))`.
+
+| Group | CPU % one core (phase) | RSS MiB | Threads | GPU % | VRAM MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| ferramari | 1.17 | 12.5 | 13 | — | — |
+| mpv | 6.17 | 136.1 | 52 | 11.4 | 9.0 |
+| children (`conhost`) | 0.00 | 8.6 | 3 | — | — |
+| **total** | **7.34** | **157.2** | **68** | **11.4** | **9.0** |
+
+FPS 30, dropped 0. The idle policy applied the 30 fps filter, but on this
+hardware it did **not** reduce CPU or GPU versus steady playback; mpv's thread
+count rose from about 40 to 52 because of the filter chain, and VRAM fell from
+25.1 to 9.0 MiB. Do not claim an idle CPU saving from this row. The cap remains
+because the policy is profile-driven and the measurement is one clip on one
+GPU; a different decoder path may respond differently.
+
+### 24-hour dry run — blocked by a real fullscreen app
+
+The attempt with `--scenario long-run --duration 90 --event-interval 60`
+stopped at the first-frame gate because a real Google Chrome window was
+fullscreen on the only display. The isolated server correctly reported
+`Occluded` and refused to call the player "playing". That is the intended Eco
+behaviour, but it means a long-run on a working desktop is not a valid
+measurement. No 24-hour number was produced; the script's event loop is
+implemented but its end-to-end validation still needs a dedicated machine or a
+desktop with no fullscreen app.
+
 ## Microbenchmarks
 
 Ignored tests, run only on a benchmark host:

@@ -21,7 +21,9 @@ the findings are in [`PERFORMANCE_AUDIT_2_3.md`](PERFORMANCE_AUDIT_2_3.md).
 | Linux `/proc` sampler | **deferred** | No Linux host for before/after. Safe stat-only/descendant design documented below; not implemented. |
 | Decoder parking | **measured, no change** | mpv RSS 133.9 → 63.1 MiB, threads 42 → 26, VRAM 25.05 → 0; resume at the captured position. |
 | mpv process merging | **not attempted** | One-display evidence only; the brief forbids a merge without proof. |
-| 24-hour soak | **implemented, not run** | `--scenario long-run --duration 86400`; needs a dedicated machine or consent. |
+| Recovery / switch validation | **measured, no change** | New mpv PID 2016 ms, first frame 4063 ms. Video switch reuses the PID; new file first frame 2031 ms. |
+| Idle Balanced | **measured, no CPU saving** | 30 fps cap applied, 0 dropped; CPU/GPU not lower than steady, VRAM 25.1 → 9.0 MiB. Not claimed as a win. |
+| 24-hour soak | **implemented, not run** | 90 s dry run blocked by a real fullscreen Chrome window; needs a dedicated machine or consent. |
 
 ## 1. Windows IPC reader
 
@@ -227,9 +229,12 @@ leak.
 
 `scripts/benchmark.py --scenario long-run --duration 86400 --event-interval 3600`
 samples the process tree, kills one player, covers/un-covers and reloads on the
-event cadence. It writes JSONL and a summary like the other scenarios. The
-24-hour run was **not executed** on this working desktop; it needs a dedicated
-machine or explicit consent. The planned assertions are:
+event cadence. It writes JSONL and a summary like the other scenarios. A 90 s
+dry run was attempted; it stopped at the first-frame gate because a real
+Google Chrome window was fullscreen on the only display. The isolated server
+correctly reported `Occluded`, so the desktop was not a valid long-run host.
+The 24-hour run was **not executed**; it needs a dedicated machine or exclusive
+desktop use. The planned assertions are:
 
 - RSS/PSS slope and thread/process counts over 24 h;
 - no growth after warm-up beyond a calibrated threshold;

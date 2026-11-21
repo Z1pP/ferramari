@@ -229,12 +229,20 @@ leak.
 
 `scripts/benchmark.py --scenario long-run --duration 86400 --event-interval 3600`
 samples the process tree, kills one player, covers/un-covers and reloads on the
-event cadence. It writes JSONL and a summary like the other scenarios. A 90 s
-dry run was attempted; it stopped at the first-frame gate because a real
-Google Chrome window was fullscreen on the only display. The isolated server
-correctly reported `Occluded`, so the desktop was not a valid long-run host.
-The 24-hour run was **not executed**; it needs a dedicated machine or exclusive
-desktop use. The planned assertions are:
+event cadence. It writes JSONL plus a `soak` summary: RSS slope MiB/hour,
+thread/process first/last/max, mpv PID changes, dropped-frame delta, monitor
+state counts, `[Player]`/`[mpv]`/`[Eco]` log counters and each scheduled
+recovery latency. The scheduled kill waits for a replacement PID and a first
+frame and aborts the run if none appears. Harness unit tests cover the slope,
+PID-change and missing-value logic (`make test-bench`).
+
+A 90 s video dry run was attempted; it stopped at the first-frame gate because
+a real Google Chrome window was fullscreen on the only display. The isolated
+server correctly reported `Occluded`, so the desktop was not a valid long-run
+host. A 12 s null-mode run validated the sampling loop and the deadline bound:
+events past the deadline are not started, and a 60 s cover is skipped when
+fewer than 65 s remain. The 24-hour run was **not executed**; it needs a
+dedicated machine or exclusive desktop use. The planned assertions are:
 
 - RSS/PSS slope and thread/process counts over 24 h;
 - no growth after warm-up beyond a calibrated threshold;

@@ -21,6 +21,8 @@ are in `docs/PERFORMANCE_AUDIT_2_3.md`, `docs/BENCHMARKS.md` and
   CPU/RSS/PSS, GPU/VRAM, FPS/dropped frames, threads/processes and
   idle/occluded/parked/resume/recovery/churn/UI/long-run scenarios.** The
   stale web mode was removed. Missing data is `null` with a reason, never zero.
+  `make test-bench` runs dependency-free harness tests; a long run writes a
+  soak report with RSS slope, PID changes, recovery latencies and log counters.
 - **Measured but not changed:** the Windows metrics sample costs 3.84 ms/s
   while the Performance page is visible; the window-state sampler costs
   0.146 ms per 750 ms tick; five-minute decoder parking frees 70.8 MiB and 16

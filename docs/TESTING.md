@@ -219,6 +219,8 @@ The shipped threshold is five minutes; the test only shortened the timer.
 - [ ] `python scripts/benchmark.py --scenario ui --page home --video ...` measures the control surface visible and hidden; the hidden phase should be below the visible one.
 - [ ] `python scripts/benchmark.py --scenario churn --video ... --minimize-window PID` reports zero Eco transitions for one-second covers after the hysteresis change.
 - [ ] `make bench VIDEO=/path/to/4k.mp4 LABEL=4k SECONDS=5` records the 4K row.
+- [ ] `make test-bench` passes the harness unit tests (missing values, group CPU/RSS, GVariant parsing, soak report, Windows ABI).
+- [ ] `make soak VIDEO=/path/to/video.mp4 DURATION=600 EVENT_INTERVAL=120` completes a short dry run and writes `bench-results/soak.json`; check the `soak` block for PID changes, recovery latencies and RSS slope. The full 24 h run needs a dedicated display.
 
 ### Cross-desktop diagnostics
 - [ ] `ferramari --doctor` prints the session, backend, desktop and tool versions without starting the UI.

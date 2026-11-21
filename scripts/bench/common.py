@@ -625,15 +625,167 @@ def summarize_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
                     (sample.get("playback") or {}).get(key) for sample in phase_samples
                 ]
             playback[key] = summarize(values)
+        first_t = phase_samples[0].get("wall_t", phase_samples[0]["t"])
+        last_t = phase_samples[-1].get("wall_t", phase_samples[-1]["t"])
         summary[phase] = {
             "samples": len(phase_samples),
-            "duration_s": (
-                phase_samples[-1]["t"] - phase_samples[0]["t"] if len(phase_samples) > 1 else 0
-            ),
+            "duration_s": last_t - first_t if len(phase_samples) > 1 else 0,
             "groups": groups,
             "playback": playback,
         }
     return summary
+
+
+def _slope_per_hour(points: list[tuple[float, float]]) -> Optional[float]:
+    if len(points) < 2:
+        return None
+    mean_x = sum(x for x, _ in points) / len(points)
+    mean_y = sum(y for _, y in points) / len(points)
+    denominator = sum((x - mean_x) ** 2 for x, _ in points)
+    if denominator == 0.0:
+        return None
+    numerator = sum((x - mean_x) * (y - mean_y) for x, y in points)
+    return numerator / denominator * 3600.0
+
+
+def soak_summary(
+    samples: list[dict[str, Any]],
+    log_lines: list[str],
+    planned_duration_s: float,
+) -> dict[str, Any]:
+    """Leak/recovery view over a long-run sample stream.
+
+    The individual phase samples are still available in JSONL; this is the
+    compact answer a 24-hour report needs: where memory/threads went, whether
+    the player stayed alive, how much was dropped, and which subsystem logged
+    errors or Eco transitions.
+    """
+    if not samples:
+        return {"samples": 0, "warnings": ["no samples"]}
+    ordered = sorted(samples, key=lambda sample: sample.get("wall_t", sample.get("t", 0.0)))
+    start = float(ordered[0].get("wall_t", ordered[0].get("t", 0.0)))
+    end = float(ordered[-1].get("wall_t", ordered[-1].get("t", 0.0)))
+    duration = max(0.0, end - start)
+    gaps = [
+        float(b.get("wall_t", b.get("t", 0.0))) - float(a.get("wall_t", a.get("t", 0.0)))
+        for a, b in zip(ordered, ordered[1:])
+    ]
+    gaps = [gap for gap in gaps if gap > 0]
+    groups: dict[str, Any] = {}
+    group_names = sorted(
+        {group for sample in ordered for group in (sample.get("groups") or {})}
+    )
+    for group in group_names:
+        rss_points = [
+            (
+                float(sample.get("wall_t", sample.get("t", 0.0))),
+                float(sample["groups"][group]["rss_mib"]),
+            )
+            for sample in ordered
+            if (sample.get("groups") or {}).get(group, {}).get("rss_mib") is not None
+        ]
+        cpu_values = [
+            float(sample["groups"][group]["cpu_pct"])
+            for sample in ordered
+            if (sample.get("groups") or {}).get(group, {}).get("cpu_pct") is not None
+        ]
+        threads = [
+            int(sample["groups"][group]["threads"])
+            for sample in ordered
+            if (sample.get("groups") or {}).get(group, {}).get("threads") is not None
+        ]
+        processes = [
+            int(sample["groups"][group]["processes"])
+            for sample in ordered
+            if (sample.get("groups") or {}).get(group, {}).get("processes") is not None
+        ]
+        groups[group] = {
+            "rss_first_mib": rss_points[0][1] if rss_points else None,
+            "rss_last_mib": rss_points[-1][1] if rss_points else None,
+            "rss_max_mib": max((value for _, value in rss_points), default=None),
+            "rss_slope_mib_per_hour": _slope_per_hour(rss_points),
+            "cpu_mean_pct": statistics.fmean(cpu_values) if cpu_values else None,
+            "cpu_max_pct": max(cpu_values) if cpu_values else None,
+            "threads_first": threads[0] if threads else None,
+            "threads_last": threads[-1] if threads else None,
+            "threads_max": max(threads) if threads else None,
+            "processes_first": processes[0] if processes else None,
+            "processes_last": processes[-1] if processes else None,
+            "processes_max": max(processes) if processes else None,
+        }
+    pid_sets = [
+        tuple(sorted(sample.get("mpv_pids") or [])) for sample in ordered
+    ]
+    pid_changes = sum(1 for a, b in zip(pid_sets, pid_sets[1:]) if a != b)
+    dropped_total = 0
+    previous_pids: Optional[tuple[int, ...]] = None
+    previous_dropped: Optional[int] = None
+    for sample in ordered:
+        playback = sample.get("playback") or {}
+        pids = tuple(sorted(sample.get("mpv_pids") or []))
+        dropped = playback.get("dropped")
+        if (
+            dropped is not None
+            and previous_dropped is not None
+            and pids == previous_pids
+            and int(dropped) >= previous_dropped
+        ):
+            dropped_total += int(dropped) - previous_dropped
+        previous_dropped = int(dropped) if dropped is not None else None
+        previous_pids = pids
+    fps_values = [
+        float(playback["fps"])
+        for sample in ordered
+        if (playback := (sample.get("playback") or {})).get("fps") is not None
+    ]
+    state_counts: dict[str, int] = {}
+    playing_false = 0
+    for sample in ordered:
+        playback = sample.get("playback") or {}
+        if playback.get("is_playing") is False:
+            playing_false += 1
+        for state in (playback.get("monitor_states") or {}).values():
+            state_counts[str(state)] = state_counts.get(str(state), 0) + 1
+    markers = {
+        "player_stopped": "[Player] stopped",
+        "player_restarted": "[Player] restarted",
+        "ipc_connection_failed": "[mpv] IPC connection failed",
+        "command_failed": "[mpv] command failed",
+        "decoder_parked": "[Eco] parked the decoder",
+        "decoder_unparked": "[Eco] decoder unparked",
+    }
+    log_counts = {
+        name: sum(1 for line in log_lines if marker in line)
+        for name, marker in markers.items()
+    }
+    log_counts["eco_transitions"] = sum(1 for line in log_lines if "[Eco]" in line)
+    warnings: list[str] = []
+    if duration < planned_duration_s * 0.9:
+        warnings.append(
+            f"run covered {duration:.0f}s of the planned {planned_duration_s:.0f}s"
+        )
+    if playing_false > max(2, len(ordered) // 20):
+        warnings.append(
+            f"player reported not playing in {playing_false}/{len(ordered)} samples"
+        )
+    if log_counts["ipc_connection_failed"]:
+        warnings.append("the mpv IPC connection failed during the run")
+    return {
+        "samples": len(ordered),
+        "planned_duration_s": planned_duration_s,
+        "duration_s": duration,
+        "sample_gap_max_s": max(gaps) if gaps else None,
+        "groups": groups,
+        "mpv_pid_changes": pid_changes,
+        "mpv_pids": sorted({pid for pids in pid_sets for pid in pids}),
+        "dropped_total": dropped_total,
+        "fps_min": min(fps_values) if fps_values else None,
+        "fps_median": statistics.median(fps_values) if fps_values else None,
+        "playing_false_samples": playing_false,
+        "monitor_state_samples": state_counts,
+        "log": log_counts,
+        "warnings": warnings,
+    }
 
 
 def print_summary(summary: dict[str, Any], environment: dict[str, Any]) -> None:

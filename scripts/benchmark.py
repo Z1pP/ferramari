@@ -275,8 +275,10 @@ class Runner:
         self.samples: list[dict[str, Any]] = []
         self.run_result: dict[str, Any] = {"run": run_index + 1}
         self.minimized: list[int] = []
+        self.started_at: Optional[float] = None
 
     def start(self) -> None:
+        self.started_at = time.monotonic()
         if self.args.minimize_window and self.backend.__name__.endswith("windows"):
             for pid in self.args.minimize_window:
                 if self.backend.set_window_minimized(pid, True):
@@ -431,6 +433,7 @@ class Runner:
                 "phase": phase,
                 "sample": index,
                 "t": now - phase_start,
+                "wall_t": now - (self.started_at or phase_start),
                 "groups": metrics,
                 "playback": playback,
                 "gpu_global_pct": gpu.global_percent,
@@ -741,36 +744,104 @@ def run_scenario(
             deadline = time.monotonic() + duration
             next_event = time.monotonic() + args.event_interval
             event_index = 0
+            soak_log = common.LogTail(runner.log_path)
+            soak_log.read()
+            soak_events: list[dict[str, Any]] = []
             while time.monotonic() < deadline:
-                runner.sample_phase("long-run", min(args.interval * 10, 30.0))
-                if time.monotonic() >= next_event:
+                remaining = deadline - time.monotonic()
+                runner.sample_phase(
+                    "long-run", max(0.0, min(args.interval * 10, 30.0, remaining))
+                )
+                now = time.monotonic()
+                if now >= deadline:
+                    break
+                if now >= next_event:
                     event_index += 1
+                    event_at = now - (runner.started_at or now)
                     if event_index % 3 == 1:
-                        # kill one player and let supervision recover it
+                        # kill one player and wait for supervision to recover it
                         current = runner._sample_processes(None)
                         mpv = sorted(
                             pid
                             for pid, info in current.items()
                             if info.name.lower() in ("mpv", "mpv.exe")
                         )
+                        event: dict[str, Any] = {"kind": "kill", "at_s": event_at}
                         if mpv:
+                            victim = mpv[0]
+                            event["pid"] = victim
+                            killed_at = time.monotonic()
                             if backend.__name__.endswith("windows"):
                                 subprocess.run(
-                                    ["taskkill", "/PID", str(mpv[0]), "/F"],
+                                    ["taskkill", "/PID", str(victim), "/F"],
                                     stdout=subprocess.DEVNULL,
                                     stderr=subprocess.DEVNULL,
                                     timeout=10,
                                     creationflags=0x08000000,
                                 )
                             else:
-                                os.kill(mpv[0], 9)
+                                os.kill(victim, 9)
+                            new_pid_ms = None
+                            first_frame_ms = None
+                            recovery_deadline = killed_at + 20
+                            while time.monotonic() < recovery_deadline:
+                                current = runner._sample_processes(None)
+                                new_mpv = [
+                                    pid
+                                    for pid, info in current.items()
+                                    if info.name.lower() in ("mpv", "mpv.exe")
+                                    and pid != victim
+                                ]
+                                if new_mpv and new_pid_ms is None:
+                                    new_pid_ms = (time.monotonic() - killed_at) * 1000
+                                if new_mpv:
+                                    playback = common.playback_from_snapshot(
+                                        runner.control.snapshot()
+                                    )
+                                    if common.first_frame_reached(playback) and playback.get(
+                                        "active"
+                                    ):
+                                        first_frame_ms = (
+                                            time.monotonic() - killed_at
+                                        ) * 1000
+                                        break
+                                time.sleep(0.2)
+                            event["new_pid_ms"] = new_pid_ms
+                            event["first_frame_ms"] = first_frame_ms
+                            if new_pid_ms is None:
+                                soak_events.append(event)
+                                soak_events[-1]["error"] = "no replacement mpv"
+                                runner.run_result["soak_events"] = soak_events
+                                raise RuntimeError(
+                                    "long-run: mpv did not restart after a scheduled kill"
+                                )
+                        soak_events.append(event)
                     elif event_index % 3 == 2 and runner.cover:
-                        runner.cover.start()
-                        time.sleep(60)
-                        runner.cover.stop()
+                        remaining = deadline - time.monotonic()
+                        if remaining < 65.0:
+                            soak_events.append(
+                                {
+                                    "kind": "cover_skipped",
+                                    "at_s": event_at,
+                                    "reason": "not enough time left for a 60 s cover",
+                                }
+                            )
+                        else:
+                            event = {"kind": "cover", "at_s": event_at}
+                            runner.cover.start()
+                            hold = min(60.0, remaining - 5.0)
+                            time.sleep(hold)
+                            runner.cover.stop()
+                            event["duration_s"] = hold
+                            soak_events.append(event)
                     else:
                         runner.control.command("reload")
+                        soak_events.append({"kind": "reload", "at_s": event_at})
                     next_event = time.monotonic() + args.event_interval
+            runner.run_result["soak_events"] = soak_events
+            runner.run_result["soak"] = common.soak_summary(
+                runner.samples, soak_log.read(), duration
+            )
         else:
             raise SystemExit(f"unknown scenario {scenario}")
         runner.run_result["phases"] = common.summarize_samples(runner.samples)

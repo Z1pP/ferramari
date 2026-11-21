@@ -64,8 +64,12 @@ class LinuxControl:
     @staticmethod
     def _value(stdout: str) -> Any:
         text = stdout.strip()
+        # `Properties.Get` returns a variant, so gdbus prints `(<...>,)` for
+        # booleans and maps. Direct method calls omit the variant wrapper.
         if text.startswith("(") and text.endswith(",)"):
             text = text[1:-2]
+        if text.startswith("<") and text.endswith(">"):
+            text = text[1:-1]
         text = text.replace("true", "True").replace("false", "False")
         try:
             return ast.literal_eval(text)

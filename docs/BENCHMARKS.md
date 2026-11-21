@@ -40,6 +40,25 @@ python3 scripts/benchmark.py \
   --json-out bench-results/steady.json
 ```
 
+The harness itself has dependency-free unit tests:
+
+```sh
+python -m unittest discover -s scripts/bench -p 'test_*.py'   # or make test-bench
+```
+
+A long run uses the same binary and writes a compact soak report in addition
+to JSONL: RSS slope per hour, thread/process first/last/max, mpv PID changes,
+dropped-frame delta, monitor-state counts, `[Player]`/`[mpv]`/`[Eco]` log
+counters and each scheduled recovery latency.
+
+```sh
+make soak VIDEO="$HOME/Videos/1080p30-testsrc2.mp4" DURATION=86400
+```
+
+The cover event is fullscreen; run the soak on a dedicated display or with the
+desktop otherwise clear. The 2.2.5 host did not have one, so the 24-hour row is
+not in this document.
+
 The Windows single-instance mutex is session-wide. Close the running Ferramari
 before a measurement; the harness refuses to start when another server owns
 the endpoint. A window that already covers the wallpaper on a one-display
@@ -307,9 +326,10 @@ stopped at the first-frame gate because a real Google Chrome window was
 fullscreen on the only display. The isolated server correctly reported
 `Occluded` and refused to call the player "playing". That is the intended Eco
 behaviour, but it means a long-run on a working desktop is not a valid
-measurement. No 24-hour number was produced; the script's event loop is
-implemented but its end-to-end validation still needs a dedicated machine or a
-desktop with no fullscreen app.
+measurement. A 12 s null-mode run validated the sampling loop and the deadline
+bound: an event past the deadline is not started, and a 60 s cover is skipped
+when fewer than 65 s remain. No 24-hour number was produced; the full run still
+needs a dedicated machine or a desktop with no fullscreen app.
 
 ## Microbenchmarks
 

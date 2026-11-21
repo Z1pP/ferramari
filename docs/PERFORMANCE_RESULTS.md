@@ -18,7 +18,7 @@ the findings are in [`PERFORMANCE_AUDIT_2_3.md`](PERFORMANCE_AUDIT_2_3.md).
 | Eco occlusion hysteresis (2 s hide confirmation) | **kept** | Ten one-second covers: **20 transitions → 0**. Uncover remains immediate. |
 | Windows window-state sampler cost | **measured, no change** | 0.146 ms mean / 0.166 ms p95 at 1.33 Hz (~0.02% of one core). |
 | Windows metrics sample cost | **measured, no change** | 3.843 ms mean / 4.561 ms p95; process table is 3.271 ms, GPU 0.331 ms. Paid only while the UI is visible on Home/Performance. |
-| Linux `/proc` sampler | **deferred** | No Linux host for before/after. Safe stat-only/descendant design documented below; not implemented. |
+| Linux `/proc` sampler | **kept, synthetic before/after** | Stat-only: 500-PID fake `/proc` 45.46 ms → 27.30 ms (1.66×), file reads 2N → N. Real Linux wall-clock/UI CPU still unmeasured. |
 | Decoder parking | **measured, no change** | mpv RSS 133.9 → 63.1 MiB, threads 42 → 26, VRAM 25.05 → 0; resume at the captured position. |
 | mpv process merging | **not attempted** | One-display evidence only; the brief forbids a merge without proof. |
 | Recovery / switch validation | **measured, no change** | New mpv PID 2016 ms, first frame 4063 ms. Video switch reuses the PID; new file first frame 2031 ms. |
@@ -158,27 +158,36 @@ hidden-tray path no longer calls it. Replacing Toolhelp with an undocumented
 `NtQuerySystemInformation` layout would add risk for a visible-page cost below
 half a percent of one core, so **no runtime change** was made.
 
-### Linux — deferred
+### Linux — stat-only sampler, synthetic before/after
 
-The Linux branch of `read_tree` reads `/proc/<pid>/stat` and
-`/proc/<pid>/status` for every process, then keeps only the descendants. The
-proposed, **not implemented**, safe sequence is:
+The Linux branch of `read_tree` used to read `/proc/<pid>/stat` and
+`/proc/<pid>/status` for every process, then keep only the descendants. `stat`
+already contains PPID, utime+stime, `num_threads` and RSS in pages, so the
+implementation now reads only `stat`:
 
-1. Read only `/proc/<pid>/stat` for all numeric entries. It already contains
-   PPID, utime+stime, `num_threads` and RSS in pages, so `status` is not needed
-   for the tree at all. This halves file opens and removes the full status
-   parse.
-2. Measure again. If the remaining cost is still material, walk only
-   `/proc/<pid>/task/<tid>/children` from the root, with the full stat scan as
-   a fallback when that interface is unavailable or the tree is inconsistent.
-3. Test stat field indices, page size, reparenting and a missing root; run the
-   ignored `metrics_sample_cost` test and `strace -c` before/after on a Linux
-   host.
+- `read_tree_from(proc_root, root, page_size)` is a platform-neutral,
+  test-compiled walk (production passes `/proc` and `sysconf(_SC_PAGESIZE)`);
+- `Stat` carries `threads` and `rss_pages`; the whole `status` parser was
+  deleted;
+- file reads per scan are halved, and the larger per-process file is no longer
+  opened.
 
-This is deliberately not committed as an "optimisation": the only available
-host is Windows, and a before/after without the Linux run would violate the
-phase rule. The ignored microbenchmark is in `ferramari-core/src/metrics.rs`
-so the Linux run is one command when a host is available.
+The before/after is a synthetic 500-PID `/proc`-shaped tree, 50 iterations
+each on the same host:
+
+| Walk | mean |
+| --- | ---: |
+| old `stat` + `status` | 45.46 ms |
+| stat-only | **27.30 ms** |
+| speed-up | **1.66×** |
+
+This is an algorithm/file-I/O measurement, not a Linux kernel measurement.
+Fake-tree tests assert that only descendants are aggregated and that no
+`status` file exists. The remaining items are a real Linux run of
+`metrics_sample_cost` under `strace -c` and UI CPU on Home; the descendant
+`/proc/<pid>/task/<tid>/children` walk was **not** added, because the safer
+stat-only change already removes the redundant read and avoids reparenting
+risk.
 
 ## 5. Window-state sampler — no change
 

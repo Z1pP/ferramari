@@ -338,6 +338,7 @@ Ignored tests, run only on a benchmark host:
 ```sh
 cargo test --release -p ferramari-core metrics_sample_cost -- --ignored --nocapture
 cargo test --release -p ferramari-core metrics_sample_breakdown -- --ignored --nocapture
+cargo test --release -p ferramari-core linux_read_tree_fake_before_after -- --ignored --nocapture
 cargo test --release -p ferramari-platform window_state_sample_cost -- --ignored --nocapture
 ```
 
@@ -350,6 +351,12 @@ Windows results (200–1000 iterations, release):
 | Windows GPU sampler | 0.331 ms | 0.331 ms | 0.359 ms |
 | `total_memory` | 0.001 ms | — | — |
 | `window_state::sample` | 0.146 ms | 0.141 ms | 0.166 ms |
+| Linux fake `/proc`, 500 PIDs, old stat+status | 45.46 ms | — | — |
+| Linux fake `/proc`, 500 PIDs, stat-only | **27.30 ms** | — | — |
+
+The Linux row is a synthetic 500-PID `/proc`-shaped tree (50 iterations each),
+not a Linux kernel run; it demonstrates the halved file opens and the removed
+`status` parse (1.66×). A real Linux `strace -c`/UI-CPU run remains pending.
 
 The Windows process-table walk is the cost; the GPU counter and the monitor
 rectangles are not. `window_state::sample` runs at 1.33 Hz and costs about
@@ -360,10 +367,11 @@ Home or Performance; the hidden-tick change removes it from the tray path.
 ## Not measured on this host
 
 - **Linux**: no Linux distribution is installed on this machine. The harness
-  Linux backend, `cover_window` and `idle_stub` examples are present and the
-  Linux CI job compiles the workspace, but no Linux playback number was taken.
-  In particular the proposed Linux `/proc` sampler optimisation is **not
-  implemented**: its before/after requires a Linux host.
+  Linux backend, `cover_window` and `idle_stub` examples are present, and the
+  stat-only `/proc` sampler is implemented and covered by fake-tree tests plus
+  a synthetic 500-PID before/after (45.46 ms → 27.30 ms, 1.66×). No **real**
+  Linux playback, `strace`, UI-CPU or `metrics_sample_cost` number was taken;
+  the Linux CI job compiles the workspace and examples.
 - **Two and three physical displays**: the host has one. The harness refuses a
   `--monitors N` mismatch rather than extrapolating. The numbers above must not
   be multiplied by display count.

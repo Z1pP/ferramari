@@ -23,6 +23,11 @@ are in `docs/PERFORMANCE_AUDIT_2_3.md`, `docs/BENCHMARKS.md` and
   stale web mode was removed. Missing data is `null` with a reason, never zero.
   `make test-bench` runs dependency-free harness tests; a long run writes a
   soak report with RSS slope, PID changes, recovery latencies and log counters.
+- **Linux metrics read one `/proc` file per process instead of two.** The
+  sampler takes PPID, CPU ticks, thread count and RSS pages from
+  `/proc/<pid>/stat`; the large `status` read and parse are gone. A synthetic
+  500-PID `/proc` tree drops from 45.46 ms to 27.30 ms (1.66×); real Linux
+  wall-clock and UI CPU remain a documented gap.
 - **Measured but not changed:** the Windows metrics sample costs 3.84 ms/s
   while the Performance page is visible; the window-state sampler costs
   0.146 ms per 750 ms tick; five-minute decoder parking frees 70.8 MiB and 16

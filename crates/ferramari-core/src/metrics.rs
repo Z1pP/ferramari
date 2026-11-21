@@ -10,7 +10,7 @@
 //! the very first sample, makes an unmeasurable thing look like an idle one —
 //! which is the opposite of what the Eco work is trying to prove.
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", test))]
 use std::collections::HashMap;
 #[cfg(any(not(target_os = "windows"), test))]
 use std::fs;
@@ -180,28 +180,22 @@ struct Tree {
     processes: u32,
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Stat {
     ppid: u32,
     ticks: u64,
-}
-
-#[cfg(target_os = "linux")]
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-struct Status {
-    rss_kb: u64,
     threads: u32,
+    rss_pages: u64,
 }
 
-/// Walk the process tree below `root`. `None` means this platform has no
-/// process table the sampler understands; an empty [`Tree`] means the tree
-/// was read and the root was not in it.
-#[cfg(target_os = "linux")]
-fn read_tree(root: u32) -> Option<Tree> {
-    let entries = fs::read_dir("/proc").ok()?;
+/// Walk a `/proc`-shaped tree. Kept platform-neutral under `test` so the Linux
+/// field parsing and aggregation can be exercised on any host; production
+/// only calls it with `/proc`.
+#[cfg(any(target_os = "linux", test))]
+fn read_tree_from(proc_root: &Path, root: u32, page_size: u64) -> Option<Tree> {
+    let entries = fs::read_dir(proc_root).ok()?;
     let mut stats: HashMap<u32, Stat> = HashMap::new();
-    let mut statuses: HashMap<u32, Status> = HashMap::new();
     for entry in entries.flatten() {
         let Some(pid) = entry
             .file_name()
@@ -210,18 +204,17 @@ fn read_tree(root: u32) -> Option<Tree> {
         else {
             continue;
         };
+        // `/proc/<pid>/stat` already carries the thread count and resident
+        // pages (fields 20 and 24). Reading the larger `status` file for every
+        // unrelated process only to discard it was the expensive half of the
+        // old sampler.
         let Some(stat) = fs::read_to_string(entry.path().join("stat"))
             .ok()
             .and_then(|text| parse_stat(&text))
         else {
             continue;
         };
-        let status = fs::read_to_string(entry.path().join("status"))
-            .ok()
-            .map(|text| parse_status(&text))
-            .unwrap_or_default();
         stats.insert(pid, stat);
-        statuses.insert(pid, status);
     }
 
     let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
@@ -234,18 +227,25 @@ fn read_tree(root: u32) -> Option<Tree> {
         let Some(stat) = stats.get(&pid) else {
             continue;
         };
-        let status = statuses.get(&pid).copied().unwrap_or_default();
         tree.ticks = tree.ticks.saturating_add(stat.ticks);
         tree.rss_bytes = tree
             .rss_bytes
-            .saturating_add(status.rss_kb.saturating_mul(1024));
-        tree.threads = tree.threads.saturating_add(status.threads.max(1));
+            .saturating_add(stat.rss_pages.saturating_mul(page_size));
+        tree.threads = tree.threads.saturating_add(stat.threads.max(1));
         tree.processes = tree.processes.saturating_add(1);
         if let Some(children) = children.get(&pid) {
             stack.extend(children);
         }
     }
     Some(tree)
+}
+
+/// Walk the process tree below `root`. `None` means this platform has no
+/// process table the sampler understands; an empty [`Tree`] means the tree
+/// was read and the root was not in it.
+#[cfg(target_os = "linux")]
+fn read_tree(root: u32) -> Option<Tree> {
+    read_tree_from(Path::new("/proc"), root, page_size())
 }
 
 /// Walk the Windows process table below `root`. The Toolhelp snapshot gives
@@ -354,35 +354,36 @@ fn read_tree(_root: u32) -> Option<Tree> {
 /// Parse `/proc/<pid>/stat`. The command name can contain spaces and `)`, so
 /// split after the last `)` instead of using `split_whitespace` on the whole
 /// line.
-#[cfg(target_os = "linux")]
+///
+/// Field numbers in `proc(5)`: state 3, ppid 4, utime 14, stime 15,
+/// num_threads 20, rss 24 (pages). After stripping the comm prefix the
+/// zero-based indices are 1, 11, 12, 17 and 21.
+#[cfg(any(target_os = "linux", test))]
 fn parse_stat(text: &str) -> Option<Stat> {
     let close = text.rfind(')')?;
     let fields: Vec<&str> = text[close + 1..].split_whitespace().collect();
-    // After comm: state(3), ppid(4), … utime(14), stime(15), …
     let ppid = fields.get(1)?.parse().ok()?;
     let utime: u64 = fields.get(11)?.parse().ok()?;
     let stime: u64 = fields.get(12)?.parse().ok()?;
+    let threads: u32 = fields.get(17)?.parse().ok()?;
+    let rss_pages: u64 = fields.get(21)?.parse().ok()?;
     Some(Stat {
         ppid,
         ticks: utime.saturating_add(stime),
+        threads,
+        rss_pages,
     })
 }
 
+/// Resident page size, used to turn `stat`'s `rss` field into bytes.
 #[cfg(target_os = "linux")]
-fn parse_status(text: &str) -> Status {
-    let mut status = Status::default();
-    for line in text.lines() {
-        if let Some(value) = line.strip_prefix("VmRSS:") {
-            status.rss_kb = value
-                .split_whitespace()
-                .next()
-                .and_then(|value| value.parse().ok())
-                .unwrap_or(0);
-        } else if let Some(value) = line.strip_prefix("Threads:") {
-            status.threads = value.trim().parse().unwrap_or(0);
-        }
+fn page_size() -> u64 {
+    let size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+    if size > 0 {
+        size as u64
+    } else {
+        4096
     }
-    status
 }
 
 #[cfg(unix)]
@@ -479,28 +480,186 @@ fn mem_total(path: &Path) -> Metric<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    #[cfg(target_os = "linux")]
     #[test]
-    fn stat_parser_handles_spaces_and_parentheses_in_the_command() {
+    fn stat_parser_reads_ppid_ticks_threads_and_rss_pages() {
         // comm = "a) b c", then state S, ppid 42, nine fields, utime 100,
-        // stime 50.
+        // stime 50, four fields, num_threads 7, three fields, rss 123 pages.
         let mut fields = vec!["S", "42"];
         fields.extend(std::iter::repeat_n("0", 9));
-        fields.extend(["100", "50", "0", "0", "20", "0", "1", "0", "0"]);
+        fields.extend(["100", "50", "0", "0", "0", "0"]);
+        fields.push("7");
+        fields.extend(["0", "0", "0"]);
+        fields.push("123");
         let line = format!("123 (a) b c) {}", fields.join(" "));
         let stat = parse_stat(&line).unwrap();
         assert_eq!(stat.ppid, 42);
         assert_eq!(stat.ticks, 150);
+        assert_eq!(stat.threads, 7);
+        assert_eq!(stat.rss_pages, 123);
     }
 
-    #[cfg(target_os = "linux")]
+    fn write_fake_stat(
+        root: &Path,
+        pid: u32,
+        comm: &str,
+        ppid: u32,
+        ticks: u64,
+        threads: u32,
+        rss_pages: u64,
+    ) {
+        let directory = root.join(pid.to_string());
+        std::fs::create_dir_all(&directory).unwrap();
+        let mut fields = vec!["S".to_string(), ppid.to_string()];
+        fields.extend(std::iter::repeat_n("0".to_string(), 9));
+        fields.push(ticks.to_string());
+        fields.push("0".to_string());
+        fields.extend(std::iter::repeat_n("0".to_string(), 4));
+        fields.push(threads.to_string());
+        fields.extend(std::iter::repeat_n("0".to_string(), 3));
+        fields.push(rss_pages.to_string());
+        let line = format!("{pid} ({comm}) {}", fields.join(" "));
+        std::fs::write(directory.join("stat"), line).unwrap();
+        // Deliberately no `status`: the sampler must not need it.
+    }
+
     #[test]
-    fn status_parser_reads_rss_and_threads() {
-        let status = parse_status("Name:\tferramari\nVmRSS:\t  12345 kB\nThreads:\t7\n");
-        assert_eq!(status.rss_kb, 12345);
-        assert_eq!(status.threads, 7);
+    fn the_linux_tree_walk_aggregates_only_descendants_from_stat() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("ferramari-proc-{unique}"));
+        write_fake_stat(&root, 100, "ferramari", 1, 10, 2, 5);
+        write_fake_stat(&root, 101, "mpv", 100, 20, 3, 7);
+        write_fake_stat(&root, 102, "conhost", 100, 5, 1, 2);
+        write_fake_stat(&root, 999, "unrelated", 1, 100, 9, 100);
+        let tree = read_tree_from(&root, 100, 4096).unwrap();
+        assert_eq!(tree.processes, 3);
+        assert_eq!(tree.ticks, 35);
+        assert_eq!(tree.rss_bytes, (5 + 7 + 2) * 4096);
+        assert_eq!(tree.threads, 6);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// Synthetic before/after for the Linux sampler. This is not a Linux
+    /// kernel measurement: it creates a `/proc`-shaped directory tree and
+    /// compares the old stat+status walk with the stat-only walk. Run it with
+    /// `--ignored` when changing the Linux path.
+    #[test]
+    #[ignore]
+    fn linux_read_tree_fake_before_after() {
+        use std::time::Instant;
+
+        fn parse_status_local(text: &str) -> (u64, u32) {
+            let mut rss_kb = 0;
+            let mut threads = 0;
+            for line in text.lines() {
+                if let Some(value) = line.strip_prefix("VmRSS:") {
+                    rss_kb = value
+                        .split_whitespace()
+                        .next()
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(0);
+                } else if let Some(value) = line.strip_prefix("Threads:") {
+                    threads = value.trim().parse().unwrap_or(0);
+                }
+            }
+            (rss_kb, threads)
+        }
+
+        fn read_tree_legacy(proc_root: &Path, root: u32, page_size: u64) -> Option<Tree> {
+            let entries = fs::read_dir(proc_root).ok()?;
+            let mut stats: HashMap<u32, Stat> = HashMap::new();
+            let mut statuses: HashMap<u32, (u64, u32)> = HashMap::new();
+            for entry in entries.flatten() {
+                let Some(pid) = entry
+                    .file_name()
+                    .to_str()
+                    .and_then(|name| name.parse().ok())
+                else {
+                    continue;
+                };
+                let Some(stat) = fs::read_to_string(entry.path().join("stat"))
+                    .ok()
+                    .and_then(|text| parse_stat(&text))
+                else {
+                    continue;
+                };
+                let status = fs::read_to_string(entry.path().join("status"))
+                    .ok()
+                    .map(|text| parse_status_local(&text))
+                    .unwrap_or_default();
+                stats.insert(pid, stat);
+                statuses.insert(pid, status);
+            }
+            let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
+            for (pid, stat) in &stats {
+                children.entry(stat.ppid).or_default().push(*pid);
+            }
+            let mut tree = Tree::default();
+            let mut stack = vec![root];
+            while let Some(pid) = stack.pop() {
+                let Some(stat) = stats.get(&pid) else {
+                    continue;
+                };
+                let (rss_kb, threads) = statuses.get(&pid).copied().unwrap_or_default();
+                tree.ticks = tree.ticks.saturating_add(stat.ticks);
+                tree.rss_bytes = tree
+                    .rss_bytes
+                    .saturating_add(rss_kb.saturating_mul(1024).max(stat.rss_pages * page_size));
+                tree.threads = tree.threads.saturating_add(threads.max(1));
+                tree.processes = tree.processes.saturating_add(1);
+                if let Some(children) = children.get(&pid) {
+                    stack.extend(children);
+                }
+            }
+            Some(tree)
+        }
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("ferramari-proc-bench-{unique}"));
+        let total = 500u32;
+        let tree_root = 10_000u32;
+        write_fake_stat(&root, tree_root, "ferramari", 1, 10, 4, 20);
+        for index in 1..total {
+            let pid = tree_root + index;
+            let ppid = if index <= 40 { tree_root } else { 1 };
+            write_fake_stat(&root, pid, "worker", ppid, 10, 2, 8);
+            let directory = root.join(pid.to_string());
+            std::fs::write(
+                directory.join("status"),
+                format!("Name:\tworker\nVmRSS:\t  {} kB\nThreads:\t2\n", 8 * 4),
+            )
+            .unwrap();
+        }
+        let measure = |legacy: bool| {
+            let mut total = 0.0;
+            for _ in 0..50 {
+                let started = Instant::now();
+                let tree = if legacy {
+                    read_tree_legacy(&root, tree_root, 4096)
+                } else {
+                    read_tree_from(&root, tree_root, 4096)
+                };
+                assert!(tree.is_some());
+                total += started.elapsed().as_secs_f64() * 1000.0;
+            }
+            total / 50.0
+        };
+        let legacy = measure(true);
+        let current = measure(false);
+        println!(
+            "linux fake /proc: {total} PIDs, legacy(stat+status)={legacy:.3} ms, \
+             stat-only={current:.3} ms, speed-up={:.2}x",
+            legacy / current
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[cfg(target_os = "windows")]

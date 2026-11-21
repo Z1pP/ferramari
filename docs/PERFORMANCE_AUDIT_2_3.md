@@ -83,7 +83,7 @@ microbenchmarks are in [`BENCHMARKS.md`](BENCHMARKS.md).
 
 | Scenario | Status | Reason |
 | --- | --- | --- |
-| Linux playback, Linux metrics before/after | not measured | No Linux distribution on the host; the CI job compiles the Linux target. |
+| Linux playback; real Linux metrics/UI CPU | not measured | No Linux distribution on the host; the stat-only sampler has a synthetic 500-PID before/after (45.46 → 27.30 ms) and fake-tree tests, but `strace`/UI CPU needs a Linux host. The CI job compiles the Linux target. |
 | Two and three monitors | not measured | One physical display. The harness refuses an explicit mismatch. |
 | 4K60, HDR, film content | not measured | Synthetic 4K30 H.264 is the only 4K source used. |
 | Lock, sleep/resume, charger transition, real idle | not measured here | Smoke checklist items; a test instance must not lock the user's session. |

@@ -82,6 +82,27 @@ pub fn reload() {
     state.load(current_language_from(&localedir));
 }
 
+/// Load the catalog for an explicit in-app choice without changing the
+/// process environment. `None` follows the desktop locale, ignoring any
+/// `LANGUAGE` a previous choice left behind.
+///
+/// The server uses this for the tray: its labels are built when the menu
+/// opens, so it does not need a second process and must not race other
+/// threads that read the environment.
+pub fn select(language: Option<&str>) {
+    let localedir = state()
+        .read()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .localedir
+        .clone();
+    let language = match language {
+        Some(code) => normalise_language(code),
+        None => system_language_from(&localedir),
+    };
+    let mut state = state().write().unwrap_or_else(|poison| poison.into_inner());
+    state.load(language);
+}
+
 /// Translate a message. Unknown messages and an uninitialised translator both
 /// return the input unchanged.
 pub fn tr(text: &str) -> String {
@@ -132,7 +153,18 @@ fn current_language_from(_localedir: &Path) -> Option<String> {
     // `LANGUAGE` is a colon-separated preference list; the desktop's own
     // locale variables are the fallback. An explicit in-app choice writes
     // `LANGUAGE`, which is why it wins.
-    for variable in ["LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"] {
+    language_from_env(&["LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"]).or_else(desktop_language)
+}
+
+/// The locale the desktop itself selected, without an in-app override. The
+/// server's "System" choice uses this after it has already applied `LANGUAGE`
+/// once, so the stale value must not win again.
+fn system_language_from(_localedir: &Path) -> Option<String> {
+    language_from_env(&["LC_ALL", "LC_MESSAGES", "LANG"]).or_else(desktop_language)
+}
+
+fn language_from_env(variables: &[&str]) -> Option<String> {
+    for variable in variables {
         let Ok(value) = std::env::var(variable) else {
             continue;
         };
@@ -142,10 +174,14 @@ fn current_language_from(_localedir: &Path) -> Option<String> {
             }
         }
     }
-    // Windows does not export the UI language as `LANG`, so "System" used to
-    // resolve to English on a Russian desktop. Ask Win32 instead; the returned
-    // BCP-47 tag ("ru-RU") is normalised like any other locale name and the
-    // catalog loader walks it back to `ru`.
+    None
+}
+
+/// Windows does not export the UI language as `LANG`, so "System" used to
+/// resolve to English on a Russian desktop. Ask Win32 instead; the returned
+/// BCP-47 tag ("ru-RU") is normalised like any other locale name and the
+/// catalog loader walks it back to `ru`.
+fn desktop_language() -> Option<String> {
     #[cfg(windows)]
     {
         windows_ui_language().and_then(|language| normalise_language(&language))
@@ -684,6 +720,11 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// `init` and `select` share one process-wide translator. Tests that touch
+    /// it take this lock so a parallel test cannot swap its catalog mid-run.
+    static GLOBAL_LOCK: Mutex<()> = Mutex::new(());
 
     /// Build a GNU MO file with little-endian tables. The test does not depend
     /// on msgfmt being installed, which matters on Windows CI.
@@ -734,7 +775,45 @@ mod tests {
         // Regression: `init` used to hold the write guard while calling a
         // helper that read the same lock, so the process stopped at startup
         // before printing anything.
+        let _guard = GLOBAL_LOCK
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
         init(std::env::temp_dir());
+    }
+
+    #[test]
+    fn select_loads_an_explicit_catalog_without_touching_the_environment() {
+        let _guard = GLOBAL_LOCK
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let root = std::env::temp_dir().join(format!(
+            "ferramari-select-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or(0)
+        ));
+        let messages = root.join("ru").join("LC_MESSAGES");
+        std::fs::create_dir_all(&messages).expect("create catalog directory");
+        std::fs::write(
+            messages.join(format!("{DOMAIN}.mo")),
+            mo(&[("Active", "Активно")], "Language: ru\n"),
+        )
+        .expect("write catalog");
+
+        init(root.clone());
+        select(Some("ru"));
+        assert_eq!(active_language(), "ru");
+        assert_eq!(tr("Active"), "Активно");
+
+        // English ships no catalog: selecting it has to fall back to the
+        // source strings instead of keeping the Russian one.
+        select(Some("en"));
+        assert_eq!(active_language(), "en");
+        assert_eq!(tr("Active"), "Active");
+
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

@@ -20,6 +20,10 @@
   Settings segment treats `""` and `"system"` as the same choice, and the
   chosen language overrides up to five one-second polls while the server
   publishes it.
+- **The server reloads its own catalog on a language change.** The Windows
+  tray menu is built when it opens, so its labels now follow the interface
+  without restarting the server. The Linux tray is built once per process and
+  still takes the startup language.
 
 ## 2.2.5 - 2026-11-19
 

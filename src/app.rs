@@ -471,6 +471,16 @@ impl App {
                     self.config.language = language;
                     self.save_config();
                 }
+                // The tray belongs to this process. On Windows its menu is
+                // rebuilt on every open, so loading the chosen catalog here
+                // makes the labels follow the UI without a second process or a
+                // restart. `select` leaves the environment alone: other server
+                // threads read it, and the UI owns the `LANGUAGE` override.
+                let choice = match self.config.language.as_str() {
+                    "" | "system" => None,
+                    other => Some(other),
+                };
+                ferramari_core::i18n::select(choice);
             }
             Command::SetTheme(mode) => {
                 let mode = if matches!(mode.as_str(), "light" | "dark") {

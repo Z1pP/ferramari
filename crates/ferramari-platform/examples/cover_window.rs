@@ -101,12 +101,7 @@ mod linux {
         eprintln!("[cover] monitor {index} {width}x{height}+{x},{y} mapped");
         // The harness stops this process with SIGTERM. Ignore X events until
         // the connection closes so the window stays mapped.
-        loop {
-            match connection.wait_for_event() {
-                Ok(_) => {}
-                Err(_) => break,
-            }
-        }
+        while connection.wait_for_event().is_ok() {}
         Ok(())
     }
 }

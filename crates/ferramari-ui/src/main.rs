@@ -721,6 +721,11 @@ const STATUS_TTL_TICKS: u8 = 8;
 /// How many polls an optimistic play/pause state may override the server
 /// before the UI accepts the server value again.
 const PENDING_PLAY_TICKS: u8 = 3;
+/// How many polls a just-chosen language may override the server. The server
+/// publishes the new value at the end of the command, but a snapshot taken
+/// before it was handled can still land first; without this the selection
+/// visibly flips back for a frame.
+const PENDING_LANGUAGE_TICKS: u8 = 5;
 
 /// The resource traces the Home tiles and the Performance page draw.
 ///
@@ -855,6 +860,10 @@ struct App {
     /// but server hasn't started playback yet, so snapshot still says paused).
     pending_play: Option<bool>,
     pending_play_ticks: u8,
+    /// The language the user just picked, held until the polls agree. A
+    /// snapshot already in flight when the click arrived must not undo it.
+    pending_language: Option<String>,
+    pending_language_ticks: u8,
     /// Windows close-to-tray: the window is hidden but the process stays alive
     /// so the tray (or a second launch) can raise it again.
     hidden: bool,
@@ -907,6 +916,8 @@ impl App {
                 ticks: 0,
                 pending_play: None,
                 pending_play_ticks: 0,
+                pending_language: None,
+                pending_language_ticks: 0,
                 hidden: false,
             },
             // Connecting to the server and asking GitHub about a new release
@@ -1022,6 +1033,9 @@ impl App {
                 }
                 if self.pending_play.is_some() {
                     self.pending_play_ticks = self.pending_play_ticks.saturating_add(1);
+                }
+                if self.pending_language.is_some() {
+                    self.pending_language_ticks = self.pending_language_ticks.saturating_add(1);
                 }
                 let Some(server) = self.server.clone() else {
                     // Reconnect every few seconds while the server is down.
@@ -1238,6 +1252,8 @@ impl App {
                     self.applied_language.clear();
                     self.pending_play = None;
                     self.pending_play_ticks = 0;
+                    self.pending_language = None;
+                    self.pending_language_ticks = 0;
                     // A hidden window whose server is gone has no tray left to
                     // reopen it: it would sit in memory invisible until the
                     // session ends. Closing the last window ends the process.
@@ -1250,16 +1266,27 @@ impl App {
                 if !self.blur_dirty {
                     self.blur_draft = new_state.blur_radius;
                 }
+                // The language is applied only after the pending choice has
+                // had its say: a poll taken before the command was handled
+                // still describes the old language and must not switch the
+                // interface back for a frame.
+                if let Some(pending) = self.pending_language.clone() {
+                    if normalised_language(&new_state.language) == pending
+                        || self.pending_language_ticks >= PENDING_LANGUAGE_TICKS
+                    {
+                        self.pending_language = None;
+                        self.pending_language_ticks = 0;
+                    } else {
+                        new_state.language = self.state.language.clone();
+                    }
+                }
                 // Apply the server's language whenever it differs from what
                 // this window last applied. Both `""` and `"system"` mean
                 // "follow the desktop locale", so they are normalised before
                 // comparing — otherwise a value the server persists would
                 // never match and every poll would re-apply (undo-loop),
                 // while an external change would be ignored on first sight.
-                let want = match new_state.language.as_str() {
-                    "" => "system".to_string(),
-                    other => other.to_string(),
-                };
+                let want = normalised_language(&new_state.language);
                 if want != self.applied_language {
                     apply_language(&want);
                     self.applied_language = want;
@@ -1293,6 +1320,10 @@ impl App {
                 if let Err(error) = result {
                     self.pending_play = None;
                     self.pending_play_ticks = 0;
+                    // Let the next snapshot restore the language the server
+                    // actually has; the status line explains why.
+                    self.pending_language = None;
+                    self.pending_language_ticks = 0;
                     self.show_status(error, true);
                 }
                 Task::none()
@@ -1369,13 +1400,11 @@ impl App {
             Message::SetLanguage(language) => {
                 // Store the same normalised form the poll compares against, so
                 // the user's choice is not immediately re-applied by `Tick`.
-                let normalised = if language.is_empty() {
-                    "system".to_string()
-                } else {
-                    language.clone()
-                };
+                let normalised = normalised_language(&language);
                 apply_language(&normalised);
-                self.applied_language = normalised;
+                self.applied_language = normalised.clone();
+                self.pending_language = Some(normalised);
+                self.pending_language_ticks = 0;
                 self.state.language = language.clone();
                 self.online.search_placeholder = tr("Search wallpapers…");
                 self.collection_placeholder = tr("New collection");
@@ -4299,22 +4328,22 @@ impl App {
                     vec![
                         (
                             tr("System"),
-                            self.state.language.is_empty(),
+                            language_selected(&self.state.language, ""),
                             Message::SetLanguage(String::new()),
                         ),
                         (
                             "English".to_string(),
-                            self.state.language == "en",
+                            language_selected(&self.state.language, "en"),
                             Message::SetLanguage("en".into()),
                         ),
                         (
                             "Русский".to_string(),
-                            self.state.language == "ru",
+                            language_selected(&self.state.language, "ru"),
                             Message::SetLanguage("ru".into()),
                         ),
                         (
                             "日本語".to_string(),
-                            self.state.language == "ja",
+                            language_selected(&self.state.language, "ja"),
                             Message::SetLanguage("ja".into()),
                         ),
                     ],
@@ -5210,6 +5239,25 @@ fn init_i18n() {
     ferramari_core::i18n::init(paths::locale_dir());
 }
 
+/// The form the poll and the language segment compare: both `""` (what the
+/// System button writes, and what older configs contain) and `"system"` mean
+/// "follow the desktop locale".
+fn normalised_language(code: &str) -> String {
+    let code = code.trim();
+    if code.is_empty() || code.eq_ignore_ascii_case("system") {
+        "system".to_string()
+    } else {
+        code.to_string()
+    }
+}
+
+/// Whether a segment stands for the current language. The System segment is
+/// selected for both stored spellings, so the control never shows no choice
+/// after the server hands back `"system"`.
+fn language_selected(current: &str, choice: &str) -> bool {
+    normalised_language(current) == normalised_language(choice)
+}
+
 /// Switch the catalog at runtime. `""`/`system` follows the desktop locale;
 /// anything else forces `en`, `ru` or `ja`.
 fn apply_language(code: &str) {
@@ -5422,5 +5470,34 @@ mod library_tests {
         assert!(matches("SAK", "Sakura Lakeside.mp4"));
         assert!(!matches("night", "Sakura Lakeside.mp4"));
         assert!(matches("", "anything"));
+    }
+}
+
+#[cfg(test)]
+mod language_tests {
+    use super::*;
+
+    #[test]
+    fn empty_and_system_are_the_same_choice() {
+        assert_eq!(normalised_language(""), "system");
+        assert_eq!(normalised_language("system"), "system");
+        assert_eq!(normalised_language(" System "), "system");
+        assert_eq!(normalised_language("ru"), "ru");
+        assert_eq!(normalised_language("en"), "en");
+    }
+
+    #[test]
+    fn the_system_segment_is_selected_for_both_stored_spellings() {
+        // `""` is what the button writes; `"system"` is what older configs
+        // and some external writers store. Neither may leave the control
+        // without a selected segment.
+        assert!(language_selected("", ""));
+        assert!(language_selected("system", ""));
+        assert!(language_selected("", "system"));
+        assert!(language_selected("system", "system"));
+        assert!(!language_selected("ru", ""));
+        assert!(!language_selected("", "en"));
+        assert!(language_selected("ru", "ru"));
+        assert!(!language_selected("ru", "en"));
     }
 }

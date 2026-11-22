@@ -11,6 +11,9 @@ description = "Ferramari core library: paths, configuration, business logic"
 # counters directly; the same `windows` crate version the platform layer uses.
 windows = { version = "0.62", features = [
     "Win32_Foundation",
+    # `GetUserDefaultUILanguage`/`LCIDToLocaleName`: "System" must follow the
+    # Windows display language, which is not exported as LANG.
+    "Win32_Globalization",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_Performance",
     "Win32_System_ProcessStatus",

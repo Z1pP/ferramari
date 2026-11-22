@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+**The interface language now switches in source builds and follows Windows
+"System" correctly.**
+
+- **Development builds carry their catalogs.** `crates/ferramari-ui/build.rs`
+  compiles `po/*.po` into `target/<profile>/locale`, the layout
+  `paths::locale_dir` reads next to an executable. Before this a
+  `cargo build --workspace` tree had no `ferramari.mo`, so a language choice
+  was written to `config.json` and every surface still rendered English.
+  Packaging still compiles its own copy, and a missing `msgfmt` is a build
+  warning, not a failure.
+- **"System" on Windows asks Win32 for the display language.**
+  `GetUserDefaultUILanguage`/`LCIDToLocaleName` resolve `ru-RU` even though
+  Windows does not export `LANG`; the catalog loader already walks the tag
+  back to `ru`. Previously System always meant English on Windows.
+- **A language click is no longer undone by an in-flight snapshot.** The
+  Settings segment treats `""` and `"system"` as the same choice, and the
+  chosen language overrides up to five one-second polls while the server
+  publishes it.
+- **The server reloads its own catalog on a language change.** The Windows
+  tray menu is built when it opens, so its labels now follow the interface
+  without restarting the server. The Linux tray is built once per process and
+  still takes the startup language.
+
 **Performance phase 2.3.** The audit, baseline and change-by-change results
 are in `docs/PERFORMANCE_AUDIT_2_3.md`, `docs/BENCHMARKS.md` and
 `docs/PERFORMANCE_RESULTS.md`.

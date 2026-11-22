@@ -26,8 +26,24 @@ from .common import (
 )
 
 DBUS_NAME = "io.github.ferramari.Ferramari.server"
-OBJECT = "/io/github/ferramari/ferramari/server"
+SERVER_PATH = "/io/github/ferramari/ferramari/server"
+PLAYER_PATH = "/io/github/ferramari/ferramari/player"
 INTERFACE = "io.github.ferramari.ferramari.server"
+PLAYER_INTERFACE = "io.github.ferramari.ferramari.player"
+
+# The player interface owns the monitor facts; the server interface owns the
+# player decoding facts and settings. The old harness only read `is_playing`
+# from the server and did not need this split; a full snapshot does.
+PLAYER_PROPERTIES = frozenset(
+    {
+        "data_source",
+        "monitor_states",
+        "monitor_resolutions",
+        "monitor_refresh",
+        "primary_monitor",
+        "rotations",
+    }
+)
 CLK_TCK = os.sysconf("SC_CLK_TCK") if hasattr(os, "sysconf") else 100
 PAGE_SIZE = os.sysconf("SC_PAGE_SIZE") if hasattr(os, "sysconf") else 4096
 
@@ -48,18 +64,24 @@ class LinuxControl:
             timeout=timeout,
         )
 
-    def _call(self, method: str, *arguments: str) -> subprocess.CompletedProcess[str]:
+    def _call(
+        self, method: str, *arguments: str, path: str = SERVER_PATH
+    ) -> subprocess.CompletedProcess[str]:
         return self._gdbus(
             "call",
             "--session",
             "--dest",
             DBUS_NAME,
             "--object-path",
-            OBJECT,
+            path,
             "--method",
             method,
             *arguments,
         )
+
+    @staticmethod
+    def _path_for(property_name: str) -> str:
+        return PLAYER_PATH if property_name in PLAYER_PROPERTIES else SERVER_PATH
 
     @staticmethod
     def _value(stdout: str) -> Any:
@@ -84,7 +106,7 @@ class LinuxControl:
                 "--dest",
                 DBUS_NAME,
                 "--object-path",
-                OBJECT,
+                SERVER_PATH,
                 "--method",
                 "org.freedesktop.DBus.Peer.Ping",
             )
@@ -93,7 +115,14 @@ class LinuxControl:
         wait_for(ready, timeout, 0.1, "the Ferramari D-Bus name")
 
     def property(self, name: str) -> Any:
-        result = self._call("org.freedesktop.DBus.Properties.Get", INTERFACE, name)
+        path = self._path_for(name)
+        interface = PLAYER_INTERFACE if path == PLAYER_PATH else INTERFACE
+        result = self._call(
+            "org.freedesktop.DBus.Properties.Get",
+            interface,
+            name,
+            path=path,
+        )
         if result.returncode != 0:
             return None
         return self._value(result.stdout)
@@ -129,7 +158,7 @@ class LinuxControl:
             "--dest",
             DBUS_NAME,
             "--object-path",
-            OBJECT,
+            SERVER_PATH,
             "--method",
             "org.freedesktop.DBus.Properties.Set",
             INTERFACE,

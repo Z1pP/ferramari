@@ -146,6 +146,21 @@ class LinuxParsingTests(unittest.TestCase):
         )
         self.assertIsNone(LinuxControl._value("(uint32 120,)"))
 
+    def test_player_properties_use_the_player_path(self):
+        from bench.linux import LinuxControl, PLAYER_PATH, SERVER_PATH
+
+        for name in (
+            "monitor_states",
+            "monitor_resolutions",
+            "monitor_refresh",
+            "primary_monitor",
+            "data_source",
+            "rotations",
+        ):
+            self.assertEqual(LinuxControl._path_for(name), PLAYER_PATH, name)
+        for name in ("is_playing", "is_decoding", "player_stats", "hwdec_running"):
+            self.assertEqual(LinuxControl._path_for(name), SERVER_PATH, name)
+
     def test_stat_parser_uses_rss_pages_and_thread_count(self):
         from bench.linux import CLK_TCK, LinuxProcs
 

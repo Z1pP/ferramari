@@ -590,7 +590,7 @@ Verified on Windows 11 (ru-RU display language, 1536x864, 125% DPI):
   from `config.json`. The server reloads its catalog on a switch, so the
   Windows tray menu is built in the new language on its next open (the tray
   menu itself was not screenshotted).
-- `cargo test --workspace --locked`: 478 passed, 0 failed. `cargo fmt --check`,
+- `cargo test --workspace --locked`: 480 passed, 4 ignored. `cargo fmt --check`,
   `cargo clippy --workspace --all-targets --locked -- -D warnings` and
   `cargo build --workspace --release --locked` are clean.
 

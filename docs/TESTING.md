@@ -564,6 +564,30 @@ for the control window, and the tray registration answered
 tests (16 binary + 350 core + 17 media + 55 platform + 8 UI library + 6 UI
 binary).
 
+## Language switching regression (2026-11-22)
+
+A source build had no catalogs beside the executables: `config.json` said
+`ru` or `ja`, `apply_language` wrote `LANGUAGE`, and `i18n::reload` found no
+`ferramari.mo`, so the whole surface stayed English. `crates/ferramari-ui/build.rs`
+now compiles `po/*.po` into `target/<profile>/locale`. On Windows, System also
+read no locale at all, because the OS does not export `LANG`;
+`GetUserDefaultUILanguage` now supplies `ru-RU`, which the loader falls back
+to `ru`. The Settings segment accepts both stored spellings (`""` and
+`"system"`), and a just-clicked language overrides an in-flight snapshot for up
+to five polls.
+
+Verified on Windows 11 (ru-RU display language, 1536x864, 125% DPI):
+
+- `target\release\ferramari-ui.exe` with
+  `FERRAMARI_UI_BOOT="page=settings section=general"` and no `LANGUAGE`:
+  Russian surface, System selected, both with and without the server.
+- With the server connected, `request_property language=en|ru|ja` changed the
+  whole surface immediately; Russian survived a full server and UI restart
+  from `config.json`.
+- `cargo test --workspace --locked`: 477 passed, 0 failed. `cargo fmt --check`,
+  `cargo clippy --workspace --all-targets --locked -- -D warnings` and
+  `cargo build --workspace --release --locked` are clean.
+
 ## Reproducible local run
 
 ```sh

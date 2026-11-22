@@ -142,7 +142,41 @@ fn current_language_from(_localedir: &Path) -> Option<String> {
             }
         }
     }
-    None
+    // Windows does not export the UI language as `LANG`, so "System" used to
+    // resolve to English on a Russian desktop. Ask Win32 instead; the returned
+    // BCP-47 tag ("ru-RU") is normalised like any other locale name and the
+    // catalog loader walks it back to `ru`.
+    #[cfg(windows)]
+    {
+        windows_ui_language().and_then(|language| normalise_language(&language))
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+#[cfg(windows)]
+fn windows_ui_language() -> Option<String> {
+    use windows::Win32::Globalization::{GetUserDefaultUILanguage, LCIDToLocaleName};
+
+    // LOCALE_NAME_MAX_LENGTH; the API writes at most this many UTF-16 units
+    // including the terminating NUL.
+    let mut buffer = [0u16; 85];
+    // SAFETY: both calls are plain Win32 getters. The buffer is owned and its
+    // length is passed by the wrapper, and no pointer outlives this function.
+    let written = unsafe {
+        let lcid = u32::from(GetUserDefaultUILanguage());
+        LCIDToLocaleName(lcid, Some(&mut buffer), 0)
+    };
+    if written <= 0 {
+        return None;
+    }
+    let end = buffer
+        .iter()
+        .position(|unit| *unit == 0)
+        .unwrap_or(buffer.len());
+    Some(String::from_utf16_lossy(&buffer[..end]))
 }
 
 fn normalise_language(value: &str) -> Option<String> {
@@ -802,5 +836,32 @@ mod tests {
         assert_eq!(normalise_language("ja-JP"), Some("ja_JP".to_string()));
         assert_eq!(normalise_language("C"), None);
         assert_eq!(normalise_language("POSIX"), None);
+    }
+
+    #[test]
+    fn a_regional_tag_falls_back_to_the_language_catalog() {
+        // Windows returns "ru-RU" for the display language; normalisation
+        // keeps "ru_RU", and the loader has to walk back to `ru` instead of
+        // silently using English.
+        let root = std::env::temp_dir().join(format!(
+            "ferramari-i18n-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or(0)
+        ));
+        let messages = root.join("ru").join("LC_MESSAGES");
+        std::fs::create_dir_all(&messages).expect("create catalog directory");
+        std::fs::write(
+            messages.join(format!("{DOMAIN}.mo")),
+            mo(&[("Active", "Активно")], "Language: ru\n"),
+        )
+        .expect("write catalog");
+
+        let catalog = Catalog::load(&root, "ru_RU").expect("regional tag falls back to ru");
+        assert_eq!(catalog.messages["Active"], vec!["Активно".to_string()]);
+
+        let _ = std::fs::remove_dir_all(root);
     }
 }

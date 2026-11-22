@@ -1,0 +1,1460 @@
+{
+  "schema": 2,
+  "generated_at": "2026-11-20T20:11:12+00:00",
+  "environment": {
+    "platform": "windows",
+    "system": "Windows",
+    "release": "10",
+    "version": "10.0.26200",
+    "machine": "AMD64",
+    "python": "3.11.9",
+    "logical_cpus": 12,
+    "cpu": "AMD Ryzen 5 5600H with Radeon Graphics",
+    "memory_total_mib": 14188.06640625,
+    "gpus": [
+      {
+        "name": "AMD Radeon(TM) Graphics",
+        "driver": "31.0.21912.3005"
+      },
+      {
+        "name": "NVIDIA GeForce RTX 3050 Laptop GPU",
+        "driver": "32.0.16.2101"
+      }
+    ],
+    "displays": [
+      {
+        "name": "\\\\.\\DISPLAY1",
+        "x": 0,
+        "y": 0,
+        "width": 1536,
+        "height": 864,
+        "primary": true
+      }
+    ],
+    "binary": "C:\\Users\\Lenovo\\.local\\share\\opencode\\worktree\\e91db8077bf2ade5c4fd89740260f5c8791bdeb6\\windows\\target\\release\\ferramari.exe",
+    "binary_version": "ferramari 2.2.5",
+    "git_commit": "dda603db9c9b560b678a5294d7eca609d674139c",
+    "mpv": "mpv v0.42.0-3-g902818753 Copyright В© 2000-2026 mpv/MPlayer/mplayer2 projects",
+    "ffmpeg": "ffmpeg version 9.0.2-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+    "ffprobe": "ffprobe version 9.0.2-full_build-www.gyan.dev Copyright (c) 2007-2026 the FFmpeg developers",
+    "yt_dlp": "2026.10.26",
+    "sampled_at": "2026-11-20T20:10:46+00:00",
+    "label": "mpv recovery 1080p30",
+    "profile": "balanced",
+    "scenario": "recover",
+    "mode": "video",
+    "mute": true,
+    "python_harness_schema": 2
+  },
+  "configuration": {
+    "scenario": "recover",
+    "mode": "video",
+    "profile": "balanced",
+    "hwdec": "auto",
+    "video": "bench-results\\clips\\1080p30-testsrc2.mp4",
+    "video_sha256": "e0236f37b3a64d3bc4805e336d8d76151267104f6d27772bef04962cc9c6b6e3",
+    "video2": null,
+    "seconds": 10.0,
+    "warmup": 3.0,
+    "interval": 1.0,
+    "idle_timeout": 30,
+    "park_wait": 300.0,
+    "duration": 0.0,
+    "label": "mpv recovery 1080p30"
+  },
+  "runs": [
+    {
+      "run": 1,
+      "monitors": 1,
+      "phase_cpu": {
+        "before": {
+          "ferramari": 0.0,
+          "mpv": 10.0,
+          "children": 0.0,
+          "total": 10.0
+        },
+        "after": {
+          "ferramari": 0.7800019968093909,
+          "mpv": 1.8720047923425382,
+          "children": 0.0,
+          "total": 2.6520067891519292
+        }
+      },
+      "recovery_new_pid_ms": 2015.999999945052,
+      "recovery_first_frame_ms": 4062.999999965541,
+      "phases": {
+        "before": {
+          "samples": 5,
+          "duration_s": 4.0,
+          "groups": {
+            "children": {
+              "cpu_pct": {
+                "median": 0.0,
+                "mean": 0.0,
+                "p95": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "samples": 5
+              },
+              "cpu_pct_machine": {
+                "median": 0.0,
+                "mean": 0.0,
+                "p95": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "samples": 5
+              },
+              "rss_mib": {
+                "median": 8.62109375,
+                "mean": 8.62109375,
+                "p95": 8.62109375,
+                "min": 8.62109375,
+                "max": 8.62109375,
+                "samples": 5
+              },
+              "pss_mib": {
+                "median": null,
+                "mean": null,
+                "p95": null,
+                "min": null,
+                "max": null,
+                "samples": 0
+              },
+              "threads": {
+                "median": 3.0,
+                "mean": 3.0,
+                "p95": 3.0,
+                "min": 3.0,
+                "max": 3.0,
+                "samples": 5
+              },
+              "processes": {
+                "median": 1.0,
+                "mean": 1.0,
+                "p95": 1.0,
+                "min": 1.0,
+                "max": 1.0,
+                "samples": 5
+              },
+              "gpu_pct": {
+                "median": null,
+                "mean": null,
+                "p95": null,
+                "min": null,
+                "max": null,
+                "samples": 0
+              },
+              "vram_mib": {
+                "median": null,
+                "mean": null,
+                "p95": null,
+                "min": null,
+                "max": null,
+                "samples": 0
+              }
+            },
+            "ferramari": {
+              "cpu_pct": {
+                "median": 0.0,
+                "mean": 0.0,
+                "p95": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "samples": 5
+              },
+              "cpu_pct_machine": {
+                "median": 0.0,
+                "mean": 0.0,
+                "p95": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "samples": 5
+              },
+              "rss_mib": {
+                "median": 12.51171875,
+                "mean": 12.51015625,
+                "p95": 12.51171875,
+                "min": 12.50390625,
+                "max": 12.51171875,
+                "samples": 5
+              },
+              "pss_mib": {
+                "median": null,
+                "mean": null,
+                "p95": null,
+                "min": null,
+                "max": null,
+                "samples": 0
+              },
+              "threads": {
+                "median": 13.0,
+                "mean": 13.0,
+                "p95": 13.0,
+                "min": 13.0,
+                "max": 13.0,
+                "samples": 5
+              },
+              "processes": {
+                "median": 1.0,
+                "mean": 1.0,
+                "p95": 1.0,
+                "min": 1.0,
+                "max": 1.0,
+                "samples": 5
+              },
+              "gpu_pct": {
+                "median": null,
+                "mean": null,
+                "p95": null,
+                "min": null,
+                "max": null,
+                "samples": 0
+              },
+              "vram_mib": {
+                "median": null,
+                "mean": null,
+                "p95": null,
+                "min": null,
+                "max": null,
+                "samples": 0
+              }
+            },
+            "mpv": {
+              "cpu_pct": {
+                "median": 8.197796432495242,
+                "mean": 9.957664189499871,
+                "p95": 19.68867576979131,
+                "min": 0.0,
+                "max": 19.992618111317476,
+                "samples": 5
+              },
+              "cpu_pct_machine": {
+                "median": 0.6831497027079368,
+                "mean": 0.8298053491249892,
+                "p95": 1.6407229808159423,
+                "min": 0.0,
+                "max": 1.6660515092764563,
+                "samples": 5
+              },
+              "rss_mib": {
+                "median": 134.2890625,
+                "mean": 134.390625,
+                "p95": 134.71171875,
+                "min": 134.140625,
+                "max": 134.7734375,
+                "samples": 5
+              },
+              "pss_mib": {
+                "median": null,
+                "mean": null,
+                "p95": null,
+                "min": null,
+                "max": null,
+                "samples": 0
+              },
+              "threads": {
+                "median": 42.0,
+                "mean": 42.0,
+                "p95": 42.0,
+                "min": 42.0,
+                "max": 42.0,
+                "samples": 5
+              },
+              "processes": {
+                "median": 1.0,
+                "mean": 1.0,
+                "p95": 1.0,
+                "min": 1.0,
+                "max": 1.0,
+                "samples": 5
+              },
+              "gpu_pct": {
+                "median": 11.143593893117682,
+                "mean": 11.159098235111376,
+                "p95": 11.337869350209548,
+                "min": 10.996222396095149,
+                "max": 11.352982758114988,
+                "samples": 4
+              },
+              "vram_mib": {
+                "median": 8.859375,
+                "mean": 8.875,
+                "p95": 8.9125,
+                "min": 8.859375,
+                "max": 8.921875,
+                "samples": 4
+              }
+            },
+            "total": {
+              "cpu_pct": {
+                "median": 8.197796432495242,
+                "mean": 9.957664189499871,
+                "p95": 19.68867576979131,
+                "min": 0.0,
+                "max": 19.992618111317476,
+                "samples": 5
+              },
+              "cpu_pct_machine": {
+                "median": 0.6831497027079368,
+                "mean": 0.8298053491249892,
+                "p95": 1.6407229808159423,
+                "min": 0.0,
+                "max": 1.6660515092764563,
+                "samples": 5
+              },
+              "rss_mib": {
+                "median": 155.421875,
+                "mean": 155.521875,
+                "p95": 155.84453125,
+                "min": 155.265625,
+                "max": 155.90625,
+                "samples": 5
+              },
+              "pss_mib": {
+                "median": null,
+                "mean": null,
+                "p95": null,
+                "min": null,
+                "max": null,
+                "samples": 0
+              },
+              "threads": {
+                "median": 58.0,
+                "mean": 58.0,
+                "p95": 58.0,
+                "min": 58.0,
+                "max": 58.0,
+                "samples": 5
+              },
+              "processes": {
+                "median": 3.0,
+                "mean": 3.0,
+                "p95": 3.0,
+                "min": 3.0,
+                "max": 3.0,
+                "samples": 5
+              },
+              "gpu_pct": {
+                "median": 11.143593893117682,
+                "mean": 11.159098235111376,
+                "p95": 11.337869350209548,
+                "min": 10.996222396095149,
+                "max": 11.352982758114988,
+                "samples": 4
+              },
+              "vram_mib": {
+                "median": 8.859375,
+                "mean": 8.875,
+                "p95": 8.9125,
+                "min": 8.859375,
+                "max": 8.921875,
+                "samples": 4
+              }
+            }
+          },
+          "playback": {
+            "fps": {
+              "median": 30.0,
+              "mean": 30.0,
+              "p95": 30.0,
+              "min": 30.0,
+              "max": 30.0,
+              "samples": 5
+            },
+            "dropped": {
+              "median": 0.0,
+              "mean": 0.0,
+              "p95": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": 5
+            },
+            "position": {
+              "median": 6.466667,
+              "mean": 6.480000200000001,
+              "p95": 8.3,
+              "min": 4.466667,
+              "max": 8.5,
+              "samples": 5
+            },
+            "gpu_global_pct": {
+              "median": 67.59568928143207,
+              "mean": 67.91601377693439,
+              "p95": 70.91492663719254,
+              "min": 65.24158914411288,
+              "max": 71.23108740076059,
+              "samples": 4
+            },
+            "vram_global_mib": {
+              "median": 704.71875,
+              "mean": 704.734375,
+              "p95": 704.771875,
+              "min": 704.71875,
+              "max": 704.78125,
+              "samples": 4
+            }
+          }
+        },
+        "after": {
+          "samples": 10,
+          "duration_s": 9.0,
+          "groups": {
+            "children": {
+              "cpu_pct": {
+                "median": 0.0,
+                "mean": 0.0,
+                "p95": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "samples": 10
+              },
+              "cpu_pct_machine": {
+                "median": 0.0,
+                "mean": 0.0,
+                "p95": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "samples": 10
+              },
+              "rss_mib": {
+                "median": 8.62109375,
+                "mean": 8.62109375,
+                "p95": 8.62109375,
+                "min": 8.62109375,
+                "max": 8.62109375,
+                "samples": 10
+              },
+              "pss_mib": {
+                "median": null,
+                "mean": null,
+                "p95": null,
+                "min": null,
+                "max": null,
+                "samples": 0
+              },
+              "threads": {
+                "median": 3.0,
+                "mean": 3.0,
+                "p95": 3.0,
+                "min": 3.0,
+                "max": 3.0,
+                "samples": 10
+              },
+              "processes": {
+                "median": 1.0,
+                "mean": 1.0,
+                "p95": 1.0,
+                "min": 1.0,
+                "max": 1.0,
+                "samples": 10
+              },
+              "gpu_pct": {
+                "median": null,
+                "mean": null,
+                "p95": null,
+                "min": null,
+                "max": null,
+                "samples": 0
+              },
+              "vram_mib": {
+                "median": null,
+                "mean": null,
+                "p95": null,
+                "min": null,
+                "max": null,
+                "samples": 0
+              }
+            },
+            "ferramari": {
+              "cpu_pct": {
+                "median": 0.0,
+                "mean": 0.7667140356820517,
+                "p95": 2.3844170609020434,
+                "min": 0.0,
+                "max": 3.07578740138872,
+                "samples": 10
+              },
+              "cpu_pct_machine": {
+                "median": 0.0,
+                "mean": 0.06389283630683765,
+                "p95": 0.19870142174183694,
+                "min": 0.0,
+                "max": 0.25631561678239334,
+                "samples": 10
+              },
+              "rss_mib": {
+                "median": 12.623046875,
+                "mean": 12.6234375,
+                "p95": 12.62890625,
+                "min": 12.6171875,
+                "max": 12.62890625,
+                "samples": 10
+              },
+              "pss_mib": {
+                "median": null,
+                "mean": null,
+                "p95": null,
+                "min": null,
+                "max": null,
+                "samples": 0
+              },
+              "threads": {
+                "median": 13.0,
+                "mean": 13.0,
+                "p95": 13.0,
+                "min": 13.0,
+                "max": 13.0,
+                "samples": 10
+              },
+              "processes": {
+                "median": 1.0,
+                "mean": 1.0,
+                "p95": 1.0,
+                "min": 1.0,
+                "max": 1.0,
+                "samples": 10
+              },
+              "gpu_pct": {
+                "median": null,
+                "mean": null,
+                "p95": null,
+                "min": null,
+                "max": null,
+                "samples": 0
+              },
+              "vram_mib": {
+                "median": null,
+                "mean": null,
+                "p95": null,
+                "min": null,
+                "max": null,
+                "samples": 0
+              }
+            },
+            "mpv": {
+              "cpu_pct": {
+                "median": 0.0,
+                "mean": 1.8725393700694362,
+                "p95": 10.145177165312445,
+                "min": 0.0,
+                "max": 17.1875,
+                "samples": 10
+              },
+              "cpu_pct_machine": {
+                "median": 0.0,
+                "mean": 0.15604494750578635,
+                "p95": 0.8454314304427037,
+                "min": 0.0,
+                "max": 1.4322916666666667,
+                "samples": 10
+              },
+              "rss_mib": {
+                "median": 133.158203125,
+                "mean": 133.192578125,
+                "p95": 133.439453125,
+                "min": 133.06640625,
+                "max": 133.6328125,
+                "samples": 10
+              },
+              "pss_mib": {
+                "median": null,
+                "mean": null,
+                "p95": null,
+                "min": null,
+                "max": null,
+                "samples": 0
+              },
+              "threads": {
+                "median": 41.0,
+                "mean": 40.6,
+                "p95": 41.0,
+                "min": 39.0,
+                "max": 41.0,
+                "samples": 10
+              },
+              "processes": {
+                "median": 1.0,
+                "mean": 1.0,
+                "p95": 1.0,
+                "min": 1.0,
+                "max": 1.0,
+                "samples": 10
+              },
+              "gpu_pct": {
+                "median": 11.325479143423234,
+                "mean": 11.20151223710134,
+                "p95": 11.413352197101762,
+                "min": 10.903468735287571,
+                "max": 11.42349478551133,
+                "samples": 9
+              },
+              "vram_mib": {
+                "median": 8.8515625,
+                "mean": 8.8765625,
+                "p95": 8.9140625,
+                "min": 8.8515625,
+                "max": 8.9140625,
+                "samples": 10
+              }
+            },
+            "total": {
+              "cpu_pct": {
+                "median": 0.7570251937936674,
+                "mean": 2.6392534057514876,
+                "p95": 11.529281495937372,
+                "min": 0.0,
+                "max": 17.1875,
+                "samples": 10
+              },
+              "cpu_pct_machine": {
+                "median": 0.06308543281613894,
+                "mean": 0.21993778381262397,
+                "p95": 0.9607734579947811,
+                "min": 0.0,
+                "max": 1.4322916666666667,
+                "samples": 10
+              },
+              "rss_mib": {
+                "median": 154.40625,
+                "mean": 154.437109375,
+                "p95": 154.6876953125,
+                "min": 154.3046875,
+                "max": 154.8828125,
+                "samples": 10
+              },
+              "pss_mib": {
+                "median": null,
+                "mean": null,
+                "p95": null,
+                "min": null,
+                "max": null,
+                "samples": 0
+              },
+              "threads": {
+                "median": 57.0,
+                "mean": 56.6,
+                "p95": 57.0,
+                "min": 55.0,
+                "max": 57.0,
+                "samples": 10
+              },
+              "processes": {
+                "median": 3.0,
+                "mean": 3.0,
+                "p95": 3.0,
+                "min": 3.0,
+                "max": 3.0,
+                "samples": 10
+              },
+              "gpu_pct": {
+                "median": 11.325479143423234,
+                "mean": 11.20151223710134,
+                "p95": 11.413352197101762,
+                "min": 10.903468735287571,
+                "max": 11.42349478551133,
+                "samples": 9
+              },
+              "vram_mib": {
+                "median": 8.8515625,
+                "mean": 8.8765625,
+                "p95": 8.9140625,
+                "min": 8.8515625,
+                "max": 8.9140625,
+                "samples": 10
+              }
+            }
+          },
+          "playback": {
+            "fps": {
+              "median": 30.0,
+              "mean": 30.0,
+              "p95": 30.0,
+              "min": 30.0,
+              "max": 30.0,
+              "samples": 10
+            },
+            "dropped": {
+              "median": 0.0,
+              "mean": 0.0,
+              "p95": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": 10
+            },
+            "position": {
+              "median": 6.1,
+              "mean": 6.1,
+              "p95": 10.183333,
+              "min": 1.566667,
+              "max": 10.633333,
+              "samples": 10
+            },
+            "gpu_global_pct": {
+              "median": 73.70496149898848,
+              "mean": 75.31064622785489,
+              "p95": 88.65823930077521,
+              "min": 64.75396719531457,
+              "max": 88.77220358265694,
+              "samples": 9
+            },
+            "vram_global_mib": {
+              "median": 694.9609375,
+              "mean": 694.9859375,
+              "p95": 695.0234375,
+              "min": 694.9609375,
+              "max": 695.0234375,
+              "samples": 10
+            }
+          }
+        }
+      },
+      "processes": [
+        {
+          "pid": 8656,
+          "ppid": 8816,
+          "name": "mpv.exe",
+          "group": "mpv",
+          "cpu_pct": 0.0,
+          "rss_mib": 133.6328125,
+          "pss_mib": null,
+          "threads": 41,
+          "gpu_luid": "luid_0x00000000_0x0000E121"
+        },
+        {
+          "pid": 8816,
+          "ppid": 15988,
+          "name": "ferramari.exe",
+          "group": "ferramari",
+          "cpu_pct": 0.0,
+          "rss_mib": 12.62890625,
+          "pss_mib": null,
+          "threads": 13,
+          "gpu_luid": null
+        },
+        {
+          "pid": 10624,
+          "ppid": 8816,
+          "name": "conhost.exe",
+          "group": "children",
+          "cpu_pct": 0.0,
+          "rss_mib": 8.62109375,
+          "pss_mib": null,
+          "threads": 3,
+          "gpu_luid": null
+        }
+      ],
+      "last_snapshot": {
+        "monitor_states": {
+          "DISPLAY1": "active"
+        },
+        "mpv_pids": [
+          8656
+        ]
+      }
+    }
+  ],
+  "combined": {
+    "before": {
+      "samples": 5,
+      "duration_s": 4.0,
+      "groups": {
+        "children": {
+          "cpu_pct": {
+            "median": 0.0,
+            "mean": 0.0,
+            "p95": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "samples": 5
+          },
+          "cpu_pct_machine": {
+            "median": 0.0,
+            "mean": 0.0,
+            "p95": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "samples": 5
+          },
+          "rss_mib": {
+            "median": 8.62109375,
+            "mean": 8.62109375,
+            "p95": 8.62109375,
+            "min": 8.62109375,
+            "max": 8.62109375,
+            "samples": 5
+          },
+          "pss_mib": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "min": null,
+            "max": null,
+            "samples": 0
+          },
+          "threads": {
+            "median": 3.0,
+            "mean": 3.0,
+            "p95": 3.0,
+            "min": 3.0,
+            "max": 3.0,
+            "samples": 5
+          },
+          "processes": {
+            "median": 1.0,
+            "mean": 1.0,
+            "p95": 1.0,
+            "min": 1.0,
+            "max": 1.0,
+            "samples": 5
+          },
+          "gpu_pct": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "min": null,
+            "max": null,
+            "samples": 0
+          },
+          "vram_mib": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "min": null,
+            "max": null,
+            "samples": 0
+          }
+        },
+        "ferramari": {
+          "cpu_pct": {
+            "median": 0.0,
+            "mean": 0.0,
+            "p95": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "samples": 5
+          },
+          "cpu_pct_machine": {
+            "median": 0.0,
+            "mean": 0.0,
+            "p95": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "samples": 5
+          },
+          "rss_mib": {
+            "median": 12.51171875,
+            "mean": 12.51015625,
+            "p95": 12.51171875,
+            "min": 12.50390625,
+            "max": 12.51171875,
+            "samples": 5
+          },
+          "pss_mib": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "min": null,
+            "max": null,
+            "samples": 0
+          },
+          "threads": {
+            "median": 13.0,
+            "mean": 13.0,
+            "p95": 13.0,
+            "min": 13.0,
+            "max": 13.0,
+            "samples": 5
+          },
+          "processes": {
+            "median": 1.0,
+            "mean": 1.0,
+            "p95": 1.0,
+            "min": 1.0,
+            "max": 1.0,
+            "samples": 5
+          },
+          "gpu_pct": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "min": null,
+            "max": null,
+            "samples": 0
+          },
+          "vram_mib": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "min": null,
+            "max": null,
+            "samples": 0
+          }
+        },
+        "mpv": {
+          "cpu_pct": {
+            "median": 8.197796432495242,
+            "mean": 9.957664189499871,
+            "p95": 19.68867576979131,
+            "min": 0.0,
+            "max": 19.992618111317476,
+            "samples": 5
+          },
+          "cpu_pct_machine": {
+            "median": 0.6831497027079368,
+            "mean": 0.8298053491249892,
+            "p95": 1.6407229808159423,
+            "min": 0.0,
+            "max": 1.6660515092764563,
+            "samples": 5
+          },
+          "rss_mib": {
+            "median": 134.2890625,
+            "mean": 134.390625,
+            "p95": 134.71171875,
+            "min": 134.140625,
+            "max": 134.7734375,
+            "samples": 5
+          },
+          "pss_mib": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "min": null,
+            "max": null,
+            "samples": 0
+          },
+          "threads": {
+            "median": 42.0,
+            "mean": 42.0,
+            "p95": 42.0,
+            "min": 42.0,
+            "max": 42.0,
+            "samples": 5
+          },
+          "processes": {
+            "median": 1.0,
+            "mean": 1.0,
+            "p95": 1.0,
+            "min": 1.0,
+            "max": 1.0,
+            "samples": 5
+          },
+          "gpu_pct": {
+            "median": 11.143593893117682,
+            "mean": 11.159098235111376,
+            "p95": 11.337869350209548,
+            "min": 10.996222396095149,
+            "max": 11.352982758114988,
+            "samples": 4
+          },
+          "vram_mib": {
+            "median": 8.859375,
+            "mean": 8.875,
+            "p95": 8.9125,
+            "min": 8.859375,
+            "max": 8.921875,
+            "samples": 4
+          }
+        },
+        "total": {
+          "cpu_pct": {
+            "median": 8.197796432495242,
+            "mean": 9.957664189499871,
+            "p95": 19.68867576979131,
+            "min": 0.0,
+            "max": 19.992618111317476,
+            "samples": 5
+          },
+          "cpu_pct_machine": {
+            "median": 0.6831497027079368,
+            "mean": 0.8298053491249892,
+            "p95": 1.6407229808159423,
+            "min": 0.0,
+            "max": 1.6660515092764563,
+            "samples": 5
+          },
+          "rss_mib": {
+            "median": 155.421875,
+            "mean": 155.521875,
+            "p95": 155.84453125,
+            "min": 155.265625,
+            "max": 155.90625,
+            "samples": 5
+          },
+          "pss_mib": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "min": null,
+            "max": null,
+            "samples": 0
+          },
+          "threads": {
+            "median": 58.0,
+            "mean": 58.0,
+            "p95": 58.0,
+            "min": 58.0,
+            "max": 58.0,
+            "samples": 5
+          },
+          "processes": {
+            "median": 3.0,
+            "mean": 3.0,
+            "p95": 3.0,
+            "min": 3.0,
+            "max": 3.0,
+            "samples": 5
+          },
+          "gpu_pct": {
+            "median": 11.143593893117682,
+            "mean": 11.159098235111376,
+            "p95": 11.337869350209548,
+            "min": 10.996222396095149,
+            "max": 11.352982758114988,
+            "samples": 4
+          },
+          "vram_mib": {
+            "median": 8.859375,
+            "mean": 8.875,
+            "p95": 8.9125,
+            "min": 8.859375,
+            "max": 8.921875,
+            "samples": 4
+          }
+        }
+      },
+      "playback": {
+        "fps": {
+          "median": 30.0,
+          "mean": 30.0,
+          "p95": 30.0,
+          "min": 30.0,
+          "max": 30.0,
+          "samples": 5
+        },
+        "dropped": {
+          "median": 0.0,
+          "mean": 0.0,
+          "p95": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "samples": 5
+        },
+        "position": {
+          "median": 6.466667,
+          "mean": 6.480000200000001,
+          "p95": 8.3,
+          "min": 4.466667,
+          "max": 8.5,
+          "samples": 5
+        },
+        "gpu_global_pct": {
+          "median": 67.59568928143207,
+          "mean": 67.91601377693439,
+          "p95": 70.91492663719254,
+          "min": 65.24158914411288,
+          "max": 71.23108740076059,
+          "samples": 4
+        },
+        "vram_global_mib": {
+          "median": 704.71875,
+          "mean": 704.734375,
+          "p95": 704.771875,
+          "min": 704.71875,
+          "max": 704.78125,
+          "samples": 4
+        }
+      }
+    },
+    "after": {
+      "samples": 10,
+      "duration_s": 9.0,
+      "groups": {
+        "children": {
+          "cpu_pct": {
+            "median": 0.0,
+            "mean": 0.0,
+            "p95": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "samples": 10
+          },
+          "cpu_pct_machine": {
+            "median": 0.0,
+            "mean": 0.0,
+            "p95": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "samples": 10
+          },
+          "rss_mib": {
+            "median": 8.62109375,
+            "mean": 8.62109375,
+            "p95": 8.62109375,
+            "min": 8.62109375,
+            "max": 8.62109375,
+            "samples": 10
+          },
+          "pss_mib": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "min": null,
+            "max": null,
+            "samples": 0
+          },
+          "threads": {
+            "median": 3.0,
+            "mean": 3.0,
+            "p95": 3.0,
+            "min": 3.0,
+            "max": 3.0,
+            "samples": 10
+          },
+          "processes": {
+            "median": 1.0,
+            "mean": 1.0,
+            "p95": 1.0,
+            "min": 1.0,
+            "max": 1.0,
+            "samples": 10
+          },
+          "gpu_pct": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "min": null,
+            "max": null,
+            "samples": 0
+          },
+          "vram_mib": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "min": null,
+            "max": null,
+            "samples": 0
+          }
+        },
+        "ferramari": {
+          "cpu_pct": {
+            "median": 0.0,
+            "mean": 0.7667140356820517,
+            "p95": 2.3844170609020434,
+            "min": 0.0,
+            "max": 3.07578740138872,
+            "samples": 10
+          },
+          "cpu_pct_machine": {
+            "median": 0.0,
+            "mean": 0.06389283630683765,
+            "p95": 0.19870142174183694,
+            "min": 0.0,
+            "max": 0.25631561678239334,
+            "samples": 10
+          },
+          "rss_mib": {
+            "median": 12.623046875,
+            "mean": 12.6234375,
+            "p95": 12.62890625,
+            "min": 12.6171875,
+            "max": 12.62890625,
+            "samples": 10
+          },
+          "pss_mib": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "min": null,
+            "max": null,
+            "samples": 0
+          },
+          "threads": {
+            "median": 13.0,
+            "mean": 13.0,
+            "p95": 13.0,
+            "min": 13.0,
+            "max": 13.0,
+            "samples": 10
+          },
+          "processes": {
+            "median": 1.0,
+            "mean": 1.0,
+            "p95": 1.0,
+            "min": 1.0,
+            "max": 1.0,
+            "samples": 10
+          },
+          "gpu_pct": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "min": null,
+            "max": null,
+            "samples": 0
+          },
+          "vram_mib": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "min": null,
+            "max": null,
+            "samples": 0
+          }
+        },
+        "mpv": {
+          "cpu_pct": {
+            "median": 0.0,
+            "mean": 1.8725393700694362,
+            "p95": 10.145177165312445,
+            "min": 0.0,
+            "max": 17.1875,
+            "samples": 10
+          },
+          "cpu_pct_machine": {
+            "median": 0.0,
+            "mean": 0.15604494750578635,
+            "p95": 0.8454314304427037,
+            "min": 0.0,
+            "max": 1.4322916666666667,
+            "samples": 10
+          },
+          "rss_mib": {
+            "median": 133.158203125,
+            "mean": 133.192578125,
+            "p95": 133.439453125,
+            "min": 133.06640625,
+            "max": 133.6328125,
+            "samples": 10
+          },
+          "pss_mib": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "min": null,
+            "max": null,
+            "samples": 0
+          },
+          "threads": {
+            "median": 41.0,
+            "mean": 40.6,
+            "p95": 41.0,
+            "min": 39.0,
+            "max": 41.0,
+            "samples": 10
+          },
+          "processes": {
+            "median": 1.0,
+            "mean": 1.0,
+            "p95": 1.0,
+            "min": 1.0,
+            "max": 1.0,
+            "samples": 10
+          },
+          "gpu_pct": {
+            "median": 11.325479143423234,
+            "mean": 11.20151223710134,
+            "p95": 11.413352197101762,
+            "min": 10.903468735287571,
+            "max": 11.42349478551133,
+            "samples": 9
+          },
+          "vram_mib": {
+            "median": 8.8515625,
+            "mean": 8.8765625,
+            "p95": 8.9140625,
+            "min": 8.8515625,
+            "max": 8.9140625,
+            "samples": 10
+          }
+        },
+        "total": {
+          "cpu_pct": {
+            "median": 0.7570251937936674,
+            "mean": 2.6392534057514876,
+            "p95": 11.529281495937372,
+            "min": 0.0,
+            "max": 17.1875,
+            "samples": 10
+          },
+          "cpu_pct_machine": {
+            "median": 0.06308543281613894,
+            "mean": 0.21993778381262397,
+            "p95": 0.9607734579947811,
+            "min": 0.0,
+            "max": 1.4322916666666667,
+            "samples": 10
+          },
+          "rss_mib": {
+            "median": 154.40625,
+            "mean": 154.437109375,
+            "p95": 154.6876953125,
+            "min": 154.3046875,
+            "max": 154.8828125,
+            "samples": 10
+          },
+          "pss_mib": {
+            "median": null,
+            "mean": null,
+            "p95": null,
+            "min": null,
+            "max": null,
+            "samples": 0
+          },
+          "threads": {
+            "median": 57.0,
+            "mean": 56.6,
+            "p95": 57.0,
+            "min": 55.0,
+            "max": 57.0,
+            "samples": 10
+          },
+          "processes": {
+            "median": 3.0,
+            "mean": 3.0,
+            "p95": 3.0,
+            "min": 3.0,
+            "max": 3.0,
+            "samples": 10
+          },
+          "gpu_pct": {
+            "median": 11.325479143423234,
+            "mean": 11.20151223710134,
+            "p95": 11.413352197101762,
+            "min": 10.903468735287571,
+            "max": 11.42349478551133,
+            "samples": 9
+          },
+          "vram_mib": {
+            "median": 8.8515625,
+            "mean": 8.8765625,
+            "p95": 8.9140625,
+            "min": 8.8515625,
+            "max": 8.9140625,
+            "samples": 10
+          }
+        }
+      },
+      "playback": {
+        "fps": {
+          "median": 30.0,
+          "mean": 30.0,
+          "p95": 30.0,
+          "min": 30.0,
+          "max": 30.0,
+          "samples": 10
+        },
+        "dropped": {
+          "median": 0.0,
+          "mean": 0.0,
+          "p95": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "samples": 10
+        },
+        "position": {
+          "median": 6.1,
+          "mean": 6.1,
+          "p95": 10.183333,
+          "min": 1.566667,
+          "max": 10.633333,
+          "samples": 10
+        },
+        "gpu_global_pct": {
+          "median": 73.70496149898848,
+          "mean": 75.31064622785489,
+          "p95": 88.65823930077521,
+          "min": 64.75396719531457,
+          "max": 88.77220358265694,
+          "samples": 9
+        },
+        "vram_global_mib": {
+          "median": 694.9609375,
+          "mean": 694.9859375,
+          "p95": 695.0234375,
+          "min": 694.9609375,
+          "max": 695.0234375,
+          "samples": 10
+        }
+      }
+    }
+  },
+  "phase_cpu": {
+    "before": {
+      "ferramari": {
+        "median": 0.0,
+        "mean": 0.0,
+        "p95": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "samples": 1
+      },
+      "mpv": {
+        "median": 10.0,
+        "mean": 10.0,
+        "p95": 10.0,
+        "min": 10.0,
+        "max": 10.0,
+        "samples": 1
+      },
+      "children": {
+        "median": 0.0,
+        "mean": 0.0,
+        "p95": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "samples": 1
+      },
+      "total": {
+        "median": 10.0,
+        "mean": 10.0,
+        "p95": 10.0,
+        "min": 10.0,
+        "max": 10.0,
+        "samples": 1
+      }
+    },
+    "after": {
+      "ferramari": {
+        "median": 0.7800019968093909,
+        "mean": 0.7800019968093909,
+        "p95": 0.7800019968093909,
+        "min": 0.7800019968093909,
+        "max": 0.7800019968093909,
+        "samples": 1
+      },
+      "mpv": {
+        "median": 1.8720047923425382,
+        "mean": 1.8720047923425382,
+        "p95": 1.8720047923425382,
+        "min": 1.8720047923425382,
+        "max": 1.8720047923425382,
+        "samples": 1
+      },
+      "children": {
+        "median": 0.0,
+        "mean": 0.0,
+        "p95": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "samples": 1
+      },
+      "total": {
+        "median": 2.6520067891519292,
+        "mean": 2.6520067891519292,
+        "p95": 2.6520067891519292,
+        "min": 2.6520067891519292,
+        "max": 2.6520067891519292,
+        "samples": 1
+      }
+    }
+  },
+  "missing": {
+    "gpu": "read from sysfs on AMDGPU, nvidia-smi on NVIDIA, PDH on Windows; null when the platform exposes no counter",
+    "vram": "same sources as gpu; per-process VRAM is Windows-only",
+    "pss": "Linux smaps_rollup; Windows reports working set, not PSS",
+    "fps_dropped": "primary player only; non-primary mpv stats are not probed every second to avoid multiplied IPC traffic",
+    "monitors_2_3": "requires a host with two or three physical displays"
+  },
+  "elapsed_s": 25.92708444595337
+}

@@ -11,7 +11,8 @@ performance work. The machine is a single-display Windows laptop, so Linux and
 two/three-monitor rows are explicitly **not measured** here. See
 [`PERFORMANCE_AUDIT_2_3.md`](PERFORMANCE_AUDIT_2_3.md) for the audit and
 [`PERFORMANCE_RESULTS.md`](PERFORMANCE_RESULTS.md) for the change-by-change
-results.
+results. The compact JSON summaries are committed under
+[`docs/benchmarks/`](benchmarks/README.md).
 
 ## Running the harness
 

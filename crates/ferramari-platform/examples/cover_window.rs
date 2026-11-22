@@ -70,12 +70,17 @@ mod linux {
             .intern_atom(false, b"_NET_WM_WINDOW_TYPE_NORMAL")?
             .reply()?
             .atom;
-        connection.change_property32(
+        // x11rb 0.14 takes the raw property bytes; format 32 with one unit is
+        // the atom-valued form of `_NET_WM_WINDOW_TYPE`.
+        let normal_bytes = normal.to_ne_bytes();
+        connection.change_property(
             PropMode::REPLACE,
             window,
             wm_type,
             AtomEnum::ATOM,
-            &[normal],
+            32,
+            1,
+            &normal_bytes,
         )?;
         // EWMH fullscreen request: _NET_WM_STATE_ADD (1), fullscreen, no
         // second property, source indication 1 (a normal application).

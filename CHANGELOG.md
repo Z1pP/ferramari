@@ -25,6 +25,38 @@
   without restarting the server. The Linux tray is built once per process and
   still takes the startup language.
 
+**Performance phase 2.3.** The audit, baseline and change-by-change results
+are in `docs/PERFORMANCE_AUDIT_2_3.md`, `docs/BENCHMARKS.md` and
+`docs/PERFORMANCE_RESULTS.md`.
+
+- **Paused Windows players stop waking the server every 2 ms.** The mpv
+  named-pipe reader now polls at 20 ms. On a paused 1080p30 wallpaper the
+  server CPU fell from 1.82% to 0.65% of one core (total 2.03% to 0.96%) with
+  the same 30 fps and zero dropped frames.
+- **A control surface hidden to the tray no longer samples once a second.**
+  It keeps a 30 s server-health poll and resumes the one-second tick when the
+  tray shows the window. Hidden UI CPU fell from 1.25% to 0.55% of one core.
+- **Eco does not start a pause/resume fade for a cover shorter than two
+  seconds.** Uncovering is immediate. A mute-target guard stops window moves
+  from restarting volume fades and sending redundant mute IPC; the snapshot is
+  published only when an Eco plan changes.
+- **The benchmark harness is cross-platform and reports per-process
+  CPU/RSS/PSS, GPU/VRAM, FPS/dropped frames, threads/processes and
+  idle/occluded/parked/resume/recovery/churn/UI/long-run scenarios.** The
+  stale web mode was removed. Missing data is `null` with a reason, never zero.
+  `make test-bench` runs dependency-free harness tests; a long run writes a
+  soak report with RSS slope, PID changes, recovery latencies and log counters.
+- **Linux metrics read one `/proc` file per process instead of two.** The
+  sampler takes PPID, CPU ticks, thread count and RSS pages from
+  `/proc/<pid>/stat`; the large `status` read and parse are gone. A synthetic
+  500-PID `/proc` tree drops from 45.46 ms to 27.30 ms (1.66×); real Linux
+  wall-clock and UI CPU remain a documented gap.
+- **Measured but not changed:** the Windows metrics sample costs 3.84 ms/s
+  while the Performance page is visible; the window-state sampler costs
+  0.146 ms per 750 ms tick; five-minute decoder parking frees 70.8 MiB and 16
+  threads of mpv RSS. Linux and two/three-monitor numbers remain unmeasured on
+  the available hardware.
+
 ## 2.2.5 - 2026-11-19
 
 **Stability pass after the 2.2.0 audit.** The Windows-hosted suite now has

@@ -1010,6 +1010,21 @@ impl App {
 
             Message::Tick => {
                 self.ticks = self.ticks.wrapping_add(1);
+                // Close-to-tray leaves the process alive. Sampling every
+                // process, rebuilding the page and redrawing a hidden window
+                // once a second was measurable (1.25% of one core on Windows,
+                // 60 s average). Keep only a slow health poll so a dead server
+                // still closes the orphaned control surface; the detailed
+                // sample and the sparkline history resume when the tray shows
+                // the window again.
+                if self.hidden {
+                    let Some(server) = self.server.clone() else {
+                        return Task::perform(Server::connect(), Message::Connected);
+                    };
+                    return Task::perform(async move { server.snapshot().await }, |s| {
+                        Message::StateUpdated(s.into())
+                    });
+                }
                 if self.status.is_some() {
                     self.status_ticks = self.status_ticks.saturating_add(1);
                     if self.status_ticks >= STATUS_TTL_TICKS {
@@ -1863,9 +1878,15 @@ impl App {
     fn subscription(&self) -> Subscription<Message> {
         // The tick drives both the D-Bus poll and the sparkline history; the
         // window stream is what tells the chrome buttons which window to
-        // address and the layout how wide it is.
+        // address and the layout how wide it is. A hidden window only needs a
+        // slow health poll, so it does not wake once a second in the tray.
+        let period = if self.hidden {
+            Duration::from_secs(30)
+        } else {
+            Duration::from_secs(1)
+        };
         iced::Subscription::batch([
-            iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick),
+            iced::time::every(period).map(|_| Message::Tick),
             iced::event::listen_with(|event, _status, window| match event {
                 iced::Event::Window(event) => Some(Message::WindowEvent(window, event)),
                 _ => None,

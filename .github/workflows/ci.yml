@@ -36,6 +36,8 @@ jobs:
           fi
       - name: Lint every workspace target
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test the benchmark harness
+        run: python3 -m unittest discover -s scripts/bench -p 'test_*.py'
       - name: Test every workspace crate
         run: cargo test --workspace --locked
       - name: Build server and Iced UI
@@ -91,6 +93,8 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Lint every workspace target
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test the benchmark harness
+        run: python -m unittest discover -s scripts/bench -p 'test_*.py'
       - name: Test every workspace crate
         run: cargo test --workspace --locked
       - name: Build server and Iced UI

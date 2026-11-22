@@ -56,6 +56,12 @@ const POWER_WATCH_EVERY: Duration = Duration::from_secs(30);
 /// slider changes waiting to be written to disk.
 const MONITOR_DEBOUNCE: Duration = Duration::from_millis(250);
 const CONFIG_FLUSH_AFTER: Duration = Duration::from_millis(500);
+/// A window that covers the wallpaper must stay there for this long before
+/// playback is paused. The delay is invisible (the wallpaper is already
+/// hidden) and it stops a drag across the monitor edge, an alt-tab or a
+/// transient fullscreen prompt from starting a pause/resume fade. Resuming is
+/// immediate: the user sees the wallpaper again.
+const OCCLUSION_CONFIRM: Duration = Duration::from_secs(2);
 
 // The command bus (Command, PackageReport, Snapshot, CommandSender)
 // lives in ferramari-core. Re-export it under `app` so the pre-split call
@@ -100,6 +106,15 @@ pub struct App {
     /// Last Eco decision applied to each monitor, so a state change only touches
     /// the windows whose state or FPS cap actually changed.
     last_plans: HashMap<String, eco::Plan>,
+    /// When a monitor first became covered, for the asymmetric occlusion
+    /// hysteresis. A monitor that is uncovered again before the deadline is
+    /// removed from this map and never pauses.
+    hidden_since: HashMap<String, Instant>,
+    /// Last (muted, primary target volume) actually sent to each player. A
+    /// `WindowState` sample arrives whenever any window moves; without this
+    /// guard every sample restarted a volume fade and sent `mute` over IPC
+    /// even when neither target had changed.
+    last_mute: HashMap<WindowKey, (bool, i64)>,
     stream: Option<ytdlp::StreamInfo>,
     stream_resolving: bool,
     background_wallpaper: StaticBackground,
@@ -204,6 +219,8 @@ impl App {
             idle: IdleState::default(),
             window_state: WindowState::default(),
             last_plans: HashMap::new(),
+            hidden_since: HashMap::new(),
+            last_mute: HashMap::new(),
             stream: None,
             stream_resolving: false,
             background_wallpaper,
@@ -425,11 +442,15 @@ impl App {
                 self.save_config();
                 self.apply_playback_states();
                 self.apply_mute_states();
+                // The plan may not change when nothing is covered; the new
+                // setting still has to reach the control surface.
+                self.sync_snapshot();
             }
             Command::SetMuteWhenMaximized(enabled) => {
                 self.config.is_mute_when_maximized = enabled;
                 self.save_config();
                 self.apply_mute_states();
+                self.sync_snapshot();
             }
             Command::LockChanged { source, active } => {
                 let changed = self.lock.set(source, active);
@@ -1156,6 +1177,14 @@ impl App {
             .collect();
         self.last_plans
             .retain(|monitor, _| live_monitors.contains(monitor));
+        self.hidden_since
+            .retain(|monitor, _| live_monitors.contains(monitor));
+        let live_keys: Vec<WindowKey> = self
+            .windows
+            .iter()
+            .map(|window| window.key().clone())
+            .collect();
+        self.last_mute.retain(|key, _| live_keys.contains(key));
 
         let volume = self.config.volume;
         let muted = self.config.is_mute;
@@ -1359,6 +1388,8 @@ impl App {
         self.windows.clear();
         self.policies.clear();
         self.last_plans.clear();
+        self.hidden_since.clear();
+        self.last_mute.clear();
     }
 
     /// Poll every player once. A dead mpv is removed and recreated according to
@@ -1396,6 +1427,10 @@ impl App {
             self.windows
                 .retain(|window| !lost_hosts.iter().any(|key| key == window.key()));
             for key in lost_hosts {
+                // A replacement player is spawned with the config mute, not
+                // with the covered-monitor target. Forget the old target so
+                // the first `apply_mute_states` after the rebuild sends it.
+                self.last_mute.remove(&key);
                 let delay = self
                     .policies
                     .entry(key.clone())
@@ -1411,6 +1446,7 @@ impl App {
             self.windows
                 .retain(|window| !crashed.iter().any(|key| key == window.key()));
             for key in crashed {
+                self.last_mute.remove(&key);
                 let outcome = {
                     let policy = self
                         .policies
@@ -1468,6 +1504,11 @@ impl App {
             window.park_if_due(now, DECODER_PARK_AFTER);
         }
         log::trace!("[Player] parking checked");
+
+        // A covered monitor is paused only after `OCCLUSION_CONFIRM`; the
+        // window-state command itself cannot wait, so the one-second
+        // supervision tick is where a pending pause is applied.
+        self.apply_playback_states();
 
         let desired = self.desired_windows();
         let pending_stream = self.config.mode == Mode::Stream && self.stream.is_none();
@@ -1677,6 +1718,7 @@ impl App {
 
     fn apply_playback_states(&mut self) {
         log::trace!("[Eco] apply_playback_states start");
+        let now = Instant::now();
         let plans: Vec<(String, eco::Plan, bool)> = self
             .windows
             .iter()
@@ -1690,10 +1732,29 @@ impl App {
         let target = self.config.volume;
         let duration = self.config.fade_duration_sec;
         let interval = self.config.fade_interval;
-        for (window, (monitor, plan, park_allowed)) in self.windows.iter_mut().zip(plans) {
+        let mut changed = false;
+        for (window, (monitor, raw_plan, park_allowed)) in self.windows.iter_mut().zip(plans) {
             // A monitor that becomes visible must reload a parked file even
             // when the plan stays `Idle` (Eco still paused).
             window.set_park_allowed(park_allowed);
+            // Asymmetric hysteresis: a cover that disappears again before the
+            // deadline must never start a pause/resume fade. Uncovering is
+            // immediate, because the user can see the wallpaper again.
+            let plan = if raw_plan.state == eco::State::Occluded {
+                match self.last_plans.get(&monitor) {
+                    Some(previous) if previous.state != eco::State::Occluded => {
+                        let since = *self.hidden_since.entry(monitor.clone()).or_insert(now);
+                        if now.saturating_duration_since(since) < OCCLUSION_CONFIRM {
+                            continue;
+                        }
+                        raw_plan
+                    }
+                    _ => raw_plan,
+                }
+            } else {
+                self.hidden_since.remove(&monitor);
+                raw_plan
+            };
             if self.last_plans.get(&monitor) == Some(&plan) {
                 continue;
             }
@@ -1710,9 +1771,14 @@ impl App {
             }
             window.set_fps_cap(plan.fps);
             self.last_plans.insert(monitor, plan);
+            changed = true;
+        }
+        // A geometry-only sample changes no plan; publishing a fresh snapshot
+        // for it was measurable (and invisible to every client).
+        if changed {
+            self.sync_snapshot();
         }
         log::trace!("[Eco] apply_playback_states done");
-        self.sync_snapshot();
     }
 
     /// Apply master mute and the per-monitor "mute when covered" rule. This
@@ -1724,21 +1790,53 @@ impl App {
         let target = self.config.volume;
         let duration = self.config.fade_duration_sec;
         let interval = self.config.fade_interval;
-        let plans: Vec<(bool, bool)> = self
+        let plans: Vec<(WindowKey, bool, bool)> = self
             .windows
             .iter()
             .map(|window| {
                 let visibility = self.monitor_visibility(&window.key().monitor);
                 let hidden = visibility.covered || visibility.fullscreen;
-                (master || (mute_when_covered && hidden), window.is_primary())
+                (
+                    window.key().clone(),
+                    master || (mute_when_covered && hidden),
+                    window.is_primary(),
+                )
             })
             .collect();
-        for (window, (muted, primary)) in self.windows.iter_mut().zip(plans) {
+        let mut applied = 0usize;
+        let mut seen = std::collections::HashSet::new();
+        for (window, (key, muted, primary)) in self.windows.iter_mut().zip(plans) {
+            // The primary player is the only one with a volume fade; others
+            // are silent by construction. The desired tuple is what was last
+            // sent, so a window drag that changes no mute target sends no IPC.
+            let desired = (
+                muted,
+                if primary {
+                    if muted {
+                        0
+                    } else {
+                        target
+                    }
+                } else {
+                    -1
+                },
+            );
+            seen.insert(key.clone());
+            if self.last_mute.get(&key) == Some(&desired) {
+                continue;
+            }
             if primary {
-                window.volume_fade(if muted { 0 } else { target }, duration, interval);
+                window.volume_fade(desired.1, duration, interval);
             }
             window.set_mute(muted);
+            self.last_mute.insert(key, desired);
+            applied += 1;
         }
+        self.last_mute.retain(|key, _| seen.contains(key));
+        log::trace!(
+            "[Eco] mute applied {applied}/{} window(s)",
+            self.windows.len()
+        );
         log::trace!("[Eco] apply_mute_states done");
     }
 
@@ -1751,9 +1849,17 @@ impl App {
                 // says "play"; without this check the UI would claim playback
                 // while every mpv is dying. `is_decoding` covers the other
                 // edge: the player is alive but has not produced a frame yet.
+                let monitor = &window.key().monitor;
+                // Report the plan actually applied, not the raw sample: an
+                // occlusion pause is deferred for a confirmation window and
+                // the players are still running during it.
+                let plan_play = self
+                    .last_plans
+                    .get(monitor)
+                    .map_or_else(|| self.eco_plan_for(monitor).play, |plan| plan.play);
                 facts.merge(PlaybackFacts::observe(
                     window.player_ready(),
-                    self.eco_plan_for(&window.key().monitor).play,
+                    plan_play,
                     window.cached_playback_stats().active,
                 ))
             })
@@ -2439,6 +2545,8 @@ mod tests {
             idle: IdleState::default(),
             window_state: WindowState::default(),
             last_plans: HashMap::new(),
+            hidden_since: HashMap::new(),
+            last_mute: HashMap::new(),
             stream: None,
             stream_resolving: false,
             background_wallpaper: StaticBackground::unsupported(),

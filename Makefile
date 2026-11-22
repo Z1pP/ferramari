@@ -17,7 +17,7 @@ METAINFODIR= $(DATADIR)/metainfo
 LOCALEDIR  = $(DATADIR)/locale
 
 .PHONY: all build release test lint fmt clean install uninstall run translations bench \
-       pot po-update po-fill po-status po-check
+       test-bench soak pot po-update po-fill po-status po-check
 
 all: build
 
@@ -42,19 +42,38 @@ lint:
 run:
 	$(CARGO) run -p ferramari -- -d
 
-# Usage: make bench VIDEO=/path/to/video.mp4 [PROFILE=balanced] [SECONDS=10]
+# Usage: make bench VIDEO=/path/to/video.mp4 [SCENARIO=steady] [PROFILE=balanced] [SECONDS=10] [JSON=out.json]
+# The harness is cross-platform; Windows users run scripts/benchmark.py
+# directly with --platform windows (see docs/BENCHMARKS.md).
 VIDEO ?=
-WEB ?=
-MODE ?= video
+SCENARIO ?= steady
 LABEL ?=
 PROFILE ?= balanced
 SECONDS ?= 10
+JSON ?=
 bench: release
-	@test -n "$(VIDEO)$(WEB)" || (echo "usage: make bench VIDEO=/path/to/video.mp4"; exit 2)
-	python3 scripts/benchmark.py --binary "$(TARGET_DIR)/release/ferramari" \
-		--mode "$(MODE)" --profile "$(PROFILE)" --seconds "$(SECONDS)" \
-		$(if $(VIDEO),--video "$(VIDEO)") $(if $(WEB),--web "$(WEB)") \
-		$(if $(LABEL),--label "$(LABEL)")
+	@test -n "$(VIDEO)" || (echo "usage: make bench VIDEO=/path/to/video.mp4 [SCENARIO=steady]"; exit 2)
+	$(PYTHON) scripts/benchmark.py --platform linux --binary "$(TARGET_DIR)/release/ferramari" \
+		--mode video --video "$(VIDEO)" --scenario "$(SCENARIO)" \
+		--profile "$(PROFILE)" --seconds "$(SECONDS)" \
+		$(if $(LABEL),--label "$(LABEL)") $(if $(JSON),--json-out "$(JSON)")
+
+test-bench:
+	$(PYTHON) -m unittest discover -s scripts/bench -p 'test_*.py'
+
+# A dedicated Linux display is required: the cover event is fullscreen.
+# Usage: make soak VIDEO=/path/video.mp4 [DURATION=86400] [EVENT_INTERVAL=3600]
+DURATION ?= 86400
+EVENT_INTERVAL ?= 3600
+SOAK_INTERVAL ?= 30
+soak: release
+	@test -n "$(VIDEO)" || (echo "usage: make soak VIDEO=/path/video.mp4"; exit 2)
+	$(PYTHON) scripts/benchmark.py --platform linux \
+		--mode video --video "$(VIDEO)" --scenario long-run \
+		--duration "$(DURATION)" --event-interval "$(EVENT_INTERVAL)" \
+		--interval "$(SOAK_INTERVAL)" --profile "$(PROFILE)" \
+		--json-out "$(or $(JSON),bench-results/soak.json)" \
+		--jsonl-out "bench-results/soak.jsonl"
 
 translations:
 	@for po in po/*.po; do \

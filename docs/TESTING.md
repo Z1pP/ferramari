@@ -221,6 +221,7 @@ The shipped threshold is five minutes; the test only shortened the timer.
 - [ ] `make bench VIDEO=/path/to/4k.mp4 LABEL=4k SECONDS=5` records the 4K row.
 - [ ] `make test-bench` passes the harness unit tests (missing values, group CPU/RSS, GVariant parsing, soak report, Windows ABI).
 - [ ] `make soak VIDEO=/path/to/video.mp4 DURATION=600 EVENT_INTERVAL=120` completes a short dry run and writes `bench-results/soak.json`; check the `soak` block for PID changes, recovery latencies and RSS slope. The full 24 h run needs a dedicated display.
+- [ ] 24 h runbook: on a dedicated Linux host with no fullscreen applications, run `make soak VIDEO=/path/to/video.mp4 DURATION=86400 EVENT_INTERVAL=3600 SOAK_INTERVAL=30`. After it finishes, require `soak.warnings` to be empty, inspect `rss_slope_mib_per_hour` per group, `mpv_pid_changes` equal to the scheduled kills, every `soak_events[kill].first_frame_ms` present, `log.ipc_connection_failed == 0`, and `dropped_total` consistent with the source. Keep `bench-results/soak.jsonl` for the full per-sample record.
 
 ### Cross-desktop diagnostics
 - [ ] `ferramari --doctor` prints the session, backend, desktop and tool versions without starting the UI.

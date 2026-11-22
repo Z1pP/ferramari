@@ -50,8 +50,10 @@ these captures carry the test machine's own media library.
 - Hardware decoding selector (Auto / VA-API / Off), with the decoder that is
   actually running reported when it differs from the choice
 - Web-page wallpapers are temporarily unavailable while a GTK-free browser engine is evaluated; the current media backend reports this explicitly instead of silently failing
-- Reproducible benchmark harness (`make bench`) for startup, CPU, RAM,
-  processes, GPU and mpv recovery
+- Reproducible cross-platform benchmark harness (`make bench`, or
+  `scripts/benchmark.py` on Windows) for per-process CPU/RSS/PSS, GPU/VRAM,
+  FPS/dropped frames, threads/processes, idle, occluded, parked/resume, mpv
+  recovery and long runs
 - `--doctor` diagnostics for session/backend, desktop, media tools, DRM nodes,
   idle and lock services, the decoder that is really running, and a per-feature
   support level with the reason for anything that is only partial
@@ -515,9 +517,10 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
   (currently AMDGPU). Linux NVIDIA/Intel utilisation is labelled *not
   measurable here* rather than zero, and the same page distinguishes a
   platform with no process sampler from a server that is not running.
-- Multi-monitor, 4K/60, locked-screen and long-idle benchmarks are not yet
-  measured on the single-display test machine. Single-monitor 1080p, synthetic
-  4K and local-canvas web results are in `docs/BENCHMARKS.md`.
+- Multi-monitor, Linux playback, 4K/60, locked-screen and long-idle benchmarks
+  are not yet measured on the available hardware. Single-display Windows
+  1080p/4K, parked/resume and hidden-UI results are in `docs/BENCHMARKS.md`;
+  the gaps are listed there rather than extrapolated.
 - Decoder parking is limited to local videos; streams keep their process alive
   because their separate audio track and expiring URLs make a reload fragile.
 - `.ferramari` packages can be imported and exported, but there is no separate

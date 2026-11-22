@@ -16,6 +16,7 @@ installer/Output/
 
 # Local scratch, never committed
 backup/
+bench-results/
 
 # Notes kept locally; superseded by docs/DESIGN.md
 /REDISTGN_REVISION.md

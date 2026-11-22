@@ -330,6 +330,33 @@ mod tests {
         assert_eq!(state.windows, sorted);
     }
 
+    /// `cargo test --release -p ferramari-platform window_state_sample_cost -- --ignored --nocapture`
+    ///
+    /// The watcher runs this every 750 ms for the whole process lifetime, so
+    /// the cost is reported as a distribution rather than a single stopwatch
+    /// reading. It is a benchmark, not a correctness test.
+    #[test]
+    #[ignore]
+    fn window_state_sample_cost() {
+        use std::time::Instant;
+
+        let iterations = 1000;
+        let mut times = Vec::with_capacity(iterations);
+        for _ in 0..iterations {
+            let started = Instant::now();
+            let _ = sample();
+            times.push(started.elapsed().as_secs_f64() * 1000.0);
+        }
+        times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let mean = times.iter().sum::<f64>() / times.len() as f64;
+        let p50 = times[times.len() / 2];
+        let p95 = times[(times.len() * 95) / 100];
+        println!(
+            "window_state::sample: n={iterations} mean={mean:.3} ms p50={p50:.3} ms p95={p95:.3} ms max={:.3} ms",
+            times.last().copied().unwrap_or(0.0)
+        );
+    }
+
     #[test]
     fn shell_classes_are_not_treated_as_application_windows() {
         assert!(is_shell_class("Progman"));

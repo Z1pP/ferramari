@@ -430,6 +430,18 @@ struct Ipc {
     next_request: u64,
 }
 
+/// Whether a read error is the reader's idle tick rather than a lost channel.
+///
+/// Unix reports `SO_RCVTIMEO` as `WouldBlock` (EAGAIN); Windows named pipes
+/// report `TimedOut`. Both are the normal "no event yet" path in
+/// [`Ipc::new`]'s reader, and neither means the player is gone.
+fn is_read_poll_timeout(kind: std::io::ErrorKind) -> bool {
+    matches!(
+        kind,
+        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+    )
+}
+
 impl Ipc {
     fn new(mut stream: PipeStream) -> anyhow::Result<Self> {
         // The reader must wake periodically so it can notice `reader_stop`;
@@ -455,7 +467,10 @@ impl Ipc {
                         }
                         // The socket timeout is the worker's idle tick, not a
                         // failure: keep a partial line and wait for the rest.
-                        Err(err) if err.kind() == std::io::ErrorKind::TimedOut => {
+                        // Unix reports `SO_RCVTIMEO` as `WouldBlock` (EAGAIN),
+                        // while Windows named pipes report `TimedOut`; both
+                        // mean "no event yet".
+                        Err(err) if is_read_poll_timeout(err.kind()) => {
                             if stop.load(Ordering::Relaxed) {
                                 break;
                             }
@@ -1164,6 +1179,37 @@ mod tests {
         assert_eq!(hwdec_arg("vaapi"), "vaapi");
         assert_eq!(hwdec_arg("none"), "no");
         assert_eq!(hwdec_arg("unknown"), "auto-safe");
+    }
+
+    /// A silent Unix socket reports `SO_RCVTIMEO` as `WouldBlock`, not
+    /// `TimedOut`. Treating it as a lost channel made the IPC reader exit
+    /// after the first 100 ms with no events, so mpv was restarted in a loop.
+    #[cfg(unix)]
+    #[test]
+    fn a_silent_unix_socket_is_an_idle_tick() {
+        use std::io::Read as _;
+
+        let (mut client, _server) = UnixStream::pair().unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_millis(50)))
+            .unwrap();
+        let mut buffer = [0u8; 8];
+        let error = client.read(&mut buffer).unwrap_err();
+        assert!(
+            is_read_poll_timeout(error.kind()),
+            "unexpected read timeout kind: {:?}",
+            error.kind()
+        );
+    }
+
+    #[test]
+    fn only_timeouts_are_idle_ticks() {
+        use std::io::ErrorKind;
+
+        assert!(is_read_poll_timeout(ErrorKind::TimedOut));
+        assert!(is_read_poll_timeout(ErrorKind::WouldBlock));
+        assert!(!is_read_poll_timeout(ErrorKind::UnexpectedEof));
+        assert!(!is_read_poll_timeout(ErrorKind::ConnectionReset));
     }
 
     #[test]

@@ -13,7 +13,7 @@ playback.
 
 | Environment | Status | Notes |
 | --- | --- | --- |
-| GNOME 50, Wayland session, running through XWayland | **tested on 1.9.2 only** 2026-11-02 | Historical GTK build; 2.0 Iced UI not yet smoke-tested |
+| GNOME 50, Wayland session, running through XWayland | **partial** 2026-11-24 | 2.2.5 workspace plus the Linux IPC fix, one 1920×1080 display, isolated D-Bus: server startup, `--doctor`, X11 `DESKTOP` surface, mpv `--wid` embedding, advancing `time-pos`, VA-API, pause/resume, video switch with a reused PID, SIGKILL recovery, `quit_player`/`start_playback` surface recreation, D-Bus quit and SIGTERM with no orphans. The compositor owns the desktop layer under Wayland, so stacking below icons and the visible wallpaper could not be checked; the Iced control surface, tray, lock/suspend, multi-monitor and mixed DPI remain unchecked |
 | GNOME 50, X11 session | not tested | The same X11 backend is used, but the session has not been exercised |
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |
@@ -41,7 +41,7 @@ Build the complete 2.0 workspace with `cargo build --workspace --release --locke
       opens the UI instead of exiting silently.
 - [ ] Quit from Settings and from the tray; no `mpv`, `ffmpeg` or `ffprobe`
       processes remain.
-- [ ] SIGTERM during playback shuts down cleanly.
+- [x] SIGTERM during playback shuts down cleanly. (2026-11-24, GNOME XWayland)
 - [ ] Linux: start with `RUST_LOG=ferramari_platform=debug`, then quit from the
       tray and with SIGTERM. The process exits within three seconds and the log
       contains no `did not stop before the shutdown deadline` warning.
@@ -64,7 +64,8 @@ Build the complete 2.0 workspace with `cargo build --workspace --release --locke
 - [ ] Apply another video to another monitor; the first keeps playing.
 - [ ] Reconnect/disconnect a monitor; its source is restored on reconnect.
 - [ ] Change the resolution or scale factor; the window follows the monitor.
-- [ ] Kill `mpv` with `SIGKILL`; playback is recreated after the backoff.
+- [x] Kill `mpv` with `SIGKILL`; playback is recreated after the backoff.
+      (2026-11-24: new mpv in 2.0–2.5 s, same surface, position restarted.)
 - [ ] Kill `mpv` during playback and watch the MPV Engine chip: it shows
       `Starting` until the first frame, then `Running`; after the restart
       policy gives up it shows `Idle`, never `Running` without a player.
@@ -120,8 +121,9 @@ Build the complete 2.0 workspace with `cargo build --workspace --release --locke
       `[Config] Saving` appears once after the drag.
 - [ ] Quit during the debounce window; the last volume is still saved.
 - [ ] Idle voluntary context switches are ~1–2/s, not ~25/s.
-- [ ] Switch between two local videos on one monitor; the mpv PID stays the
-      same and the new file plays.
+- [x] Switch between two local videos on one monitor; the mpv PID stays the
+      same and the new file plays. (2026-11-24: same PID and surface,
+      `reused player in 17.6 µs`.)
 - [ ] Switch to a missing or corrupt file; an error is shown or the old file
       keeps playing, and the app stays responsive.
 
@@ -183,7 +185,8 @@ Build the complete 2.0 workspace with `cargo build --workspace --release --locke
 - [ ] With Eco and a 1-minute delay, leave the desktop idle: playback pauses; moving the mouse resumes it.
 - [ ] Home monitor cards show Playing / Idle / Paused (covered) / Paused for the matching state.
 - [ ] In `-d` logs, check `[Eco] <monitor>: Active/Occluded/Idle/Suspended` transitions and the fps value.
-- [ ] `gdbus ... Properties.Get ... monitor_states` returns one entry per monitor.
+- [x] `gdbus ... Properties.Get ... monitor_states` returns one entry per monitor.
+      (2026-11-24: one `eDP-1: active` entry and `1920 × 1080`.)
 - [ ] Cover the monitor (or lock it) with a local video paused for five minutes: the log shows `parked the decoder`, the mpv PID stays the same and its RSS drops.
 - [ ] Uncover/unlock: playback resumes at the saved position and the log shows `decoder unparked`.
 - [ ] Pause playback explicitly (tray/D-Bus) with the desktop visible for five minutes: no parking happens and the last frame remains.
@@ -224,8 +227,8 @@ The shipped threshold is five minutes; the test only shortened the timer.
 - [ ] 24 h runbook: on a dedicated Linux host with no fullscreen applications, run `make soak VIDEO=/path/to/video.mp4 DURATION=86400 EVENT_INTERVAL=3600 SOAK_INTERVAL=30`. After it finishes, require `soak.warnings` to be empty, inspect `rss_slope_mib_per_hour` per group, `mpv_pid_changes` equal to the scheduled kills, every `soak_events[kill].first_frame_ms` present, `log.ipc_connection_failed == 0`, and `dropped_total` consistent with the source. Keep `bench-results/soak.jsonl` for the full per-sample record.
 
 ### Cross-desktop diagnostics
-- [ ] `ferramari --doctor` prints the session, backend, desktop and tool versions without starting the UI.
-- [ ] On a Wayland (XWayland) session it reports `per-monitor occlusion: yes`.
+- [x] `ferramari --doctor` prints the session, backend, desktop and tool versions without starting the UI.
+- [x] On a Wayland (XWayland) session it reports `per-monitor occlusion: yes`.
 - [ ] On X11 it reports `per-monitor occlusion: yes`.
 - [ ] Settings → System → Desktop integration shows the same backend summary.
 - [ ] Lock via logind and via the screensaver in either order; playback resumes only after both report unlocked.
@@ -235,7 +238,9 @@ The shipped threshold is five minutes; the test only shortened the timer.
 - [ ] Maximized/fullscreen window pauses only the covered monitor (X11).
 - [ ] Autostart toggle creates/removes the XDG autostart entry.
 - [ ] Tray menu (Show, mute, pause, reload, quit) works.
-- [ ] D-Bus `video`, `volume`, `reload_config` and `quit` work.
+- [x] D-Bus `video`, `volume`, `reload_config` and `quit` work.
+      (2026-11-24: volume 77 reached mpv; reload_config replaced the player
+      and kept the volume; quit exited in under half a second.)
 - [ ] Language switch applies after restart.
 - [ ] Corrupt `config.json`; the app starts from `config.json.bak`.
 
@@ -593,6 +598,43 @@ Verified on Windows 11 (ru-RU display language, 1536x864, 125% DPI):
 - `cargo test --workspace --locked`: 480 passed, 4 ignored. `cargo fmt --check`,
   `cargo clippy --workspace --all-targets --locked -- -D warnings` and
   `cargo build --workspace --release --locked` are clean.
+
+## Linux single-display smoke (2026-11-24)
+
+Environment: Ubuntu, GNOME Shell 50.1, Wayland session through XWayland
+(`DISPLAY=:0`), one 1920×1080 `eDP-1`, mpv 0.41.0, ffmpeg 8.0.1 and
+yt-dlp 2026.10.21. The server ran with `-b -d` inside `dbus-run-session`, with
+a private `XDG_CONFIG_HOME`/`XDG_CACHE_HOME`/`XDG_DATA_HOME` and
+`GSETTINGS_BACKEND=memory`; static wallpaper was disabled so the real desktop
+was not touched. A 1920×1080 local H.264 video was applied through the D-Bus
+`video` method.
+
+What passed:
+
+| Check | Result |
+| --- | --- |
+| `--doctor` | session `Wayland (XWayland)`, desktop GNOME, backend x11; `wallpaper=partial`, `displays=supported`, `hotplug=supported`, `window tracking=partial`, `idle=unsupported`, each with its reason |
+| D-Bus startup | interface registered in 14–15 ms; `monitor_states` and `monitor_resolutions` reported `eDP-1` / `1920 × 1080` |
+| Surface | one new `Ferramari Wallpaper` X11 window, 1920×1080, `_NET_WM_WINDOW_TYPE_DESKTOP`, `Map State: IsViewable` |
+| Embedding | mpv command line carried `--wid=27262976` (surface `0x1a00000`) and `--gpu-context=x11egl`; `hwdec_running=vaapi`; `time-pos` advanced 4.8 → 6.8 s |
+| Pause/resume | `is_paused_by_user=true` paused mpv after the 1.5 s fade; setting it false resumed `time-pos` |
+| Video switch | switching to a second local file reused the same mpv PID and surface (`... reused player in 17.6 µs`) |
+| SIGKILL recovery | a new mpv in 2.0–2.5 s, the same surface, `is_decoding=true`, position restarted at 2.0–2.1 s |
+| Destroy/recreate | `quit_player` removed mpv and the surface; `start_playback` recreated both and embedded the new mpv |
+| Shutdown | D-Bus `quit` exited in 0.3–0.4 s and SIGTERM in 0.4–1.0 s; no `mpv`/`ffmpeg` child, no surface, no shutdown-deadline warning, no panic |
+
+The compositor owns the desktop layer under Wayland, so this run could not
+observe the wallpaper visually behind icons or verify stacking. The Iced
+control surface, tray, lock/suspend, multi-monitor, mixed DPI and static
+wallpaper were not exercised; those remain unchecked below.
+
+The first attempt failed: every mpv was SIGKILLed about one second after spawn
+and the sixth attempt ended with `giving up`. The IPC reader matched only
+`ErrorKind::TimedOut`, but Unix reports a `SO_RCVTIMEO` read as `WouldBlock`
+(EAGAIN), so it treated the 100 ms idle tick as a lost channel.
+`crates/ferramari-media/src/mpv.rs` now accepts both kinds, with
+`a_silent_unix_socket_is_an_idle_tick` and `only_timeouts_are_idle_ticks`
+covering the regression. The table above is the fixed build.
 
 ## Reproducible local run
 

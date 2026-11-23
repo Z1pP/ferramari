@@ -126,10 +126,25 @@ Current boundary progress:
       version 1.2 makes a 1.6 server answer 1.2, so the probe asks for the newest
       minor it knows and reads the reply.
 - [ ] Test wallpaper stacking below desktop icons and above the root background.
-- [ ] Test mpv embedding, surface destruction and recovery after player crashes.
+      Under GNOME Wayland the compositor owns the desktop layer, so this needs
+      a real X11 session (or XFCE/KDE X11); it cannot be observed through
+      XWayland.
+- [x] Test mpv embedding, surface destruction and recovery after player crashes.
+      Verified 2026-11-24 on GNOME 50 Wayland/XWayland (X11 backend, one
+      1920×1080 eDP-1, mpv 0.41, VA-API) in an isolated D-Bus session: the
+      surface was a viewable `_NET_WM_WINDOW_TYPE_DESKTOP` window, mpv carried
+      the matching `--wid`, `time-pos` advanced, SIGKILL was recovered by a new
+      mpv in 2.0–2.5 s with the same surface, `quit_player` destroyed both and
+      `start_playback` recreated them, and D-Bus quit/SIGTERM left no children.
+      This pass also found and fixed the Linux IPC reader treating the 100 ms
+      `SO_RCVTIMEO` `WouldBlock` as a lost channel, which killed playback in a
+      restart loop (`crates/ferramari-media/src/mpv.rs`, two new tests).
 - [ ] Test monitor hotplug, clone displays, stable naming and mixed DPI.
 - [ ] Test lock/unlock, suspend/resume, logout and desktop-shell restarts.
 - [ ] Test GNOME, KDE Plasma and XFCE where their APIs are available.
+      The GNOME 50 Wayland/XWayland single-display embedding, recovery and
+      shutdown paths are recorded on 2026-11-24 (see `docs/TESTING.md`); GNOME
+      X11, KDE Plasma and XFCE still need their own sessions.
 - [x] Investigate native Wayland protocols/compositor extensions; report Partial or
       Unsupported rather than pretending universal Wayland support.
       Documented in `docs/archive/WAYLAND_SUPPORT_RESEARCH.md`: wlr-layer-shell-v1 for surfaces

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+**Linux video playback no longer kills a healthy mpv after 100 ms of
+silence.**
+
+- **The Unix mpv IPC reader treats its poll timeout as idle, not EOF.**
+  `SO_RCVTIMEO` surfaces as `WouldBlock` (EAGAIN) on Unix, while Windows named
+  pipes report `TimedOut`; the reader only matched `TimedOut`. On a quiet
+  player it closed the channel after one 100 ms tick, the supervisor saw a
+  dead player and SIGKILLed/restarted mpv until the six-attempt give-up. Both
+  kinds are idle ticks now. Found by the 2026-11-24 Linux smoke: with mpv 0.41
+  on GNOME 50/XWayland, playback restarted instead of advancing. Two unit
+  tests pin the Unix error kind and the classification.
+
 **The interface language now switches in source builds and follows Windows
 "System" correctly.**
 

@@ -125,6 +125,7 @@ pub fn create(monitor: &MonitorInfo) -> anyhow::Result<Surface> {
     set_desktop_type(&connection, &atoms, window)?;
     set_no_decorations(&connection, &atoms, window)?;
     set_window_name(&connection, &atoms, window, "Ferramari Wallpaper")?;
+    set_process_id(&connection, &atoms, window)?;
     set_no_focus(&connection, &atoms, window)?;
 
     connection.map_window(window)?;
@@ -228,6 +229,7 @@ struct Atoms {
     net_wm_window_type_desktop: u32,
     motif_wm_hints: u32,
     net_wm_name: u32,
+    net_wm_pid: u32,
     utf8_string: u32,
     wm_hints: u32,
 }
@@ -245,6 +247,7 @@ impl Atoms {
             net_wm_window_type_desktop: atom("_NET_WM_WINDOW_TYPE_DESKTOP")?,
             motif_wm_hints: atom("_MOTIF_WM_HINTS")?,
             net_wm_name: atom("_NET_WM_NAME")?,
+            net_wm_pid: atom("_NET_WM_PID")?,
             utf8_string: atom("UTF8_STRING")?,
             wm_hints: atom("WM_HINTS")?,
         })
@@ -292,6 +295,19 @@ fn set_window_name(
         atoms.utf8_string,
         8,
         &utf8_bytes(name),
+    )
+}
+
+/// EWMH `_NET_WM_PID`: lets tools and the smoke harness attribute the desktop
+/// window to this server instead of another Ferramari instance on the display.
+fn set_process_id(connection: &RustConnection, atoms: &Atoms, window: u32) -> anyhow::Result<()> {
+    set_prop(
+        connection,
+        window,
+        atoms.net_wm_pid,
+        AtomEnum::CARDINAL.into(),
+        32,
+        &std::process::id().to_le_bytes(),
     )
 }
 

@@ -488,7 +488,14 @@ impl Drop for Engine {
         // Stop the fade threads first: their callbacks reference the player.
         self.fade.cancel();
         self.pause_timer.cancel();
-        // Content drops next (kills mpv), then the surface (unmaps the window).
+        // A cancelled fade thread can still hold the `Arc<Mutex<Mpv>>` until
+        // its next tick. Stopping from the owner kills the child even if the
+        // process exits before that handle is released; otherwise mpv can
+        // outlive the server. Content and the surface drop next.
+        let Content::Video { mpv } = &self.content;
+        if let Ok(mut mpv) = mpv.lock() {
+            mpv.stop();
+        }
     }
 }
 

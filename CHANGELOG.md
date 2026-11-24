@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+**Linux video playback no longer kills a healthy mpv after 100 ms of
+silence.**
+
+- **The Unix mpv IPC reader treats its poll timeout as idle, not EOF.**
+  `SO_RCVTIMEO` surfaces as `WouldBlock` (EAGAIN) on Unix, while Windows named
+  pipes report `TimedOut`; the reader only matched `TimedOut`. On a quiet
+  player it closed the channel after one 100 ms tick, the supervisor saw a
+  dead player and SIGKILLed/restarted mpv until the six-attempt give-up. Both
+  kinds are idle ticks now. Found by the 2026-11-24 Linux smoke: with mpv 0.41
+  on GNOME 50/XWayland, playback restarted instead of advancing. Two unit
+  tests pin the Unix error kind and the classification.
+- **The engine stops mpv before its last handle can be released.** A cancelled
+  fade thread could still hold the player's `Arc<Mutex<Mpv>>` when
+  `Engine::drop` ran, so the server could exit before `Mpv::Drop` killed the
+  child. `Engine::drop` now calls an idempotent `Mpv::stop()` from the owner.
+  Verified by quitting during the 1.5 s play fade: no reparented mpv.
+- **The X11 wallpaper surface advertises `_NET_WM_PID`.** Window tools and the
+  smoke harness can attribute the desktop window to the server even when a
+  second Ferramari instance is running; there is no visual change.
+
+**Native Wayland fullscreen windows can pause the wallpaper on GNOME.**
+
+- **Optional GNOME Shell window-state helper.** GNOME never exposes native
+  Wayland toplevels through EWMH, and its `Introspect.GetWindows` method is
+  allowlist-gated. A small companion extension now reports per-monitor
+  coverage and fullscreen state over the session bus; it carries no titles,
+  PIDs or application ids. `ferramari gnome-extension install` writes it under
+  the user's GNOME extensions and enables it at the next login. Ferramari uses
+  the helper when its service is present and keeps the EWMH watcher alongside
+  it. The helper reads `Meta.Window` accessors through fallbacks
+  (`get_maximized`/`maximized_*`, `is_fullscreen`/`fullscreen`, …), so a
+  method that a particular GNOME build does not expose cannot empty the state.
+- **`--doctor` stops claiming full occlusion on XWayland without the helper.**
+  It now prints `per-monitor occlusion: partial (X11/XWayland windows only)`,
+  a `GNOME window helper` line, and reports window tracking as supported when
+  the helper is active. The X11 fallback remains unchanged.
+
 **The interface language now switches in source builds and follows Windows
 "System" correctly.**
 

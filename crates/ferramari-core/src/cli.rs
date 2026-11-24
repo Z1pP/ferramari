@@ -45,6 +45,22 @@ pub enum Command {
     /// Creator tooling for `.ferramari` packages
     #[command(subcommand)]
     Package(PackageCommand),
+    /// Install or inspect the optional GNOME Shell window-state helper
+    #[cfg(target_os = "linux")]
+    #[command(subcommand)]
+    GnomeExtension(GnomeExtensionCommand),
+}
+
+/// Manage the companion extension that reports native Wayland window state.
+#[cfg(target_os = "linux")]
+#[derive(Debug, Clone, Subcommand)]
+pub enum GnomeExtensionCommand {
+    /// Install the bundled helper and enable it at the next login
+    Install,
+    /// Show whether the helper is installed and its D-Bus service is up
+    Status,
+    /// Disable and remove the helper
+    Remove,
 }
 
 #[derive(Debug, Clone, Subcommand)]

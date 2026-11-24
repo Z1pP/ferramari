@@ -21,6 +21,8 @@ pub mod gnome_bg;
 #[cfg(target_os = "linux")]
 pub mod gnome_extensions;
 #[cfg(target_os = "linux")]
+pub mod gnome_windows;
+#[cfg(target_os = "linux")]
 pub mod handlers;
 #[cfg(target_os = "linux")]
 pub mod monitors;

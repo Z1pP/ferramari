@@ -1,0 +1,7 @@
+{
+  "uuid": "ferramari-window-state@ferramari.github.io",
+  "name": "Ferramari Window State",
+  "description": "Reports per-monitor coverage and fullscreen state to Ferramari so native Wayland windows can pause the wallpaper.",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "version": 1
+}

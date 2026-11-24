@@ -15,6 +15,8 @@ pub use ferramari_core::{
     metrics, package, paths, plugin, session, signing, supervisor, thumbnails, util, window, ytdlp,
 };
 pub use ferramari_media::mpv;
+#[cfg(target_os = "linux")]
+pub use ferramari_platform::gnome_windows;
 pub use ferramari_platform::{
     autostart, dbus, desktop, event_source, gnome_extensions, handlers, monitors, power, surface,
     tray, wallpaper, x11, DefaultDisplayProvider, DefaultPlatformEventSource, DefaultPowerProvider,
@@ -29,6 +31,8 @@ use std::time::Duration;
 use clap::Parser;
 
 use app::App;
+#[cfg(target_os = "linux")]
+use cli::GnomeExtensionCommand;
 use cli::PackageCommand;
 
 fn main() {
@@ -40,7 +44,6 @@ fn main() {
     desktop::init_dpi_awareness();
 
     let args = cli::Args::parse();
-    init_logging(args.debug);
     // GNU gettext gives `LANGUAGE` priority over the system locale. The
     // in-app choice lets someone run a Russian UI on an English desktop.
     if let Some(language) = config::Config::language_override() {
@@ -48,6 +51,10 @@ fn main() {
     }
     init_i18n();
 
+    #[cfg(target_os = "linux")]
+    if let Some(cli::Command::GnomeExtension(command)) = args.command.clone() {
+        std::process::exit(run_gnome_extension_command(command));
+    }
     if let Some(cli::Command::Package(command)) = args.command.clone() {
         std::process::exit(run_package_command(command));
     }
@@ -71,6 +78,11 @@ fn main() {
         }
         return;
     }
+
+    // The command-only paths above are deliberately logger-free: `--doctor`,
+    // `package`, `gnome-extension` and `--catalog` print their own result, and
+    // initialising env_logger there only adds zbus handshake noise to it.
+    init_logging(args.debug);
 
     // Before anything that spawns a thread — the D-Bus client, the tray, the
     // watchers, the cache cleaner below all do — so every one of them
@@ -207,6 +219,37 @@ fn init_i18n() {
     // The translator reads the same MO catalogs gettext installed. It has no
     // C library dependency, which is what lets the server build on Windows.
     i18n::init(paths::locale_dir());
+}
+
+/// `ferramari gnome-extension …`: install the optional GNOME Shell helper.
+#[cfg(target_os = "linux")]
+fn run_gnome_extension_command(command: GnomeExtensionCommand) -> i32 {
+    match command {
+        GnomeExtensionCommand::Install => match gnome_windows::install() {
+            Ok(message) => {
+                println!("{message}");
+                0
+            }
+            Err(err) => {
+                eprintln!("gnome-extension install: {err}");
+                2
+            }
+        },
+        GnomeExtensionCommand::Status => {
+            println!("{}", gnome_windows::status());
+            0
+        }
+        GnomeExtensionCommand::Remove => match gnome_windows::remove() {
+            Ok(message) => {
+                println!("{message}");
+                0
+            }
+            Err(err) => {
+                eprintln!("gnome-extension remove: {err}");
+                2
+            }
+        },
+    }
 }
 
 /// `ferramari package …`: creator-facing tooling for `.ferramari` packages.

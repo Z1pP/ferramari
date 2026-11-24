@@ -430,6 +430,18 @@ struct Ipc {
     next_request: u64,
 }
 
+/// Whether a read error is the reader's idle tick rather than a lost channel.
+///
+/// Unix reports `SO_RCVTIMEO` as `WouldBlock` (EAGAIN); Windows named pipes
+/// report `TimedOut`. Both are the normal "no event yet" path in
+/// [`Ipc::new`]'s reader, and neither means the player is gone.
+fn is_read_poll_timeout(kind: std::io::ErrorKind) -> bool {
+    matches!(
+        kind,
+        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+    )
+}
+
 impl Ipc {
     fn new(mut stream: PipeStream) -> anyhow::Result<Self> {
         // The reader must wake periodically so it can notice `reader_stop`;
@@ -455,7 +467,10 @@ impl Ipc {
                         }
                         // The socket timeout is the worker's idle tick, not a
                         // failure: keep a partial line and wait for the rest.
-                        Err(err) if err.kind() == std::io::ErrorKind::TimedOut => {
+                        // Unix reports `SO_RCVTIMEO` as `WouldBlock` (EAGAIN),
+                        // while Windows named pipes report `TimedOut`; both
+                        // mean "no event yet".
+                        Err(err) if is_read_poll_timeout(err.kind()) => {
                             if stop.load(Ordering::Relaxed) {
                                 break;
                             }
@@ -751,9 +766,17 @@ impl Mpv {
     }
 }
 
-impl Drop for Mpv {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
+impl Mpv {
+    /// Stop the child and reap its IPC worker. Safe to call more than once.
+    ///
+    /// `Drop` calls this, but it cannot be the only caller: a fade thread can
+    /// still hold an `Arc<Mutex<Mpv>>` when the owning [`Engine`] is dropped,
+    /// and the process may exit before that thread drops its handle. Stopping
+    /// from the owner guarantees the child is reaped before shutdown.
+    pub fn stop(&mut self) {
+        if self.stop.swap(true, Ordering::Relaxed) {
+            return;
+        }
         // Ask mpv to quit, then give it a short grace period. A wedged
         // decoder must not keep the Ferramari process (or the session) alive.
         // Always wake the IPC worker, even when the child already exited:
@@ -785,6 +808,12 @@ impl Drop for Mpv {
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
+    }
+}
+
+impl Drop for Mpv {
+    fn drop(&mut self) {
+        self.stop();
     }
 }
 
@@ -1164,6 +1193,37 @@ mod tests {
         assert_eq!(hwdec_arg("vaapi"), "vaapi");
         assert_eq!(hwdec_arg("none"), "no");
         assert_eq!(hwdec_arg("unknown"), "auto-safe");
+    }
+
+    /// A silent Unix socket reports `SO_RCVTIMEO` as `WouldBlock`, not
+    /// `TimedOut`. Treating it as a lost channel made the IPC reader exit
+    /// after the first 100 ms with no events, so mpv was restarted in a loop.
+    #[cfg(unix)]
+    #[test]
+    fn a_silent_unix_socket_is_an_idle_tick() {
+        use std::io::Read as _;
+
+        let (mut client, _server) = UnixStream::pair().unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_millis(50)))
+            .unwrap();
+        let mut buffer = [0u8; 8];
+        let error = client.read(&mut buffer).unwrap_err();
+        assert!(
+            is_read_poll_timeout(error.kind()),
+            "unexpected read timeout kind: {:?}",
+            error.kind()
+        );
+    }
+
+    #[test]
+    fn only_timeouts_are_idle_ticks() {
+        use std::io::ErrorKind;
+
+        assert!(is_read_poll_timeout(ErrorKind::TimedOut));
+        assert!(is_read_poll_timeout(ErrorKind::WouldBlock));
+        assert!(!is_read_poll_timeout(ErrorKind::UnexpectedEof));
+        assert!(!is_read_poll_timeout(ErrorKind::ConnectionReset));
     }
 
     #[test]

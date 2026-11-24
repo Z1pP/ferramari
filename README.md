@@ -69,6 +69,8 @@ these captures carry the test machine's own media library.
 - GNOME static wallpaper with a blurred frame from the video
 - Pause or mute playback per monitor when that monitor is covered by a
   maximized or fullscreen window; the other monitors keep playing
+- On GNOME Wayland, an optional Shell helper adds native Wayland fullscreen
+  windows to the same rule; X11/XWayland needs no helper
 - Pause while the screen is locked; clean shutdown on logout/reboot; Windows
   also handles Ctrl/Ctrl-Break, close, logoff and shutdown through one console
   handler
@@ -208,7 +210,11 @@ installs the server next to the Iced control surface, with no GTK or WebKitGTK
 in the dependency graph. Media tools (`mpv`, `ffmpeg`, `yt-dlp`) run from the
 host through `flatpak-spawn`. The sandbox has not yet been exercised end to
 end; see [`flatpak/README.md`](flatpak/README.md) for the checks to run before
-calling a bundle tested. Flathub packaging is not ready.
+calling a bundle tested. Flathub packaging is not ready. The optional GNOME
+Shell helper is a per-user host extension: run
+`ferramari gnome-extension install` from a host installation (or copy
+`data/gnome-shell/ferramari-window-state@…` into the host extensions
+directory) rather than from inside the sandbox.
 
 ## Usage
 
@@ -221,7 +227,27 @@ ferramari -r          # reset the configuration
 ferramari --doctor    # print session/backend/tool diagnostics and exit
 ferramari --catalog https://catalog.example.org/v1  # inspect a Catalog API
 ferramari package --help    # checksum, sign and verify .ferramari packages
+ferramari gnome-extension install   # optional: native Wayland fullscreen detection on GNOME
+ferramari gnome-extension status    # installed/enabled/service state
 ```
+
+### GNOME Wayland fullscreen detection
+
+The wallpaper surface itself still uses X11/XWayland. Native Wayland windows
+are invisible to EWMH, so without help a fullscreen native app cannot pause the
+video. On GNOME, install the companion Shell helper once:
+
+```sh
+ferramari gnome-extension install
+# log out and back in once so GNOME Shell scans the new extension
+ferramari gnome-extension status
+```
+
+The helper runs inside GNOME Shell and answers a small D-Bus question: which
+monitors are covered or fullscreen. It sends no window titles, PIDs or app
+ids. Ferramari uses it when present and keeps the X11 EWMH watcher as the
+fallback. KDE Wayland and native-Wayland wallpaper surfaces are not covered by
+this helper.
 
 A second `ferramari` invocation does not start another wallpaper server: it asks the running server to show the separate `ferramari-ui` control surface and exits. If the window is already open it is restored and raised rather than duplicated. On Windows, closing the control window hides it instead of ending the process: the wallpaper keeps playing, the tray icon is enabled so the window can be reopened, and the same window comes back from the tray or a second launch. Both binaries must be installed side by side. On Windows the installer puts both `.exe` files in the same folder; the portable ZIP has the same layout. The executable, the control window, the tray and the installer all use the crab icon from `data/icons/windows/ferramari.ico`; the Performance page reads Windows process counters and GPU Engine utilization, and reports `N/A` only when a counter set is unavailable.
 
@@ -425,9 +451,11 @@ token sheet kept only as a visual reference and is not loaded at runtime.
 ## FAQ
 
 **Does it work on native Wayland?**
-No. Ferramari runs through XWayland on Wayland sessions. A desktop-type
-window and `mpv --wid` embedding need X11; native Wayland needs a compositor
-specific surface and is not claimed.
+The wallpaper surface does not: Ferramari runs through XWayland, and a
+desktop-type window plus `mpv --wid` embedding need X11. On GNOME Wayland the
+optional Shell helper (`ferramari gnome-extension install`) detects native
+Wayland fullscreen windows and pauses the wallpaper; without it, only
+X11/XWayland windows are seen.
 
 **Does it work on KDE?**
 The code uses standard X11/EWMH paths, but KDE is not part of the tested
@@ -490,19 +518,19 @@ Yes, a self-hosted bundle manifest is in `flatpak/`. It uses the host `mpv`,
   a `DESKTOP`-type X11 toplevel and mpv embeds into it with `--wid`. Native
   Wayland has no background role in `xdg-shell`, and `wlr-layer-shell` is not
   available on GNOME, so native Wayland windows are not an option.
-- Pause/mute when maximised needs `_NET_CLIENT_LIST`, which only lists X11
-  windows. On a Wayland session it therefore works for X11/XWayland clients
-  (measured: a fullscreen mpv window is listed with
-  `_NET_WM_STATE_FULLSCREEN`) but never for native Wayland windows.
+- Pause/mute when maximised reads `_NET_CLIENT_LIST`, which only lists X11
+  windows. Without the GNOME Shell helper it therefore works for X11/XWayland
+  clients but not for native Wayland windows. With the helper installed, both
+  are covered on GNOME; KDE Wayland has no equivalent integration yet.
 - Fractional scaling and mixed-DPI layouts are upscaled by XWayland; expect
   softer output than a native Wayland client.
 - KDE Plasma and GNOME X11 are not part of the tested matrix yet; the
   XWayland desktop window is the only supported path there. `--doctor` reports
   what the current session actually exposes instead of guessing.
 - Occlusion pause is driven by the X11/EWMH watcher, which runs on X11 and on
-  Wayland sessions (through XWayland). Wayland-native windows are not exposed
-  through EWMH at all, so a native fullscreen app cannot be detected there;
-  an X11 fullscreen window can, and is.
+  Wayland sessions (through XWayland). On GNOME Wayland the optional Shell
+  helper supplies native Wayland coverage; without it, a native fullscreen
+  app is not detected, while an X11 fullscreen window is.
 - A Flatpak manifest builds the 2.0 workspace and installs both binaries;
   neither links GTK or WebKitGTK. The sandbox itself has not been exercised
   end to end — see [`flatpak/README.md`](flatpak/README.md) for the checks to

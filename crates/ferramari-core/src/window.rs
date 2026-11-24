@@ -30,6 +30,24 @@ pub struct MonitorVisibility {
     pub fullscreen: bool,
 }
 
+/// One monitor's coverage as reported by a compositor helper.
+///
+/// GNOME's native Wayland toplevels are invisible to EWMH, so the optional
+/// Shell helper answers per-monitor booleans instead. The geometry is in the
+/// compositor's logical coordinate space and is only used to match the entry
+/// to a [`MonitorInfo`](crate::monitor::MonitorInfo) when the connector name
+/// is unavailable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NativeMonitorState {
+    pub connector: Option<String>,
+    pub index: i32,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub visibility: MonitorVisibility,
+}
+
 impl WindowState {
     /// Whether a monitor is completely covered by a normal window, and
     /// whether a fullscreen window is present. A maximised window counts as

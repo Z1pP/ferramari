@@ -13,7 +13,7 @@ playback.
 
 | Environment | Status | Notes |
 | --- | --- | --- |
-| GNOME 50, Wayland session, running through XWayland | **partial** 2026-11-24 | 2.2.5 workspace plus the Linux IPC fix, one 1920×1080 display, isolated D-Bus: server startup, `--doctor`, X11 `DESKTOP` surface, mpv `--wid` embedding, advancing `time-pos`, VA-API, pause/resume, video switch with a reused PID, SIGKILL recovery, `quit_player`/`start_playback` surface recreation, D-Bus quit and SIGTERM with no orphans. The compositor owns the desktop layer under Wayland, so stacking below icons and the visible wallpaper could not be checked; the Iced control surface, tray, lock/suspend, multi-monitor and mixed DPI remain unchecked |
+| GNOME 50, Wayland session, running through XWayland | **partial** 2026-11-24 | 2.2.5 workspace plus the Linux lifecycle fixes, one 1920×1080 display, isolated D-Bus: server startup, `--doctor`, X11 `DESKTOP` surface, mpv `--wid` embedding, advancing `time-pos`, VA-API, pause/resume, video switch with a reused PID, SIGKILL recovery, `quit_player`/`start_playback` surface recreation, D-Bus quit and SIGTERM with no orphans. The compositor owns the desktop layer under Wayland, so stacking below icons and the visible wallpaper could not be checked; native Wayland fullscreen coverage was verified through the optional GNOME Shell helper in a nested Shell and then in the real session after the second login (see below). The Iced control surface, tray, lock/suspend, multi-monitor and mixed DPI remain unchecked |
 | GNOME 50, X11 session | not tested | The same X11 backend is used, but the session has not been exercised |
 | KDE Plasma, X11 | not tested | Desktop-window placement and tray integration differ |
 | KDE Plasma, Wayland | not tested | XWayland path only |
@@ -241,6 +241,11 @@ The shipped threshold is five minutes; the test only shortened the timer.
 - [x] D-Bus `video`, `volume`, `reload_config` and `quit` work.
       (2026-11-24: volume 77 reached mpv; reload_config replaced the player
       and kept the volume; quit exited in under half a second.)
+- [x] On GNOME Wayland install the helper, log out and back in, then open a
+      native Wayland app fullscreen: the monitor shows `occluded` and playback
+      pauses; closing it resumes. (Nested Shell and the real GNOME 50 session
+      both passed on 2026-11-24; Chrome kiosk reported `fullscreen=true`, the
+      app reported `eDP-1: occluded` and `is_playing=false`.)
 - [ ] Language switch applies after restart.
 - [ ] Corrupt `config.json`; the app starts from `config.json.bak`.
 
@@ -615,13 +620,13 @@ What passed:
 | --- | --- |
 | `--doctor` | session `Wayland (XWayland)`, desktop GNOME, backend x11; `wallpaper=partial`, `displays=supported`, `hotplug=supported`, `window tracking=partial`, `idle=unsupported`, each with its reason |
 | D-Bus startup | interface registered in 14–15 ms; `monitor_states` and `monitor_resolutions` reported `eDP-1` / `1920 × 1080` |
-| Surface | one new `Ferramari Wallpaper` X11 window, 1920×1080, `_NET_WM_WINDOW_TYPE_DESKTOP`, `Map State: IsViewable` |
+| Surface | one new `Ferramari Wallpaper` X11 window, 1920×1080, `_NET_WM_WINDOW_TYPE_DESKTOP`, `_NET_WM_PID` matching the test server, `Map State: IsViewable` |
 | Embedding | mpv command line carried `--wid=27262976` (surface `0x1a00000`) and `--gpu-context=x11egl`; `hwdec_running=vaapi`; `time-pos` advanced 4.8 → 6.8 s |
 | Pause/resume | `is_paused_by_user=true` paused mpv after the 1.5 s fade; setting it false resumed `time-pos` |
 | Video switch | switching to a second local file reused the same mpv PID and surface (`... reused player in 17.6 µs`) |
 | SIGKILL recovery | a new mpv in 2.0–2.5 s, the same surface, `is_decoding=true`, position restarted at 2.0–2.1 s |
 | Destroy/recreate | `quit_player` removed mpv and the surface; `start_playback` recreated both and embedded the new mpv |
-| Shutdown | D-Bus `quit` exited in 0.3–0.4 s and SIGTERM in 0.4–1.0 s; no `mpv`/`ffmpeg` child, no surface, no shutdown-deadline warning, no panic |
+| Shutdown | D-Bus `quit` exited in 0.3–0.4 s and SIGTERM in 0.4–1.0 s; no `mpv`/`ffmpeg`/`ffprobe` child, no reparented mpv, no surface, no shutdown-deadline warning, no panic |
 
 The compositor owns the desktop layer under Wayland, so this run could not
 observe the wallpaper visually behind icons or verify stacking. The Iced
@@ -635,6 +640,59 @@ and the sixth attempt ended with `giving up`. The IPC reader matched only
 `crates/ferramari-media/src/mpv.rs` now accepts both kinds, with
 `a_silent_unix_socket_is_an_idle_tick` and `only_timeouts_are_idle_ticks`
 covering the regression. The table above is the fixed build.
+
+A second pass found a shutdown race: a cancelled fade thread could still hold
+the last `Arc<Mutex<Mpv>>` when `Engine::drop` ran, so the server could exit
+before `Mpv::Drop` killed the child. `Engine::drop` now calls an idempotent
+`Mpv::stop()` from the owner. The harness filters surfaces by `_NET_WM_PID`
+and checks for a reparented mpv by its socket path; quitting during the play
+fade and SIGTERM both left no child behind. Later reruns with the desktop's
+own Ferramari instance also playing contended for the GPU and hit the 1 s
+command timeout; they were not used as evidence for the table above.
+
+Quality gates after the changes: `cargo fmt --all -- --check`, clippy with
+`-D warnings`, `cargo test --workspace --locked` (480 passed, 3 ignored) and
+`cargo build --workspace --release --locked` are clean; both release binaries
+exist and the dependency tree remains GTK-free.
+
+## GNOME native-Wayland helper (2026-11-24)
+
+GNOME Shell was started with `--headless --virtual-monitor 1920x1080` inside
+a private D-Bus session, which loads installed extensions without touching the
+real session. The helper was enabled and answered:
+
+```text
+{"monitors":[{"index":0,"connector":null,"x":0,"y":0,"width":1920,"height":1080,
+              "covered":false,"fullscreen":false}]}
+```
+
+A native Wayland Chrome 157 kiosk (`--ozone-platform=wayland --kiosk`) was
+then launched against that Shell. The app server selected
+`[WindowHandler] source: GNOME Shell helper`, the monitor changed to
+`occluded` after the two-second confirmation, `is_playing` became false, and
+closing Chrome returned it to `active`/playing within a second. A session with
+no helper service still selected `source: X11 EWMH`, and an X11 fullscreen
+window paused playback there.
+
+`ferramari gnome-extension status` reports the installed path, whether the
+UUID is in `org.gnome.shell enabled-extensions`, and whether the D-Bus service
+is up. `install` writes the two bundled files and adds the UUID to the enabled
+list; on a running Wayland session GNOME Shell does not rescan the directory,
+so the helper becomes active after the next login. The first real-session
+login exposed a GNOME 50 `Meta.Window` accessor difference
+(`window.get_maximized is not a function`); the helper now falls back to the
+`maximized_horizontally`/`maximized_vertically` properties and guards the
+other accessors. GNOME Shell caches the loaded extension module, so the fixed
+file needed one more logout/login. After that second login the real session
+reported `eDP-1` in `GetState`; a native Wayland Chrome kiosk produced
+`covered=true, fullscreen=true`, the app showed `eDP-1: occluded` and
+`is_playing=false`, and closing Chrome returned it to `active`/playing.
+Multi-monitor and mixed-DPI coverage remain unchecked.
+
+Quality gates after the helper changes: `cargo fmt --all -- --check`, clippy
+with `-D warnings`, and the release build are clean; `cargo test --workspace
+--locked` passes 486 tests with 3 ignored. The helper's JSON parser and GVariant list
+handling have unit tests, and the nested Shell executed the extension itself.
 
 ## Reproducible local run
 

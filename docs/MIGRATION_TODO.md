@@ -136,14 +136,32 @@ Current boundary progress:
       the matching `--wid`, `time-pos` advanced, SIGKILL was recovered by a new
       mpv in 2.0–2.5 s with the same surface, `quit_player` destroyed both and
       `start_playback` recreated them, and D-Bus quit/SIGTERM left no children.
-      This pass also found and fixed the Linux IPC reader treating the 100 ms
-      `SO_RCVTIMEO` `WouldBlock` as a lost channel, which killed playback in a
-      restart loop (`crates/ferramari-media/src/mpv.rs`, two new tests).
+      This pass also found and fixed two lifecycle bugs: the Linux IPC reader
+      treated the 100 ms `SO_RCVTIMEO` `WouldBlock` as a lost channel, which
+      killed playback in a restart loop, and `Engine::drop` could run while a
+      cancelled fade thread still held the last `Mpv` handle, letting mpv
+      outlive the server. The reader fix is in
+      `crates/ferramari-media/src/mpv.rs` (two new tests); `Engine::drop` now
+      stops the player from the owner. Surfaces also carry `_NET_WM_PID` so
+      the harness can ignore the desktop's own running instance.
+- [x] Add an optional GNOME Shell window-state helper for native Wayland
+      fullscreen detection. `data/gnome-shell/ferramari-window-state@…`
+      answers per-monitor covered/fullscreen over D-Bus without titles, PIDs
+      or app ids; `ferramari gnome-extension install|status|remove` manages it
+      and the X11 EWMH watcher stays the fallback. Verified 2026-11-24 in a
+      nested headless GNOME 50 shell: a native Wayland Chrome kiosk flipped the
+      monitor to `occluded` after the 2 s confirmation and back to `active`
+      on close, while a session without the helper still used X11. The first
+      real login exposed a GNOME 50 `Meta.Window` accessor difference, fixed
+      with property fallbacks; the second login verified native Wayland
+      Chrome fullscreen (`covered=true, fullscreen=true`), `occluded`, and
+      `is_playing=false` in the real session.
 - [ ] Test monitor hotplug, clone displays, stable naming and mixed DPI.
 - [ ] Test lock/unlock, suspend/resume, logout and desktop-shell restarts.
 - [ ] Test GNOME, KDE Plasma and XFCE where their APIs are available.
       The GNOME 50 Wayland/XWayland single-display embedding, recovery and
-      shutdown paths are recorded on 2026-11-24 (see `docs/TESTING.md`); GNOME
+      shutdown paths are recorded on 2026-11-24, and the native-Wayland helper
+      was exercised in a nested GNOME 50 shell (see `docs/TESTING.md`); GNOME
       X11, KDE Plasma and XFCE still need their own sessions.
 - [x] Investigate native Wayland protocols/compositor extensions; report Partial or
       Unsupported rather than pretending universal Wayland support.

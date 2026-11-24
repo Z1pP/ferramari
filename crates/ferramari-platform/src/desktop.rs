@@ -456,7 +456,21 @@ fn support_name(level: SupportLevel) -> &'static str {
 pub fn doctor() -> String {
     let environment = detect();
     let evidence = capabilities();
-    let capabilities = evidence.levels;
+    let helper = crate::gnome_windows::available();
+    let mut capabilities = evidence.levels;
+    // The Shell helper sees native Wayland toplevels, which EWMH cannot.
+    if helper {
+        capabilities.window_tracking = SupportLevel::Supported;
+    }
+    let occlusion = if environment.capabilities.per_monitor_occlusion {
+        if environment.session == SessionKind::WaylandXWayland && !helper {
+            "partial (X11/XWayland windows only)"
+        } else {
+            "yes"
+        }
+    } else {
+        "no"
+    };
     let mut report = String::new();
     let _ = writeln!(report, "Ferramari {}", env!("CARGO_PKG_VERSION"));
     let _ = writeln!(report, "session: {}", environment.session.as_str());
@@ -480,11 +494,8 @@ pub fn doctor() -> String {
         "desktop window: {}",
         yes_no(environment.capabilities.desktop_window)
     );
-    let _ = writeln!(
-        report,
-        "per-monitor occlusion: {}",
-        yes_no(environment.capabilities.per_monitor_occlusion)
-    );
+    let _ = writeln!(report, "per-monitor occlusion: {occlusion}");
+    let _ = writeln!(report, "GNOME window helper: {}", yes_no(helper));
     let _ = writeln!(
         report,
         "native Wayland: {}",
@@ -513,7 +524,16 @@ pub fn doctor() -> String {
     );
     // One reason per limitation, so a report answers "why is this partial"
     // without anyone having to read the code.
+    if helper {
+        let _ = writeln!(
+            report,
+            "  - window tracking: supported by the GNOME Shell helper (native Wayland windows included)"
+        );
+    }
     for (name, level, reason) in &evidence.notes {
+        if helper && *name == "window tracking" {
+            continue;
+        }
         let _ = writeln!(report, "  - {name}: {} ({reason})", support_name(*level));
     }
     let _ = writeln!(report, "X11 screens: {}", x11_screen_count());

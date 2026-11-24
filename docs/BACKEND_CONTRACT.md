@@ -40,7 +40,7 @@ Startup injection (`src/main.rs`), each one a `Box<dyn …>` from core:
 | `DisplayProvider` | enumerate connected displays | XRandR (`monitors::list`) | `EnumDisplayMonitors` + `EnumDisplayDevicesW` (`windows/monitors.rs`) |
 | `WallpaperSurfaceProvider` / `WallpaperSurface` | create and own a surface fit for embedding | X11 desktop-type window | `WorkerW`-hosted child window (`windows/surface.rs`) |
 | `PowerProvider` | current power-supply state | sysfs polling | `GetSystemPowerStatus` (`windows/power.rs`) |
-| `PlatformEventSource` / `PlatformWatchers` | start OS event sources, hand back a teardown token | X11 EWMH + RandR watchers, D-Bus session/lock/sleep/idle watchers | hidden Win32 message windows + `EnumWindows` sampler (`windows/event_source.rs`) |
+| `PlatformEventSource` / `PlatformWatchers` | start OS event sources, hand back a teardown token | X11 EWMH + RandR watchers, D-Bus session/lock/sleep/idle watchers; on GNOME the optional Shell helper adds native Wayland window state | hidden Win32 message windows + `EnumWindows` sampler (`windows/event_source.rs`) |
 | `PlatformCapabilities` | what is actually reachable in this session | `desktop::platform_capabilities` | `windows/desktop::platform_capabilities` |
 
 `PowerProvider::subscribe()` exists as an optional contract: a backend may
@@ -52,7 +52,8 @@ Capability levels are decided per capability from probed evidence, never by
 applying one session-wide label: under XWayland the surface is Partial (the
 compositor owns the desktop layer) while enumeration and hotplug are Supported
 (the compositor's outputs are mirrored), and window tracking is Partial
-because EWMH lists X11 clients only. Every level that is not Supported has to
+because EWMH lists X11 clients only (Supported when the optional GNOME Shell
+helper is active). Every level that is not Supported has to
 come with the reason it got there, which `--doctor` prints as an indented note
 under the summary line.
 

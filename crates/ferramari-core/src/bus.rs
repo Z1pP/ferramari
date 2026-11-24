@@ -12,7 +12,7 @@ use crate::config::Mode;
 use crate::package;
 use crate::session::{IdleState, LockSource};
 use crate::signing;
-use crate::window::WindowState;
+use crate::window::{NativeMonitorState, WindowState};
 use crate::ytdlp;
 
 #[derive(Debug, Clone)]
@@ -72,6 +72,10 @@ pub enum Command {
         active: bool,
     },
     WindowState(WindowState),
+    /// Per-monitor coverage from a compositor helper. Used on GNOME Wayland,
+    /// where native toplevels never appear in the X11 client list. An empty
+    /// list means the helper has no covered monitor or has gone away.
+    NativeMonitors(Vec<NativeMonitorState>),
     /// Desktop activity as reported by the session's idle facility.
     /// `Unknown` is a distinct answer, not a false: the service may be gone.
     Idle(IdleState),

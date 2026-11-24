@@ -38,7 +38,7 @@ use crate::supervisor::{RestartPolicy, Retry, MAX_RETRIES};
 use crate::tray;
 use crate::util;
 use crate::wallpaper::StaticBackground;
-use crate::window::{MonitorVisibility as WindowVisibility, WindowState};
+use crate::window::{MonitorVisibility as WindowVisibility, NativeMonitorState, WindowState};
 use crate::ytdlp;
 
 use ferramari_media::engine::{ContentKind, Engine, WindowKey};
@@ -103,6 +103,10 @@ pub struct App {
     idle: IdleState,
     /// Latest per-window occlusion sample from the X11 watcher.
     window_state: WindowState,
+    /// Per-monitor coverage from the optional GNOME Shell helper. Native
+    /// Wayland windows never appear in `window_state`; this map carries the
+    /// compositor's answer for the same monitors.
+    native_visibility: HashMap<String, WindowVisibility>,
     /// Last Eco decision applied to each monitor, so a state change only touches
     /// the windows whose state or FPS cap actually changed.
     last_plans: HashMap<String, eco::Plan>,
@@ -218,6 +222,7 @@ impl App {
             suspended: false,
             idle: IdleState::default(),
             window_state: WindowState::default(),
+            native_visibility: HashMap::new(),
             last_plans: HashMap::new(),
             hidden_since: HashMap::new(),
             last_mute: HashMap::new(),
@@ -472,6 +477,11 @@ impl App {
                     "[WindowState] {} visible window(s)",
                     self.window_state.windows.len()
                 );
+                self.apply_playback_states();
+                self.apply_mute_states();
+            }
+            Command::NativeMonitors(states) => {
+                self.native_visibility = self.resolve_native_monitors(&states);
                 self.apply_playback_states();
                 self.apply_mute_states();
             }
@@ -1670,13 +1680,37 @@ impl App {
         )
     }
 
+    /// Translate the compositor helper's monitor entries into the names this
+    /// process uses for config keys and Eco decisions.
+    fn resolve_native_monitors(
+        &self,
+        states: &[NativeMonitorState],
+    ) -> HashMap<String, WindowVisibility> {
+        states
+            .iter()
+            .filter_map(|state| {
+                let info = match_native_monitor(&self.monitors, state)?;
+                Some((info.name.clone(), state.visibility))
+            })
+            .collect()
+    }
+
     fn monitor_visibility(&self, monitor: &str) -> WindowVisibility {
         self.monitors
             .iter()
             .find(|info| info.name == monitor)
             .map(|info| {
                 let (x, y, width, height) = monitor_rect(info);
-                self.window_state.visibility_at(x, y, width, height)
+                let window = self.window_state.visibility_at(x, y, width, height);
+                let native = self
+                    .native_visibility
+                    .get(monitor)
+                    .copied()
+                    .unwrap_or_default();
+                WindowVisibility {
+                    covered: window.covered || native.covered,
+                    fullscreen: window.fullscreen || native.fullscreen,
+                }
             })
             .unwrap_or_default()
     }
@@ -2369,6 +2403,36 @@ fn monitor_rect(info: &MonitorInfo) -> (i32, i32, i32, i32) {
     )
 }
 
+/// Match one compositor-helper entry to this process's monitor view.
+///
+/// The connector is the strongest key. Geometry is next: the helper reports
+/// the compositor's logical rectangle, which is also what RandR/XWayland
+/// reports here. The index is a last resort for layouts where neither is
+/// comparable (for example a fractional-scale compositor whose XWayland root
+/// is in physical pixels).
+fn match_native_monitor<'a>(
+    monitors: &'a [MonitorInfo],
+    state: &NativeMonitorState,
+) -> Option<&'a MonitorInfo> {
+    state
+        .connector
+        .as_deref()
+        .and_then(|connector| {
+            monitors
+                .iter()
+                .find(|info| info.name.eq_ignore_ascii_case(connector))
+        })
+        .or_else(|| {
+            monitors.iter().find(|info| {
+                info.x == state.x
+                    && info.y == state.y
+                    && info.width == state.width
+                    && info.height == state.height
+            })
+        })
+        .or_else(|| monitors.iter().find(|info| info.index == state.index))
+}
+
 /// A local page may arrive as a plain path or as a `file://` URI (for example
 /// from a D-Bus caller). Percent escapes are decoded and a non-local authority
 /// is refused, so the result is always a path on this machine.
@@ -2544,6 +2608,7 @@ mod tests {
             suspended: false,
             idle: IdleState::default(),
             window_state: WindowState::default(),
+            native_visibility: HashMap::new(),
             last_plans: HashMap::new(),
             hidden_since: HashMap::new(),
             last_mute: HashMap::new(),
@@ -2831,7 +2896,7 @@ mod tests {
 
     /// Minimal App skeleton for eco_plan_for() unit tests — only the fields
     // that `eco_plan_for` actually touches are populated.
-    use crate::window::{MonitorVisibility, WindowRect, WindowState};
+    use crate::window::{MonitorVisibility, NativeMonitorState, WindowRect, WindowState};
 
     struct EcoTestHarness {
         paused_by_user: bool,
@@ -2840,6 +2905,7 @@ mod tests {
         on_battery: bool,
         idle: IdleState,
         window_state: WindowState,
+        native_visibility: HashMap<String, MonitorVisibility>,
         monitors: Vec<MonitorInfo>,
         playback_profile: String,
         pause_on_battery: bool,
@@ -2883,6 +2949,7 @@ mod tests {
                 on_battery: false,
                 idle: IdleState::Active,
                 window_state: WindowState::default(),
+                native_visibility: HashMap::new(),
                 monitors,
                 playback_profile: config_mode.to_string(),
                 pause_on_battery: false,
@@ -2914,12 +2981,21 @@ mod tests {
                 .find(|info| info.name == monitor)
                 .map(|info| {
                     let scale = info.scale_factor.max(1);
-                    self.window_state.visibility_at(
+                    let window = self.window_state.visibility_at(
                         info.x * scale,
                         info.y * scale,
                         info.width * scale,
                         info.height * scale,
-                    )
+                    );
+                    let native = self
+                        .native_visibility
+                        .get(monitor)
+                        .copied()
+                        .unwrap_or_default();
+                    MonitorVisibility {
+                        covered: window.covered || native.covered,
+                        fullscreen: window.fullscreen || native.fullscreen,
+                    }
                 })
                 .unwrap_or_default()
         }
@@ -2978,6 +3054,57 @@ mod tests {
             assert_eq!(p.state, eco::State::Occluded);
             assert!(!p.play);
         }
+    }
+
+    #[test]
+    fn native_monitor_coverage_pauses_only_its_monitor() {
+        let mut h = EcoTestHarness::new("balanced");
+        h.native_visibility.insert(
+            "HDMI-1".to_string(),
+            MonitorVisibility {
+                covered: true,
+                fullscreen: true,
+            },
+        );
+        assert_eq!(h.plan("HDMI-1").state, eco::State::Occluded);
+        assert!(!h.plan("HDMI-1").play);
+        assert_eq!(h.plan("eDP-1").state, eco::State::Active);
+        assert!(h.plan("eDP-1").play);
+    }
+
+    #[test]
+    fn native_monitor_matches_connector_then_geometry_then_index() {
+        let h = EcoTestHarness::new("balanced");
+        let mut state = NativeMonitorState {
+            connector: Some("HDMI-1".to_string()),
+            index: 1,
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            visibility: MonitorVisibility {
+                covered: true,
+                fullscreen: true,
+            },
+        };
+        assert_eq!(
+            match_native_monitor(&h.monitors, &state).unwrap().name,
+            "HDMI-1"
+        );
+
+        state.connector = None;
+        state.x = 1920;
+        assert_eq!(
+            match_native_monitor(&h.monitors, &state).unwrap().name,
+            "HDMI-1"
+        );
+
+        state.x = 0;
+        state.width = 800;
+        assert_eq!(
+            match_native_monitor(&h.monitors, &state).unwrap().name,
+            "HDMI-1"
+        );
     }
 
     #[test]

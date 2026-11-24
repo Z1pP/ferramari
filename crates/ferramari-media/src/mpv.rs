@@ -766,9 +766,17 @@ impl Mpv {
     }
 }
 
-impl Drop for Mpv {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
+impl Mpv {
+    /// Stop the child and reap its IPC worker. Safe to call more than once.
+    ///
+    /// `Drop` calls this, but it cannot be the only caller: a fade thread can
+    /// still hold an `Arc<Mutex<Mpv>>` when the owning [`Engine`] is dropped,
+    /// and the process may exit before that thread drops its handle. Stopping
+    /// from the owner guarantees the child is reaped before shutdown.
+    pub fn stop(&mut self) {
+        if self.stop.swap(true, Ordering::Relaxed) {
+            return;
+        }
         // Ask mpv to quit, then give it a short grace period. A wedged
         // decoder must not keep the Ferramari process (or the session) alive.
         // Always wake the IPC worker, even when the child already exited:
@@ -800,6 +808,12 @@ impl Drop for Mpv {
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
+    }
+}
+
+impl Drop for Mpv {
+    fn drop(&mut self) {
+        self.stop();
     }
 }
 

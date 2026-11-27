@@ -636,6 +636,13 @@ impl Mpv {
         self.set_property("mute", json!(muted))
     }
 
+    /// Attach or detach the audio track at runtime. `--no-audio` at spawn is
+    /// the same property (`aid=no`), so a player whose monitor becomes primary
+    /// later can start producing sound without restarting mpv and its decoder.
+    pub fn set_audio_enabled(&mut self, enabled: bool) -> anyhow::Result<()> {
+        self.set_property("aid", if enabled { json!("auto") } else { json!("no") })
+    }
+
     pub fn set_pause(&mut self, paused: bool) -> anyhow::Result<()> {
         self.shared.paused.store(paused, Ordering::Relaxed);
         self.set_property("pause", json!(paused))

@@ -266,9 +266,23 @@ fn randr_monitors() -> (Vec<RawMonitor>, Option<i32>) {
         })
         .collect();
 
-    // Primary cascade, mirroring GDK: the RandR primary flag first, then an
-    // LVDS built-in (laptops without a primary flag), then the first monitor.
-    let primary_index = monitors
+    let primary_index = primary_index(&monitors);
+
+    (monitors, primary_index)
+}
+
+/// Primary cascade, mirroring GDK: the RandR primary flag first, then an LVDS
+/// built-in (laptops without a primary flag), then the first monitor.
+///
+/// The last step is not cosmetic. XWayland can answer the first `GetMonitors`
+/// before the compositor publishes its primary output. Without the fallback
+/// every monitor looked secondary at that moment, so the wallpaper player was
+/// spawned with `--no-audio` and volume 0 — and mpv keeps spawn-time options
+/// for its whole lifetime. The only symptom was a silent desktop that a server
+/// restart fixed. The module docs promise the GDK cascade; this is its last
+/// step.
+fn primary_index(monitors: &[RawMonitor]) -> Option<i32> {
+    monitors
         .iter()
         .position(|monitor| monitor.is_primary)
         .or_else(|| {
@@ -276,9 +290,8 @@ fn randr_monitors() -> (Vec<RawMonitor>, Option<i32>) {
                 .iter()
                 .position(|monitor| monitor.atom_name.to_ascii_uppercase().starts_with("LVDS"))
         })
-        .map(|index| index as i32);
-
-    (monitors, primary_index)
+        .or_else(|| (!monitors.is_empty()).then_some(0))
+        .map(|index| index as i32)
 }
 
 /// List the connected monitors in RandR order with stable, config-safe names.
@@ -420,10 +433,48 @@ pub fn start(tx: ferramari_core::CommandSender) -> Option<Watcher> {
 
 #[cfg(test)]
 mod tests {
+    use super::{primary_index, RawMonitor};
+
+    fn raw(name: &str, primary: bool) -> RawMonitor {
+        RawMonitor {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            atom_name: name.to_string(),
+            refresh_hz: None,
+            is_primary: primary,
+            identity: ferramari_core::monitor::DisplayIdentity::default(),
+        }
+    }
+
     #[test]
     fn scale_falls_back_to_one_when_unset() {
         std::env::remove_var("GDK_SCALE");
         assert_eq!(super::window_scale(), 1);
+    }
+
+    #[test]
+    fn an_explicit_primary_flag_wins_over_the_enumeration_order() {
+        let monitors = [raw("HDMI-1", false), raw("eDP-1", true)];
+        assert_eq!(primary_index(&monitors), Some(1));
+    }
+
+    #[test]
+    fn a_missing_primary_flag_falls_back_to_the_first_monitor() {
+        let monitors = [raw("eDP-1", false), raw("HDMI-1", false)];
+        assert_eq!(primary_index(&monitors), Some(0));
+    }
+
+    #[test]
+    fn an_lvds_builtin_wins_over_an_earlier_output_without_a_flag() {
+        let monitors = [raw("HDMI-1", false), raw("LVDS-1", false)];
+        assert_eq!(primary_index(&monitors), Some(1));
+    }
+
+    #[test]
+    fn no_monitors_have_no_primary() {
+        assert_eq!(primary_index(&[]), None);
     }
 }
 

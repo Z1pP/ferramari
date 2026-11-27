@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+**Live wallpapers no longer stay silent when the primary display is reported
+late.**
+
+- **Monitor discovery falls back to the first monitor when RandR has no primary
+  flag.** XWayland can answer the initial `GetMonitors` before the compositor
+  publishes the primary output. Every monitor then looked secondary, so the
+  player was spawned with `--no-audio` and volume 0; mpv keeps those spawn-time
+  options for its whole lifetime, so the desktop stayed silent until the server
+  was restarted. The documented GDK cascade (flag, then LVDS, then first
+  monitor) is now actually implemented, with four unit tests pinning each step.
+- **A player can gain or lose audio when its monitor role changes.** The
+  audible player is chosen at spawn, and `--no-audio` was permanent for that
+  mpv process. `Engine::set_primary` now toggles the `aid` property
+  (`auto`/`no`) on the live player, so a layout correction after startup no
+  longer requires restarting the wallpaper server. Secondary players are kept
+  at volume 0 as well as detached from the audio track.
+
 **The interface language now switches in source builds and follows Windows
 "System" correctly.**
 

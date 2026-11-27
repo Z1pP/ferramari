@@ -1175,6 +1175,29 @@ impl App {
             .iter()
             .map(|window| window.key().monitor.clone())
             .collect();
+        // The primary monitor owns the only audible player. Re-evaluate it on
+        // every rebuild so a layout report that arrived before the compositor
+        // published its primary output cannot leave the wallpaper silent for
+        // the lifetime of the mpv process.
+        let primaries: Vec<(WindowKey, bool)> = self
+            .windows
+            .iter()
+            .map(|window| {
+                let primary = self
+                    .monitors
+                    .iter()
+                    .find(|monitor| monitor.name == window.key().monitor)
+                    .is_some_and(|monitor| monitor.is_primary);
+                (window.key().clone(), primary)
+            })
+            .collect();
+        for (window, (key, primary)) in self.windows.iter_mut().zip(primaries) {
+            if window.set_primary(primary) {
+                // The cached mute plan belongs to the old role; let
+                // `apply_mute_states` send the new volume and mute.
+                self.last_mute.remove(&key);
+            }
+        }
         self.last_plans
             .retain(|monitor, _| live_monitors.contains(monitor));
         self.hidden_since

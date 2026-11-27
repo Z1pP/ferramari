@@ -185,6 +185,33 @@ impl Engine {
         self.primary
     }
 
+    /// Point this window at the primary monitor's audio policy. Only the
+    /// primary player is allowed to produce sound; every other one is muted by
+    /// construction. Returns whether the answer changed.
+    ///
+    /// Monitor discovery can race the compositor: XWayland may report a layout
+    /// before the primary output is published, so a player can be spawned
+    /// while nothing is flagged primary. Re-evaluating later lets that player
+    /// pick up audio through its existing mpv process instead of staying
+    /// silent (`--no-audio` is a spawn-time option, `aid` is not) until the
+    /// whole server is restarted.
+    pub fn set_primary(&mut self, primary: bool) -> bool {
+        if self.primary == primary {
+            return false;
+        }
+        self.primary = primary;
+        let Content::Video { mpv } = &self.content;
+        if let Ok(mut mpv) = mpv.lock() {
+            let _ = mpv.set_audio_enabled(primary);
+            if !primary {
+                // A secondary player keeps decoding for display only; its
+                // volume must not leak if something reattaches the track.
+                let _ = mpv.set_volume(0);
+            }
+        }
+        true
+    }
+
     /// The opaque native handle the player renders into. It is valid only
     /// while this engine owns the platform surface and must never be stored.
     pub fn surface_handle(&self) -> u64 {
